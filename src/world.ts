@@ -1,7 +1,8 @@
 import Phaser from "phaser";
 import { store } from "./simulation";
-import { OBJECTS, WORLD_W, WORLD_H } from "./data";
-import { generateArt, createCharacterTexture, villageDecor } from "./art";
+import { generateArt, createCharacterTexture } from "./art";
+import { generateRegionArt } from "./region-art";
+import { objectsForZone, regionForZone, resourceNode } from "./regions";
 import type { Dialog, GameState, Npc, WorldObject, Zone } from "./types";
 import { findPath, nearestWalkable, objectApproach, type Point, type NavigationContext } from "./navigation";
 
@@ -54,6 +55,7 @@ class KingdomScene extends Phaser.Scene {
   private objectSprites = new Map<string, Phaser.GameObjects.Image>();
   private ground?: Phaser.GameObjects.Image;
   private foliage: Phaser.GameObjects.Image[] = [];
+  private culled: { object: Phaser.GameObjects.Image | Phaser.GameObjects.Text; margin: number }[] = [];
   private season = "";
   private millSails?: Phaser.GameObjects.Image;
   private propertyHouse?: Phaser.GameObjects.Image;
@@ -64,9 +66,9 @@ class KingdomScene extends Phaser.Scene {
   private destination: { x: number; y: number; interact?: string; path: Point[] } | null = null;
   private routeBlockedFor = 0;
   private navigate = (event: Event) => {
-    if (store.state.phase !== "playing" || store.state.zone !== "village") return;
+    if (store.state.phase !== "playing") return;
     const id = (event as CustomEvent<{ id?: string }>).detail?.id;
-    if (!id || !OBJECTS.some((object) => object.id === id)) return;
+    if (!id || !objectsForZone(store.state.zone).some((object) => object.id === id)) return;
     // The map closes in the same React update; accept its event before the overlay disappears.
     worldInput.x = 0;
     worldInput.y = 0;
@@ -84,6 +86,11 @@ class KingdomScene extends Phaser.Scene {
   private night?: Phaser.GameObjects.Rectangle;
   private motes: Phaser.GameObjects.Arc[] = [];
   private attackTime = 0;
+  private workVisual?: Phaser.GameObjects.Container;
+  private workText?: Phaser.GameObjects.Text;
+  private workBar?: Phaser.GameObjects.Graphics;
+  private workSwing?: Phaser.GameObjects.Graphics;
+  private workSparks: Phaser.GameObjects.Arc[] = [];
 
   constructor() {
     super("kingdom-world");
@@ -144,6 +151,7 @@ class KingdomScene extends Phaser.Scene {
     this.objectSprites.clear();
     this.ground = undefined;
     this.foliage = [];
+    this.culled = [];
     this.season = "";
     this.millSails = undefined;
     this.propertyHouse = undefined;
@@ -157,8 +165,10 @@ class KingdomScene extends Phaser.Scene {
       store.state.phase === "title" || store.state.phase === "creation";
     this.activeZone = this.scenic ? "village" : store.state.zone;
     const village = this.activeZone === "village";
-    const w = village ? WORLD_W : 900;
-    const h = village ? WORLD_H : 900;
+    const region = regionForZone(this.activeZone);
+    const w = region.width;
+    const h = region.height;
+    generateRegionArt(this, this.activeZone);
     this.ground = this.keep(
       this.add
         .image(0, 0, village ? "village-ground" : `${this.activeZone}-ground`)
@@ -168,8 +178,8 @@ class KingdomScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, w, h);
     this.physics.world.setBounds(0, 0, w, h);
 
-    if (village) {
-      villageDecor.forEach((item) => {
+    if (village || this.activeZone === "wilderness" || this.activeZone === "mine") {
+      region.decor.forEach((item) => {
         const sprite = this.keep(
           this.add
             .image(item.x, item.y, item.key)
@@ -178,9 +188,10 @@ class KingdomScene extends Phaser.Scene {
         );
         if (item.scale) sprite.setScale(item.scale);
         this.foliage.push(sprite);
+        this.culled.push({ object: sprite, margin: 190 * (item.scale || 1) });
       });
-      OBJECTS.forEach((object) => this.addWorldObject(object));
-      if (this.textures.exists("property-house")) {
+      objectsForZone(this.activeZone).forEach((object) => this.addWorldObject(object));
+      if (village && this.textures.exists("property-house")) {
         this.propertyHouse = this.keep(
           this.add
             .image(2090, 790, "property-house")
@@ -225,6 +236,18 @@ class KingdomScene extends Phaser.Scene {
     }
 
     this.destinationRing = this.keep(this.add.graphics().setDepth(1));
+    this.workText = this.add.text(0, -91, "", {
+      fontFamily: "Arial, sans-serif", fontSize: "11px", color: "#ffe4ad",
+      stroke: "#24362d", strokeThickness: 3, align: "center",
+    }).setOrigin(0.5);
+    this.workBar = this.add.graphics();
+    this.workSwing = this.add.graphics().setPosition(23, -33);
+    this.workSwing.lineStyle(4, 0x8b6c42, 1).lineBetween(-9, 8, 8, -10);
+    this.workSwing.lineStyle(3, 0xd9c38e, 1).lineBetween(-2, -14, 13, -8);
+    this.workSparks = Array.from({ length: 3 }, (_, index) =>
+      this.add.circle(28, -26, index ? 1 : 1.5, 0xebc581, 0));
+    this.workVisual = this.keep(this.add.container(0, 0,
+      [this.workText, this.workBar, this.workSwing, ...this.workSparks]).setDepth(9991).setVisible(false));
     const diamond = this.add.graphics();
     diamond.fillStyle(0xf6d58a, 1);
     diamond.fillPoints(
@@ -320,32 +343,41 @@ class KingdomScene extends Phaser.Scene {
   }
 
   private addWorldObject(object: WorldObject) {
-    const key = buildingKeys[object.id];
-    if (!key || !this.textures.exists(key)) return;
-    this.objectSprites.set(
-      object.id,
-      this.keep(
-        this.add
-          .image(object.x, object.y, key)
-          .setOrigin(0.5, 1)
-          .setDepth(this.objectDepth(object)),
-      ),
-    );
+    const kindKeys: Record<string, string> = {
+      cave: "frontier-cave", camp: "frontier-camp", ruins: "frontier-ruins",
+      portal: this.activeZone === "mine" ? "frontier-exit" : "frontier-sign",
+      resource: "tree1", herb: "herb", stone: "rock", ore: "frontier-ore",
+    };
+    const key = buildingKeys[object.id] || kindKeys[object.kind];
+    if (key && this.textures.exists(key)) {
+      const sprite = this.keep(this.add.image(object.x, object.y, key)
+        .setOrigin(0.5, 1).setDepth(this.objectDepth(object)));
+      this.objectSprites.set(object.id, sprite);
+      this.culled.push({ object: sprite, margin: object.h || 180 });
+      if (object.kind === "resource") this.foliage.push(sprite);
+    } else if (object.kind !== "lake") return;
     if (object.id === "property") {
       // Soil and crops share a ground layer. Each solid boundary sorts at its own feet.
       for (const [key, depth] of [
         ["farm-shed", 750], ["farm-fence-back", 742], ["farm-fence-front", 874],
       ] as const) {
-        this.keep(this.add.image(object.x, object.y, key).setOrigin(0.5, 1).setDepth(depth));
+        const sprite = this.keep(this.add.image(object.x, object.y, key).setOrigin(0.5, 1).setDepth(depth));
+        this.culled.push({ object: sprite, margin: 220 });
       }
       for (const x of [1790, 2010]) {
         for (let y = 750; y <= 870; y += 24) {
-          this.keep(this.add.image(x, y, "farm-fence-side").setOrigin(0.5, 1).setDepth(y));
+          const sprite = this.keep(this.add.image(x, y, "farm-fence-side").setOrigin(0.5, 1).setDepth(y));
+          this.culled.push({ object: sprite, margin: 30 });
         }
       }
     }
     if (object.id === "tree1")
       this.foliage.push(this.objectSprites.get(object.id)!);
+    if (object.id === "wild-gate") {
+      const road = this.keep(this.add.graphics().setDepth(-990));
+      road.lineStyle(68, 0xad9d79, 1).lineBetween(2140, 1510, 2170, 1710);
+      road.lineStyle(54, 0xcbb994, 1).lineBetween(2140, 1510, 2170, 1710);
+    }
     if (object.id === "mill") {
       this.millSails = this.keep(
         this.add
@@ -357,7 +389,7 @@ class KingdomScene extends Phaser.Scene {
     if (
       [
         "orphanage", "market", "forge", "mill", "bakery", "inn", "property", "dungeon",
-      ].includes(object.id)
+      ].includes(object.id) || ["portal", "cave", "camp", "ruins", "lake"].includes(object.kind)
     ) {
       const labels: Record<string, string> = {
         orphanage: "ORFANATO",
@@ -369,20 +401,22 @@ class KingdomScene extends Phaser.Scene {
         property: "PARCELA DO MOINHO",
         dungeon: "CRIPTA DAS RAÍZES",
       };
-      this.keep(
+      const label = this.keep(
         this.add
-          .text(object.x, object.y + 17, labels[object.id], {
+          .text(object.x, object.y + 17, labels[object.id] || object.label.toUpperCase(), {
             fontFamily: "Arial, sans-serif",
             fontSize: "10px",
             color: "#f7edcc",
             letterSpacing: 1.7,
             stroke: "#354a36",
             strokeThickness: 3,
+            wordWrap: { width: 250 }, align: "center",
           })
           .setOrigin(0.5)
           .setDepth(object.y + 1)
           .setAlpha(0.9),
       );
+      this.culled.push({ object: label, margin: 140 });
     }
   }
 
@@ -392,7 +426,10 @@ class KingdomScene extends Phaser.Scene {
       orphanage: -10, inn: -10, house1: -10, market: -10,
       forge: -12, mill: -18, bakery: -12, tree1: -10,
     };
-    return object.id === "property" ? 0 : object.y + (frontOffsets[object.id] || 0);
+    const kindOffsets: Record<string, number> = {
+      cave: -26, camp: -32, ruins: -42, resource: -10, stone: -6, ore: -6,
+    };
+    return object.id === "property" ? 0 : object.y + (frontOffsets[object.id] ?? kindOffsets[object.kind] ?? 0);
   }
 
   private makeActor(
@@ -728,23 +765,23 @@ class KingdomScene extends Phaser.Scene {
       document.body.dataset.joystick === "true")) return;
     const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const p = store.state.apostle;
+    const objects = objectsForZone(store.state.zone);
     let target: (Point & { id: string }) | undefined;
+    const object = objects.find((obj) =>
+      Math.abs(point.x - obj.x) < (obj.w || 90) / 2 &&
+      point.y > obj.y - (obj.h || 88) && point.y < obj.y + 30);
+    if (object) target = { ...objectApproach(object.id, this.navigationContext()), id: object.id };
     if (this.activeZone === "village") {
-      const object = OBJECTS.find((obj) =>
-        Math.abs(point.x - obj.x) < (obj.w || 65) / 2 &&
-        point.y > obj.y - (obj.h || 75) && point.y < obj.y + 30);
-      if (object) target = { ...objectApproach(object.id, this.navigationContext()), id: object.id };
       if (store.state.property.building && point.x >= 2010 && point.x <= 2170 &&
         point.y >= 650 && point.y <= 815)
         target = { x: 2090, y: 815, id: "property" };
-    } else if (Math.hypot(point.x - 450, point.y - 790) < 75)
-      target = { x: 450, y: 755, id: "exit" };
+    }
     const npc = store.state.npcs.find((person) => this.npcVisible(person) &&
       Math.hypot(point.x - person.x, point.y - person.y + 25) < 38);
     if (npc) target = { x: npc.x, y: npc.y + 40, id: npc.id };
     const source = target && (store.state.npcs.find((person) => person.id === target!.id) ||
       (target.id === "property" && target.x === 2090 ? target :
-        OBJECTS.find((object) => object.id === target!.id)) || target);
+        objects.find((object) => object.id === target!.id)) || target);
     if (target && source && Math.hypot(p.x - source.x, p.y - source.y) < 120) {
       this.interact(target.id);
       return;
@@ -757,6 +794,7 @@ class KingdomScene extends Phaser.Scene {
     // A contextual autonomous decision replaces the player's pending travel order.
     if (this.destination && (store.state.simulation.autonomousUntil || 0) > 0)
       this.clearRoute();
+    if (this.destination && store.state.frontier.work) this.clearRoute();
     let x = (this.keys.right.isDown || this.keys.right2.isDown ? 1 : 0) -
       (this.keys.left.isDown || this.keys.left2.isDown ? 1 : 0) + worldInput.x;
     let y = (this.keys.down.isDown || this.keys.down2.isDown ? 1 : 0) -
@@ -836,6 +874,9 @@ class KingdomScene extends Phaser.Scene {
       if (this.millSails && !blockedInput()) this.millSails.rotation += dt * 0.16;
     }
     this.updateSeason();
+    this.updateResources();
+    this.updateWork(time);
+    this.cullScenery();
     if (this.scenic) {
       this.cameras.main.centerOn(
         1190 + Math.sin(time / 50000) * 75,
@@ -844,8 +885,10 @@ class KingdomScene extends Phaser.Scene {
     }
     this.updateMarker(time);
     const hour = store.state.minutes / 60;
+    const outdoors = this.activeZone === "village" || this.activeZone === "wilderness";
     const dark = this.scenic
       ? 0
+      : this.activeZone === "mine" ? 0.12
       : hour < 6 || hour > 19
         ? 0.32
         : hour > 17
@@ -854,16 +897,17 @@ class KingdomScene extends Phaser.Scene {
     this.night?.setAlpha(dark);
     this.motes.forEach((mote, index) => {
       const seed = mote.getData("seed") as number;
-      const w = this.activeZone === "village" ? WORLD_W : 900;
-      const winter = this.activeZone === "village" && this.season === "Inverno";
-      const autumn = this.activeZone === "village" && this.season === "Outono";
+      const region = regionForZone(this.activeZone!);
+      const w = region.width;
+      const winter = outdoors && this.season === "Inverno";
+      const autumn = outdoors && this.season === "Outono";
       mote.setPosition(
         (mote.getData("startX") +
           time / (winter ? 450 : 190) +
           Math.sin(time / 3700 + seed) * 17) %
           w,
         winter || autumn
-          ? (mote.getData("startY") + time / (winter ? 65 : 100)) % WORLD_H
+          ? (mote.getData("startY") + time / (winter ? 65 : 100)) % region.height
           : mote.getData("startY") + Math.sin(time / 2200 + seed) * 30,
       );
       mote.setAlpha(
@@ -873,7 +917,7 @@ class KingdomScene extends Phaser.Scene {
   }
 
   private updateSeason() {
-    if (this.activeZone !== "village") return;
+    if (this.activeZone !== "village" && this.activeZone !== "wilderness") return;
     const season = store.getCalendar().season;
     if (season === this.season) return;
     this.season = season;
@@ -895,6 +939,57 @@ class KingdomScene extends Phaser.Scene {
     });
   }
 
+  private updateResources() {
+    if (!this.activeZone) return;
+    for (const object of objectsForZone(this.activeZone)) {
+      if (!resourceNode(object.id)) continue;
+      const sprite = this.objectSprites.get(object.id);
+      if (!sprite) continue;
+      const exhausted = store.state.frontier.resources[object.id]?.remaining === 0;
+      sprite.setAlpha(exhausted ? 0.48 : 1);
+      if (object.kind === "ore") {
+        const key = exhausted ? "frontier-ore-empty" : "frontier-ore";
+        if (sprite.texture.key !== key) sprite.setTexture(key);
+      }
+    }
+  }
+
+  private updateWork(time: number) {
+    const work = store.state.frontier.work;
+    if (!this.workVisual || !this.workBar || !this.workText || !this.workSwing) return;
+    this.workVisual.setVisible(!!work && !this.scenic && work.zone === this.activeZone);
+    if (!work) return;
+    const p = store.state.apostle, node = resourceNode(work.nodeId);
+    const progress = Phaser.Math.Clamp(work.elapsed / work.duration, 0, 1);
+    const verbs: Record<string, string> = {
+      wood: "Recolhendo madeira", herb: "Colhendo ervas",
+      stone: "Extraindo pedra", ore: "Extraindo ferro",
+    };
+    const label = `${verbs[node?.resource || ""] || "Trabalhando"} · ${Math.round(progress * 100)}%`;
+    if (this.workText.text !== label) this.workText.setText(label);
+    this.workVisual.setPosition(p.x, p.y);
+    this.workBar.clear().fillStyle(0x263a30, 0.9).fillRoundedRect(-42, -79, 84, 7, 2)
+      .fillStyle(0xe4c580, 1).fillRect(-40, -77, progress * 80, 3);
+    const swinging = node?.tool !== null;
+    this.workSwing.setVisible(swinging).setRotation(Math.sin(time / 130) * 0.65 - 0.3);
+    const beat = (time % 580) / 580;
+    this.workSparks.forEach((spark, i) => {
+      const drift = (beat + i / 4) % 1;
+      spark.setPosition(24 + drift * (12 + i * 5), -22 - Math.sin(drift * Math.PI) * (10 + i * 4))
+        .setAlpha(swinging && drift < 0.6 ? (0.6 - drift) * 1.2 : 0);
+    });
+    // A very small body motion connects the timed action with the physical actor.
+    if (this.player) this.player.sprite.setPosition(p.x + Math.sin(time / 130) * 0.6, p.y);
+  }
+
+  private cullScenery() {
+    const view = this.cameras.main.worldView;
+    for (const { object, margin } of this.culled) {
+      object.setVisible(object.x >= view.left - margin && object.x <= view.right + margin &&
+        object.y >= view.top - margin && object.y <= view.bottom + margin);
+    }
+  }
+
   private updateMarker(time: number) {
     if (!this.marker || !this.markerText || this.scenic || blockedInput()) {
       this.marker?.setVisible(false);
@@ -906,6 +1001,7 @@ class KingdomScene extends Phaser.Scene {
       return;
     }
     const npc = store.state.npcs.find((person) => person.id === nearest.id);
+    const resource = resourceNode(nearest.id);
     const role = npc && store.state.economy.worker?.npcId === npc.id
       ? "Trabalhadora" : npc?.role;
     const label = `${nearest.label}${role ? ` · ${role}` : ""}  ·  E`;
@@ -916,7 +1012,7 @@ class KingdomScene extends Phaser.Scene {
     this.marker
       .setPosition(
         nearest.x,
-        nearest.y + (npc ? -112 : -40) + Math.sin(time / 380) * 3,
+        nearest.y + (npc ? -112 : resource ? 24 : -40) + Math.sin(time / 380) * 3,
       )
       .setVisible(true);
   }

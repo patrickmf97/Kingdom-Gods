@@ -1,5 +1,8 @@
-import type { GameState } from "./types";
+import type { GameState, Apostle, Npc, Person } from "./types";
 import { createEconomyState } from "./economy";
+import { createFrontierState, FRONTIER_JOB_DEFS } from "./frontier";
+import { createLifeState } from "./life";
+import { REGIONS, RESOURCE_NODES, resourceNode } from "./regions";
 
 const DATABASE = "kingdom-gods";
 const STORE = "snapshots";
@@ -39,7 +42,10 @@ const LEGACY_SKILLS = [
   "building",
   "leadership",
 ] as const;
-const SKILLS = [...LEGACY_SKILLS, "cooking", "smithing"] as const;
+const V2_SKILLS = [...LEGACY_SKILLS, "cooking", "smithing"] as const;
+const SKILLS = [...V2_SKILLS, "woodcutting", "herbalism"] as const;
+const LEGACY_ZONES = ["village", "orphanage", "dungeon"] as const;
+const ZONES = [...LEGACY_ZONES, "wilderness", "mine"] as const;
 
 let lastPersistenceError: string | null = null;
 let memoryCurrent: GameState | null = null;
@@ -224,6 +230,7 @@ function baseState(
   value: unknown,
   items: readonly string[],
   skills: readonly string[],
+  zones: readonly string[] = LEGACY_ZONES,
 ): value is ObjectValue {
   return (
       object(value) &&
@@ -237,7 +244,7 @@ function baseState(
       value.minutes < 1440 &&
       day(value.day) &&
       nonnegative(value.timeScale) &&
-      choice(value.zone, ["village", "orphanage", "dungeon"]) &&
+      choice(value.zone, zones) &&
       array(value.npcs, npc) &&
       array(value.enemies, enemy) &&
       numericRecord(value.market, items, true) &&
@@ -311,6 +318,108 @@ function economy(value: unknown): boolean {
   );
 }
 
+const DISCOVERABLE_IDS = new Set(
+  Object.values(REGIONS).flatMap((region) => region.objects.map((entry) => entry.id)),
+);
+
+function frontier(state: GameState): boolean {
+  const value: unknown = state.frontier;
+  if (!object(value) || !object(value.tools) || !object(value.toolStock) ||
+    !object(value.resources) || !count(value.escrow) ||
+    !array(value.discovered, (id) => string(id) && DISCOVERABLE_IDS.has(id)) ||
+    !Array.isArray(value.discovered) ||
+    new Set(value.discovered).size !== value.discovered.length) return false;
+  const discovered = value.discovered as string[];
+
+  for (const toolId of ["axe", "pickaxe"] as const) {
+    const tool = value.tools[toolId];
+    const stock = value.toolStock[toolId];
+    if (!object(tool) || !boolean(tool.owned) || !percentage(tool.durability) ||
+      (!tool.owned && tool.durability !== 0) || !count(stock) || stock > 3) return false;
+  }
+  if (Object.keys(value.resources).length !== RESOURCE_NODES.length) return false;
+  for (const node of RESOURCE_NODES) {
+    const reserve = value.resources[node.id];
+    if (!object(reserve) || !count(reserve.remaining) || reserve.remaining > node.capacity ||
+      (reserve.remaining > 0 ? reserve.readyDay !== null : !day(reserve.readyDay))) return false;
+  }
+
+  if (value.work !== null) {
+    const work = value.work;
+    if (!object(work) || !string(work.nodeId) || !nonnegative(work.elapsed) ||
+      !number(work.duration) || !choice(work.zone, ZONES)) return false;
+    const node = resourceNode(work.nodeId);
+    if (!node || node.zone !== work.zone || state.zone !== work.zone ||
+      work.duration !== node.duration || work.elapsed > node.duration + 1e-7 ||
+      state.phase !== "playing" || !state.apostle.alive ||
+      Math.hypot(state.apostle.x - node.x, state.apostle.y - node.y) > 120 ||
+      !((value.resources[node.id] as ObjectValue).remaining as number > 0)) return false;
+    if (node.tool) {
+      const tool = value.tools[node.tool] as ObjectValue;
+      if (!tool.owned || (tool.durability as number) <= 0) return false;
+    }
+  }
+
+  if (!Array.isArray(value.jobs) || value.jobs.length !== FRONTIER_JOB_DEFS.length) return false;
+  const ids = new Set<string>();
+  let reserved = 0;
+  for (const job of value.jobs) {
+    if (!object(job) || !string(job.id) || ids.has(job.id)) return false;
+    ids.add(job.id);
+    const definition = FRONTIER_JOB_DEFS.find((entry) => entry.id === job.id);
+    if (!definition || !string(job.title) || !string(job.description) ||
+      job.kind !== definition.kind || job.item !== definition.item ||
+      job.quantity !== definition.quantity || job.reward !== definition.reward ||
+      !day(job.deadline) || job.deadline > state.day + definition.deadlineOffset ||
+      !Array.isArray(job.targets) || job.targets.length !== definition.targets.length ||
+      !job.targets.every((target, index) => target === definition.targets[index]) ||
+      !choice(job.status, ["available", "accepted", "complete", "claimed", "resolved", "failed"])) return false;
+    if (job.status === "accepted" || job.status === "complete") reserved += definition.reward;
+    if (job.status === "complete" && job.kind === "survey" &&
+      !job.targets.every((target) => discovered.includes(target as string))) return false;
+  }
+  return count(reserved) && reserved === value.escrow;
+}
+
+function life(state: GameState): boolean {
+  const value: unknown = state.life;
+  if (!object(value) || !object(value.needs) || !object(value.education) ||
+    !Array.isArray(value.history) || value.history.length > 80) return false;
+  const needs = value.needs;
+  const education = value.education;
+  if (!state.npcs.every((npc) => Object.hasOwn(needs, npc.id)) ||
+    ![...state.family, state.apostle].every((person) =>
+      !person.alive || person.age >= 16 || Object.hasOwn(education, person.id))) return false;
+  if (!Object.values(value.needs).every((need) =>
+    object(need) && percentage(need.hunger) &&
+    percentage(need.fatigue) && choice(need.goal, ["work", "eat", "rest", "socialize"]))) return false;
+
+  const family = new Map(state.family.map((entry) => [entry.id, entry]));
+  const knownPerson = (id: unknown) => string(id) &&
+    (id === state.apostle.id || family.has(id) || state.npcs.some((entry) => entry.id === id));
+  const guardian = (id: unknown) => id === null || (string(id) && id !== state.apostle.id &&
+    ((family.get(id)?.alive && family.get(id)!.age >= 16) ||
+      (state.npcs.some((entry) => entry.id === id) &&
+        (!family.has(id) || (family.get(id)!.alive && family.get(id)!.age >= 16)))));
+  for (const [id, profile] of Object.entries(value.education)) {
+    if ((id !== state.apostle.id && !family.has(id)) || !object(profile) ||
+      !choice(profile.focus, ["farming", "mining", "wisdom"]) || !guardian(profile.guardianId) ||
+      !percentage(profile.practice) || !percentage(profile.bond) || !count(profile.lessons) ||
+      !count(profile.lastLessonDay) || profile.lastLessonDay > state.day) return false;
+  }
+  if (!guardian(value.guardianId)) return false;
+  if (value.heirId !== null) {
+    const heir = string(value.heirId) ? family.get(value.heirId) : undefined;
+    if (!heir || !heir.alive || heir.id === state.apostle.id ||
+      !(state.apostle.partnerId === heir.id || heir.partnerId === state.apostle.id ||
+        heir.parents.includes(state.apostle.id))) return false;
+  }
+  return value.history.every((entry) => object(entry) && count(entry.day) && entry.day <= state.day &&
+    choice(entry.kind, ["birth", "marriage", "death", "inheritance", "education"]) &&
+    knownPerson(entry.personId) && (entry.relatedId === null || knownPerson(entry.relatedId)) &&
+    string(entry.text) && count(entry.gold) && boolean(entry.property));
+}
+
 function economicRelations(state: GameState): boolean {
   const { property, economy, apostle } = state;
   const { crop, worker } = economy;
@@ -348,17 +457,20 @@ function economicRelations(state: GameState): boolean {
     state.merchantGold,
     economy.civicFunds,
     ...Object.values(economy.npcSavings),
+    ...(state.version === 3 ? [state.frontier.escrow] : []),
   ];
   return holdings.every(count) && count(holdings.reduce((sum, coins) => sum + coins, 0));
 }
 
-/** Current snapshots are complete v2 states; missing fields are never repaired. */
+/** Current snapshots are complete v3 states; missing fields are never repaired. */
 export function validateState(value: unknown): value is GameState {
   try {
     return (
-      baseState(value, ITEMS, SKILLS) &&
-      value.version === 2 &&
+      baseState(value, ITEMS, SKILLS, ZONES) &&
+      value.version === 3 &&
       economy(value.economy) &&
+      frontier(value as unknown as GameState) &&
+      life(value as unknown as GameState) &&
       economicRelations(value as unknown as GameState)
     );
   } catch {
@@ -372,32 +484,48 @@ function validateLegacyState(value: unknown): value is ObjectValue {
   return baseState(value, LEGACY_ITEMS, LEGACY_SKILLS) && value.version === 1;
 }
 
+function validateV2State(value: unknown): value is ObjectValue {
+  return baseState(value, ITEMS, V2_SKILLS) && value.version === 2 &&
+    economy(value.economy) && economicRelations(value as unknown as GameState);
+}
+
 /** Upgrade an independent copy, keeping saved time and all existing extensions. */
 export function migrateState(value: unknown): GameState | null {
   try {
     if (!object(value)) return null;
-    if (value.version === 2) {
+    if (value.version === 3) {
       if (!validateState(value)) return null;
       const snapshot: unknown = structuredClone(value);
       return validateState(snapshot) ? snapshot : null;
     }
-    if (!validateLegacyState(value)) return null;
+    if (!validateV2State(value) && !validateLegacyState(value)) return null;
     const legacy = structuredClone(value);
     const legacyApostle = legacy.apostle as ObjectValue;
     const legacyProperty = legacy.property as ObjectValue;
-    const snapshot = {
+    const v2 = legacy.version === 2 ? legacy : {
       ...legacy,
       version: 2,
       apostle: {
         ...legacyApostle,
-        skills: { ...(legacyApostle.skills as ObjectValue), cooking: 0, smithing: 0 },
+        skills: { cooking: 0, smithing: 0, ...(legacyApostle.skills as ObjectValue) },
       },
-      inventory: { ...(legacy.inventory as ObjectValue), flour: 0 },
-      market: { ...(legacy.market as ObjectValue), flour: 8 },
+      inventory: { flour: 0, ...(legacy.inventory as ObjectValue) },
+      market: { flour: 8, ...(legacy.market as ObjectValue) },
       economy: createEconomyState(
         legacy.day as number,
         legacyProperty.plantedAt as number | null,
       ),
+    };
+    const v2Apostle = v2.apostle as Apostle;
+    const snapshot = {
+      ...v2,
+      version: 3,
+      apostle: {
+        ...v2Apostle,
+        skills: { woodcutting: 0, herbalism: 0, ...v2Apostle.skills },
+      },
+      frontier: createFrontierState(v2.day as number),
+      life: createLifeState(v2.npcs as Npc[], v2.family as Person[], v2Apostle),
     };
     return validateState(snapshot) ? snapshot : null;
   } catch {
@@ -621,7 +749,7 @@ async function writeDatabase(
   });
 }
 
-export function saveGame(state: GameState): Promise<void> {
+export function saveGame(state: GameState): Promise<GameState> {
   return enqueue(async () => {
     lastPersistenceError = null;
     const migrated = migrateState(state);
@@ -648,7 +776,7 @@ export function saveGame(state: GameState): Promise<void> {
       if (db) {
         await writeDatabase(db, snapshot, previous);
         lastPersistenceError = existing.errors.join(" ") || null;
-        return;
+        return clone(snapshot);
       }
     } catch (error) {
       existing.errors.push(
@@ -665,7 +793,7 @@ export function saveGame(state: GameState): Promise<void> {
         if (previous) storage.setItem(LOCAL_BACKUP, JSON.stringify(previous));
         storage.setItem(LOCAL_CURRENT, JSON.stringify(snapshot));
         lastPersistenceError = existing.errors.join(" ") || null;
-        return;
+        return clone(snapshot);
       } catch (error) {
         existing.errors.push(
           `O navegador não conseguiu salvar a campanha: ${describe(error)}`,
@@ -680,7 +808,7 @@ export function saveGame(state: GameState): Promise<void> {
     ) {
       memoryBackup = previous ? clone(previous) : null;
       memoryCurrent = snapshot;
-      return;
+      return clone(snapshot);
     }
     lastPersistenceError =
       existing.errors.join(" ") ||

@@ -1,5 +1,4 @@
-import { villageDecor } from "./art";
-import { OBJECTS, WORLD_H, WORLD_W } from "./data";
+import { objectsForZone, regionForZone, type Rectangle as RegionRectangle } from "./regions";
 import type { Zone } from "./types";
 
 export type Point = { x: number; y: number };
@@ -20,66 +19,55 @@ const rectangle = (left: number, top: number, right: number, bottom: number): Re
   ({ kind: "rectangle", left, top, right, bottom });
 const circle = (x: number, y: number, radius: number): Circle => ({ kind: "circle", x, y, radius });
 
-// These are painted wall/counter bases, not roof or canopy bounding boxes.
-// The same footprints apply to the apostle, NPC routines and planned routes.
-const solids: Solid[] = [
-  rectangle(616, 524, 810, 610), // orphanage facade and side wall
-  rectangle(912, 984, 1094, 1070), // inn
-  rectangle(1566, 1024, 1720, 1090), // Mira's home
-  rectangle(1486, 578, 1636, 648), // forge
-  rectangle(1217, 308, 1301, 412), // mill tower; sails remain passable
-  rectangle(1185, 392, 1215, 416), // mill sacks
-  circle(1315, 402, 18), // mill grinding stone
-  rectangle(1158.5, 1324, 1278.5, 1398), // bakery facade
-  rectangle(1274.5, 1338, 1312.5, 1398), // stone oven
-  rectangle(1211, 774, 1341, 810), // market counter
-  rectangle(1207, 750, 1213, 810), // market posts
-  rectangle(1341, 750, 1347, 810),
-  rectangle(1195, 794, 1211, 812), // market baskets
-  rectangle(1349, 786, 1363, 808),
-  circle(1130, 778, 31), // well stone rim
-  circle(591, 1068, 8), // harvestable oak trunk
-  circle(1780, 1311, 20), // harvestable stone
-  rectangle(2055, 240, 2167, 316), // crypt exterior; front steps lead to the instance
-  rectangle(1370, 1062, 1376, 1082), // noticeboard's painted left leg
-  rectangle(1404, 1062, 1410, 1082), // noticeboard's painted right leg
-  // The inn's kitchen garden is open at both sides, with two horizontal rails.
-  rectangle(782, 1108, 968, 1114),
-  rectangle(782, 1198, 968, 1204),
-  // Farm soil and crops are freely walkable; only its shed and fences are solid.
-  rectangle(1928, 706, 1996, 748),
-  rectangle(1784, 728, 1914, 736),
-  rectangle(1790, 734, 1794, 870),
-  rectangle(2010, 738, 2014, 870),
-  rectangle(1784, 862, 1862, 868),
-  rectangle(1926, 862, 2014, 868),
-  ...villageDecor.map((item) => {
+// Circle footprints remain exact for the village's painted well and trunks.
+// Every region supplies its authored wall bases through the shared map contract.
+const villageCircles: Circle[] = [
+  circle(1315, 402, 18), circle(1130, 778, 31), circle(591, 1068, 8), circle(1780, 1311, 20),
+  ...regionForZone("village").decor.map((item) => {
     const scale = item.scale ?? 1;
     return circle(item.x + scale, item.y - 12 * scale, 7 * scale);
   }),
 ];
 const builtHouse = rectangle(2026, 718, 2160, 778);
 
-const buckets = new Map<string, Solid[]>();
-for (const solid of solids) {
-  const left = solid.kind === "circle" ? solid.x - solid.radius : solid.left;
-  const right = solid.kind === "circle" ? solid.x + solid.radius : solid.right;
-  const top = solid.kind === "circle" ? solid.y - solid.radius : solid.top;
-  const bottom = solid.kind === "circle" ? solid.y + solid.radius : solid.bottom;
-  for (let x = Math.floor((left - FEET_RADIUS) / BUCKET); x <= Math.floor((right + FEET_RADIUS) / BUCKET); x++) {
-    for (let y = Math.floor((top - FEET_RADIUS) / BUCKET); y <= Math.floor((bottom + FEET_RADIUS) / BUCKET); y++) {
-      const key = `${x},${y}`;
-      const entries = buckets.get(key) ?? [];
-      entries.push(solid);
-      buckets.set(key, entries);
+const regionBuckets = new Map<Zone, Map<string, Solid[]>>();
+function bucketsFor(zone: Zone): Map<string, Solid[]> {
+  const existing = regionBuckets.get(zone);
+  if (existing) return existing;
+  const buckets = new Map<string, Solid[]>();
+  const solids: Solid[] = [
+    ...regionForZone(zone).solids.map((solid) => ({ ...solid, kind: "rectangle" as const })),
+    ...(zone === "village" ? villageCircles : []),
+  ];
+  for (const solid of solids) {
+    const left = solid.kind === "circle" ? solid.x - solid.radius : solid.left;
+    const right = solid.kind === "circle" ? solid.x + solid.radius : solid.right;
+    const top = solid.kind === "circle" ? solid.y - solid.radius : solid.top;
+    const bottom = solid.kind === "circle" ? solid.y + solid.radius : solid.bottom;
+    for (let x = Math.floor((left - FEET_RADIUS) / BUCKET); x <= Math.floor((right + FEET_RADIUS) / BUCKET); x++) {
+      for (let y = Math.floor((top - FEET_RADIUS) / BUCKET); y <= Math.floor((bottom + FEET_RADIUS) / BUCKET); y++) {
+        const key = `${x},${y}`;
+        const entries = buckets.get(key) ?? [];
+        entries.push(solid);
+        buckets.set(key, entries);
+      }
     }
   }
+  regionBuckets.set(zone, buckets);
+  return buckets;
 }
 
 function bounds(context: NavigationContext) {
-  return context.zone === "village"
-    ? { left: 70, right: WORLD_W - 70, top: 90, bottom: WORLD_H - 70 }
-    : { left: 72, right: 828, top: 135, bottom: 800 };
+  const region = regionForZone(context.zone);
+  return context.zone === "orphanage" || context.zone === "dungeon"
+    ? { left: 72, right: 828, top: 135, bottom: 800 }
+    : { left: 70, right: region.width - 70, top: 90, bottom: region.height - 70 };
+}
+function fallbackFor(zone: Zone): Point {
+  if (zone === "village") return { x: 710, y: 760 };
+  if (zone === "wilderness") return { x: 400, y: 1780 };
+  if (zone === "mine") return { x: 400, y: 970 };
+  return { x: 450, y: 750 };
 }
 const finite = (point: Point) => Number.isFinite(point.x) && Number.isFinite(point.y);
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -104,23 +92,73 @@ function riverDistanceSquared(point: Point): number {
   return result;
 }
 
+type Boundary = { from: Point; to: Point };
+const regionBoundaries = new Map<Zone, Boundary[]>();
+function boundariesFor(zone: Zone, areas: RegionRectangle[]): Boundary[] {
+  const cached = regionBoundaries.get(zone);
+  if (cached) return cached;
+  const boundaries: Boundary[] = [];
+  // Remove overlapping internal rectangle edges; only the exposed union border
+  // constrains feet. This leaves chamber/corridor joins completely open.
+  for (const area of areas) {
+    for (const side of ["top", "bottom", "left", "right"] as const) {
+      const horizontal = side === "top" || side === "bottom";
+      const coordinate = area[side];
+      let intervals = [[horizontal ? area.left : area.top, horizontal ? area.right : area.bottom]];
+      for (const other of areas) {
+        if (other === area) continue;
+        const extendsOutside = side === "top" ? other.top < coordinate && other.bottom >= coordinate
+          : side === "bottom" ? other.top <= coordinate && other.bottom > coordinate
+          : side === "left" ? other.left < coordinate && other.right >= coordinate
+          : other.left <= coordinate && other.right > coordinate;
+        if (!extendsOutside) continue;
+        const low = horizontal ? other.left : other.top, high = horizontal ? other.right : other.bottom;
+        const next: number[][] = [];
+        for (const [start, end] of intervals) {
+          if (low >= end || high <= start) { next.push([start, end]); continue; }
+          if (low > start) next.push([start, low]);
+          if (high < end) next.push([high, end]);
+        }
+        intervals = next;
+      }
+      for (const [start, end] of intervals) {
+        if (end <= start) continue;
+        boundaries.push(horizontal
+          ? { from: { x: start, y: coordinate }, to: { x: end, y: coordinate } }
+          : { from: { x: coordinate, y: start }, to: { x: coordinate, y: end } });
+      }
+    }
+  }
+  regionBoundaries.set(zone, boundaries);
+  return boundaries;
+}
+function withinGround(point: Point, zone: Zone, areas: RegionRectangle[]): boolean {
+  if (!areas.some((area) => point.x >= area.left && point.x <= area.right && point.y >= area.top && point.y <= area.bottom)) return false;
+  return boundariesFor(zone, areas).every(({ from, to }) => {
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const fraction = Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / (dx * dx + dy * dy)));
+    return (point.x - from.x - fraction * dx) ** 2 + (point.y - from.y - fraction * dy) ** 2 >= FEET_RADIUS ** 2;
+  });
+}
 export function isWalkable(point: Point, context: NavigationContext): boolean {
   if (!finite(point)) return false;
   const area = bounds(context);
   if (point.x < area.left || point.x > area.right || point.y < area.top || point.y > area.bottom) return false;
-  if (context.zone !== "village") return true;
-  // The bridge joins dry banks horizontally. Keep the whole feet circle inside
-  // its vertical rails, allowing entry at the ends only where the banks meet it.
-  const bridge = point.x >= 285 && point.x <= 485 && point.y >= 856 + FEET_RADIUS && point.y <= 930 - FEET_RADIUS;
-  if (!bridge && riverDistanceSquared(point) < (47 + FEET_RADIUS) ** 2) return false;
-  const nearby = buckets.get(`${Math.floor(point.x / BUCKET)},${Math.floor(point.y / BUCKET)}`) ?? [];
+  const ground = regionForZone(context.zone).walkableAreas;
+  if (ground && !withinGround(point, context.zone, ground)) return false;
+  if (context.zone === "village") {
+    // The bridge joins dry banks horizontally; feet stay within its rails.
+    const bridge = point.x >= 285 && point.x <= 485 && point.y >= 856 + FEET_RADIUS && point.y <= 930 - FEET_RADIUS;
+    if (!bridge && riverDistanceSquared(point) < (47 + FEET_RADIUS) ** 2) return false;
+  }
+  const nearby = bucketsFor(context.zone).get(`${Math.floor(point.x / BUCKET)},${Math.floor(point.y / BUCKET)}`) ?? [];
   if (nearby.some((solid) => touchesSolid(point, solid))) return false;
-  return !context.building || !touchesSolid(point, builtHouse);
+  return context.zone !== "village" || !context.building || !touchesSolid(point, builtHouse);
 }
 
 export function nearestWalkable(point: Point, context: NavigationContext): Point {
   const area = bounds(context);
-  const fallback = context.zone === "village" ? { x: 710, y: 760 } : { x: 450, y: 750 };
+  const fallback = fallbackFor(context.zone);
   const desired = finite(point) ? point : fallback;
   const start = {
     x: Math.max(area.left, Math.min(area.right, desired.x)),
@@ -152,8 +190,9 @@ export function moveWithCollisions(from: Point, delta: Point, context: Navigatio
   if (!finite(delta)) return { ...from };
   let position = isWalkable(from, context) ? { ...from } : nearestWalkable(from, context);
   // A movement request can never require more sweeps than the map's diameter.
-  const dx = Math.max(-WORLD_W, Math.min(WORLD_W, delta.x));
-  const dy = Math.max(-WORLD_H, Math.min(WORLD_H, delta.y));
+  const region = regionForZone(context.zone);
+  const dx = Math.max(-region.width, Math.min(region.width, delta.x));
+  const dy = Math.max(-region.height, Math.min(region.height, delta.y));
   const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / STEP));
   const sx = dx / steps, sy = dy / steps;
   for (let step = 0; step < steps; step++) {
@@ -183,8 +222,9 @@ function gridFor(context: NavigationContext): GridData {
   const key = `${context.zone}:${context.building ? 1 : 0}`;
   let grid = grids.get(key);
   if (grid) return grid;
-  const columns = Math.floor((context.zone === "village" ? WORLD_W : 900) / GRID) + 1;
-  const rows = Math.floor((context.zone === "village" ? WORLD_H : 900) / GRID) + 1;
+  const region = regionForZone(context.zone);
+  const columns = Math.floor(region.width / GRID) + 1;
+  const rows = Math.floor(region.height / GRID) + 1;
   const walkable = new Uint8Array(columns * rows);
   for (let index = 0; index < walkable.length; index++) {
     walkable[index] = isWalkable({ x: (index % columns) * GRID, y: Math.floor(index / columns) * GRID }, context) ? 1 : 0;
@@ -305,12 +345,12 @@ export function findPath(from: Point, to: Point, context: NavigationContext): Po
 }
 
 export function objectApproach(id: string, context: NavigationContext): Point {
-  if (context.zone !== "village") {
+  if (context.zone === "orphanage" || context.zone === "dungeon") {
     return nearestWalkable(id === "exit" ? { x: 450, y: 775 } : { x: 450, y: 750 }, context);
   }
-  const object = OBJECTS.find((entry) => entry.id === id);
-  if (!object) return nearestWalkable({ x: 710, y: 760 }, context);
-  // The property is approached through its gate, not its interior/side fence.
+  const object = objectsForZone(context.zone).find((entry) => entry.id === id);
+  if (!object) return nearestWalkable(fallbackFor(context.zone), context);
+  // The property's gate is the entrance; other objects expose an open front.
   const destination = id === "property"
     ? { x: 1894, y: 906 }
     : { x: object.x, y: object.y + (id === "dungeon" ? 60 : 28) };

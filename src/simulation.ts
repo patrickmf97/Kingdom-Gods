@@ -1,4 +1,8 @@
 import { ITEMS, OBJECTS } from "./data";
+import { objectsForZone, portalForZone, regionForZone, resourceNode } from "./regions";
+import { cancelWork, createFrontierState, discoverLocation, executeFrontierAction, processFrontierDay, updateFrontierWork } from "./frontier";
+import { applyEducationToSuccessor, availableGuardians, createLifeState, executeLifeAction, npcGoalDestination, processLifeDay, recordLifeEvent, registerChildEducation, updateLifeNeeds } from "./life";
+import { exportCampaign as serializeCampaign, importCampaign as importSavedCampaign } from "./campaign-files";
 import {
   findPath,
   isWalkable,
@@ -139,6 +143,8 @@ function newApostle(creation = DEFAULT_CREATION): Apostle {
       leadership: 0,
       cooking: 0,
       smithing: 0,
+      woodcutting: 0,
+      herbalism: 0,
     },
     personality: { compassion: 55, courage: 50, loyalty: 60, anger: 15 },
     memories: [],
@@ -235,12 +241,14 @@ function newEnemies(): Enemy[] {
   ];
 }
 export function initialState(): PersistentGameState {
+  const npcs = newNpcs();
+  const apostle = newApostle();
   return {
-    version: 2,
+    version: 3,
     started: false,
     intro: true,
     phase: "title",
-    apostle: newApostle(),
+    apostle,
     gold: 0,
     inventory: Object.fromEntries(ITEM_IDS.map((id) => [id, 0])) as Record<
       ItemId,
@@ -250,7 +258,7 @@ export function initialState(): PersistentGameState {
     day: 1,
     timeScale: 6,
     zone: "orphanage",
-    npcs: newNpcs(),
+    npcs,
     enemies: newEnemies(),
     market: {
       bread: 20,
@@ -281,6 +289,8 @@ export function initialState(): PersistentGameState {
     savedAt: null,
     deaths: 0,
     economy: createEconomyState(1),
+    frontier: createFrontierState(1),
+    life: createLifeState(npcs, [], apostle),
     simulation: {
       marriedAt: {},
       gathering: {},
@@ -408,10 +418,9 @@ export class GameStore {
     return this.state.phase === "playing" && this.state.apostle.alive;
   }
   private nearObject(id: string, radius = 190): boolean {
-    const object = OBJECTS.find((object) => object.id === id);
+    const object = objectsForZone(this.state.zone).find((object) => object.id === id);
     return (
       !!object &&
-      this.state.zone === "village" &&
       (distance(this.state.apostle, object) <= radius ||
         (id === "property" && this.state.property.building &&
           distance(this.state.apostle, { x: 2090, y: 815 }) <= radius))
@@ -435,6 +444,21 @@ export class GameStore {
     if (this.nearObject(id)) return true;
     this.message("Aproxime-se para fazer isso.", "warning");
     return false;
+  }
+  private reconcileLifeReferences(): void {
+    const validGuardians = new Set(availableGuardians(this.state).map(person => person.id));
+    if (this.state.life.guardianId && !validGuardians.has(this.state.life.guardianId)) this.state.life.guardianId = null;
+    if (this.state.apostle.age < 16 && !this.state.life.guardianId) {
+      const guardians = availableGuardians(this.state).sort((a, b) =>
+        (this.state.npcs.find(npc => npc.id === b.id)?.trust ?? 50) -
+        (this.state.npcs.find(npc => npc.id === a.id)?.trust ?? 50));
+      this.state.life.guardianId = guardians[0]?.id ?? null;
+    }
+    for (const profile of Object.values(this.state.life.education))
+      if (profile.guardianId && !validGuardians.has(profile.guardianId)) profile.guardianId = null;
+    if (this.state.life.heirId && !this.eligibleSuccessors().some(person => person.id === this.state.life.heirId)) this.state.life.heirId = null;
+    for (const id of Object.keys(this.state.life.needs))
+      if (!this.state.npcs.some(npc => npc.id === id)) delete this.state.life.needs[id];
   }
   private economicHooks(): EconomicHooks {
     return {
@@ -485,6 +509,8 @@ export class GameStore {
     this.notify();
   }
   returnTitle(): void {
+    cancelWork(this.state);
+    if (this.autosaveTimer) { clearTimeout(this.autosaveTimer); this.autosaveTimer = null; }
     this.state.phase = "title";
     this.activeDialog = null;
     this.notify();
@@ -512,7 +538,7 @@ export class GameStore {
     this.dodgeCooldown = Math.max(0, this.dodgeCooldown - deltaSeconds);
     this.invulnerability = Math.max(0, this.invulnerability - deltaSeconds);
     const apostle = this.state.apostle;
-    apostle.stamina = Math.min(
+    if (!this.state.frontier.work) apostle.stamina = Math.min(
       apostle.maxStamina,
       apostle.stamina + deltaSeconds * (apostle.blessing === "vigor" ? 9 : 7),
     );
@@ -524,6 +550,15 @@ export class GameStore {
     }
     if (!this.playing()) this.state.minutes %= 1440;
     this.updateNpcs(deltaSeconds);
+    updateLifeNeeds(this.state, this.economicHooks());
+    const wasWorking = !!this.state.frontier.work;
+    updateFrontierWork(this.state, deltaSeconds, this.economicHooks());
+    if (wasWorking && !this.state.frontier.work) this.scheduleAutoSave();
+    if (this.state.zone === "wilderness" || this.state.zone === "mine") {
+      for (const object of objectsForZone(this.state.zone))
+        if (distance(apostle, object) <= 130)
+          discoverLocation(this.state, object.id, this.economicHooks());
+    }
     if (this.state.zone === "dungeon")
       this.updateCombat(Math.min(deltaSeconds, 1));
     this.announceAccumulator += deltaSeconds;
@@ -573,6 +608,8 @@ export class GameStore {
       );
       if (person.age >= 90) {
         person.alive = false;
+        recordLifeEvent(this.state, { day: this.state.day, kind: "death", personId: person.id,
+          relatedId: null, text: `${person.name} faleceu aos ${person.age} anos.`, gold: 0, property: false });
         this.remember(
           "Uma despedida",
           `${person.name} faleceu em paz. Sua lembrança fica em nossa família.`,
@@ -592,7 +629,9 @@ export class GameStore {
             ? "Pensativo"
             : "Tranquilo";
     }
+    processFrontierDay(this.state, this.economicHooks());
     processEconomicDay(this.state, this.economicHooks());
+    processLifeDay(this.state, this.economicHooks());
     if (inventory.bread > 0) {
       inventory.bread--;
       apostle.hp = Math.min(apostle.maxHp, apostle.hp + 8);
@@ -651,11 +690,12 @@ export class GameStore {
         Object.assign(npc, nearestWalkable(npc, context));
         this.npcRoutes.delete(npc.id);
       }
+      const needDestination = companion ? null : npcGoalDestination(this.state, npc);
       const destination = companion
         ? nearestWalkable({ x: this.state.apostle.x + 40, y: this.state.apostle.y + 35 }, context)
-        : working ? workplaces[npc.id]
+        : needDestination ?? (working ? workplaces[npc.id]
         : hour >= 18 && hour < 22 ? evening[npc.id]
-        : { x: npc.homeX, y: npc.homeY };
+        : { x: npc.homeX, y: npc.homeY });
       if (!destination) continue;
       // Companion routes refresh only after the apostle crosses a 32px cell.
       const target = `${context.zone}:${context.building}:${Math.round(destination.x / (companion ? 32 : 1))}:${Math.round(destination.y / (companion ? 32 : 1))}`;
@@ -694,6 +734,7 @@ export class GameStore {
     ) return;
     const length = Math.hypot(dx, dy);
     if (!length) return;
+    cancelWork(this.state, this.economicHooks(), "O movimento interrompeu o trabalho.");
     const apostle = this.state.apostle;
     const context = this.navigationContext();
     if (!isWalkable(apostle, context))
@@ -706,6 +747,7 @@ export class GameStore {
     }, context));
   }
   attack(): void {
+    if (this.playing()) cancelWork(this.state, this.economicHooks(), "O trabalho foi interrompido para agir.");
     if (
       !this.playing() ||
       this.state.zone !== "dungeon" ||
@@ -771,6 +813,7 @@ export class GameStore {
     }
   }
   dodge(): void {
+    if (this.playing()) cancelWork(this.state, this.economicHooks(), "A esquiva interrompeu o trabalho.");
     if (
       !this.playing() ||
       this.dodgeCooldown > 0 ||
@@ -879,12 +922,17 @@ export class GameStore {
       this.invulnerability > 0
     )
       return;
+    cancelWork(this.state, this.economicHooks(), "O ferimento interrompeu o trabalho.");
     this.state.apostle.hp = Math.max(0, this.state.apostle.hp - amount);
     if (this.state.apostle.hp === 0) {
       const apostle = this.state.apostle;
       apostle.alive = false;
       this.state.phase = "dead";
       this.state.deaths++;
+      recordLifeEvent(this.state, { day: this.state.day, kind: "death", personId: apostle.id,
+        relatedId: null, text: `${apostle.name} morreu aos ${apostle.age} anos.`, gold: this.state.gold,
+        property: this.state.property.owned });
+      this.reconcileLifeReferences();
       this.remember(
         "O fim de uma vida",
         `${apostle.name} ${apostle.surname} morreu aos ${apostle.age} anos. Sua família guardará a história.`,
@@ -933,23 +981,13 @@ export class GameStore {
   }
   getNearest(): { id: string; label: string; distance: number; x: number; y: number } | null {
     if (!this.playing()) return null;
-    const points: { id: string; label: string; x: number; y: number }[] =
-      this.state.zone === "village"
-        ? [
-            ...OBJECTS,
-            ...(this.state.property.building ? [
-              { id: "property", label: "Moradia da linhagem", x: 2090, y: 815 },
-            ] : []),
-            ...this.state.npcs
-              .filter((npc) => npc.id !== "matron")
-              .map((npc) => ({ ...npc, label: npc.name })),
-          ]
-        : this.state.zone === "orphanage"
-          ? [
-              { id: "exit", label: "Saída do orfanato", x: 450, y: 790 },
-              { id: "matron", label: "Irmã Elara", x: 400, y: 290 },
-            ]
-          : [{ id: "exit", label: "Voltar a Valeverde", x: 450, y: 790 }];
+    const points: { id: string; label: string; x: number; y: number }[] = [
+      ...objectsForZone(this.state.zone),
+      ...(this.state.zone === "village" ? [
+        ...(this.state.property.building ? [{ id: "property", label: "Moradia da linhagem", x: 2090, y: 815 }] : []),
+        ...this.state.npcs.filter(npc => npc.id !== "matron").map(npc => ({ ...npc, label: npc.name })),
+      ] : this.state.zone === "orphanage" ? [{ id: "matron", label: "Irmã Elara", x: 400, y: 290 }] : []),
+    ];
     const nearest = points
       .map((point) => ({
         id: point.id,
@@ -971,6 +1009,8 @@ export class GameStore {
       this.notify();
       return;
     }
+    const origin = this.state.zone;
+    cancelWork(this.state, this.economicHooks(), "A viagem interrompeu o trabalho.");
     const companion = this.state.npcs.find(npc => npc.id === this.state.simulation.companionId);
     this.state.zone = zone;
     this.npcRoutes.clear();
@@ -997,22 +1037,28 @@ export class GameStore {
         );
     }
     if (zone === "village") {
-      this.state.apostle.x = this.state.intro ? 710 : 2110;
-      this.state.apostle.y = this.state.intro ? 760 : 470;
+      this.state.apostle.x = origin === "wilderness" ? 2170 : origin === "orphanage" || this.state.intro ? 710 : 2110;
+      this.state.apostle.y = origin === "wilderness" ? 1580 : origin === "orphanage" || this.state.intro ? 760 : 470;
       if (companion) Object.assign(companion,
         nearestWalkable({ x: 2150, y: 490 }, this.navigationContext("village")));
       delete this.state.simulation.companionId;
     }
+    if (zone === "wilderness") Object.assign(this.state.apostle,
+      origin === "mine" ? { x: 2250, y: 600 } : { x: 400, y: 1780 });
+    if (zone === "mine") Object.assign(this.state.apostle, { x: 400, y: 970 });
+    if (zone !== "dungeon") delete this.state.simulation.companionId;
     this.activeDialog = null;
+    this.scheduleAutoSave();
     this.notify();
   }
 
   interact(id: string): Dialog | null {
     if (!this.playing()) return null;
+    if (this.state.frontier.work) cancelWork(this.state, this.economicHooks(), "A conversa interrompeu o trabalho.");
     if (id === "exit") {
       if (
         distance(this.state.apostle, { x: 450, y: 790 }) > 190 ||
-        this.state.zone === "village"
+        !["orphanage", "dungeon"].includes(this.state.zone)
       )
         return null;
       if (this.state.zone === "orphanage" && this.state.intro)
@@ -1037,6 +1083,32 @@ export class GameStore {
     }
     if (!this.nearObject(id)) return null;
     this.activeDialog = id;
+    const portal = portalForZone(this.state.zone, id);
+    if (portal) return {
+      name: portal.label, role: "Estrada de Auren",
+      text: `O caminho leva a ${regionForZone(portal.to).name}. A jornada é livre: você pode voltar quando quiser.`,
+      options: [{ label: portal.to === "mine" ? "Entrar na mina" : "Seguir pela estrada", action: `travel:${id}` },
+        { label: "Ficar por aqui", action: "close" }],
+    };
+    const node = resourceNode(id);
+    if (node && node.zone === this.state.zone) {
+      const resource = this.state.frontier.resources[id];
+      return { name: node.label, role: "Trabalho por prática",
+        text: `${resource.remaining} cargas disponíveis. O trabalho leva ${node.duration} segundos e exige ${node.stamina} de energia.${node.tool ? ` Use ${node.tool === "pickaxe" ? "uma picareta" : "um machado"} em bom estado.` : " Pode ser recolhido à mão."}`,
+        options: [{ label: node.resource === "ore" ? "Extrair minério" : node.resource === "wood" ? "Recolher madeira" : node.resource === "stone" ? "Extrair pedra" : "Colher ervas", action: `start-work:${id}`, disabled: resource.remaining <= 0 }, { label: "Voltar", action: "close" }] };
+    }
+    if (id === "wild-camp") return {
+      name: "Acampamento dos viajantes", role: "Abrigo no vale",
+      text: "Uma fogueira e abrigos marcam a passagem dos viajantes. Acampe usando duas madeiras para descansar quatro horas ou registre trabalhos do vale no diário.",
+      options: [{ label: "Acampar · 2 madeiras", action: "camp-rest", disabled: this.state.inventory.wood < 2 },
+        { label: "Ver trabalhos do vale", action: "open-journal" }, { label: "Voltar", action: "close" }],
+    };
+    if (id === "wild-ruins" || id === "wild-lake") {
+      discoverLocation(this.state, id, this.economicHooks());
+      return { name: objectsForZone(this.state.zone).find(object => object.id === id)!.label,
+        role: "Uma descoberta nos Ermos", text: id === "wild-ruins" ? "Entre pedras cobertas de musgo, os vestígios da antiga torre guardam a memória de Alvor. A descoberta ficará registrada na campanha." : "A água reflete as colinas. O lago serve de referência aos viajantes; sua margem foi registrada na campanha.",
+        options: [{ label: "Consultar o diário", action: "open-journal" }, { label: "Continuar explorando", action: "close" }] };
+    }
     if (id === "orphanage") {
       this.setZone("orphanage");
       return null;
@@ -1079,11 +1151,6 @@ export class GameStore {
     if (id === "well") {
       this.state.apostle.stamina = this.state.apostle.maxStamina;
       this.message("A água fresca recuperou sua energia.", "success");
-      this.notify();
-      return null;
-    }
-    if (id === "tree1" || id === "herb1" || id === "stone1") {
-      this.gather(id);
       this.notify();
       return null;
     }
@@ -1327,26 +1394,6 @@ export class GameStore {
       return this.questDialog();
     return null;
   }
-  private gather(id: string): void {
-    if ((this.state.simulation.gathering[id] || 0) > this.now) {
-      this.message(
-        "Este recurso precisa de um pouco de tempo para se renovar.",
-        "warning",
-      );
-      return;
-    }
-    if (this.state.apostle.stamina < 6) {
-      this.message("Recupere energia antes de trabalhar.", "warning");
-      return;
-    }
-    this.state.apostle.stamina -= 6;
-    this.state.simulation.gathering[id] = this.now + 36;
-    const item = id === "tree1" ? "wood" : id === "stone1" ? "stone" : "herb";
-    const quantity = item === "wood" ? 3 : item === "stone" ? 2 : 1;
-    this.state.inventory[item] += quantity;
-    this.practice(item === "stone" ? "mining" : "farming", 0.3);
-    this.message(`+${quantity} ${ITEMS[item].name}.`, "success");
-  }
   act(action: string): void {
     if (action.startsWith("succeed:")) {
       this.succeed(action.slice(8));
@@ -1355,6 +1402,48 @@ export class GameStore {
     if (!this.playing()) return;
     const [verb, id] = action.split(":");
     const item = id as ItemId;
+    if (this.state.apostle.age < 16 && (["acquire-property", "build"].includes(action) || action.startsWith("hire:"))) {
+      this.message("Sob regência, contratos de terra, construção e emprego ficam reservados ao adulto responsável.", "warning");
+      this.notify(); return;
+    }
+    if (verb === "travel") {
+      const portal = portalForZone(this.state.zone, id);
+      if (!portal || !this.nearObject(id, 140)) {
+        this.message("Aproxime-se da estrada ou da entrada para viajar.", "warning");
+      } else if (portal.to === "mine" && this.state.apostle.age < 12) {
+        this.message("O tutor protege crianças menores de doze anos das galerias da mina.", "warning");
+      } else {
+        discoverLocation(this.state, id, this.economicHooks());
+        this.setZone(portal.to);
+        Object.assign(this.state.apostle, nearestWalkable(portal.spawn, this.navigationContext()));
+        this.message(`Você chegou a ${regionForZone(portal.to).name}.`);
+        this.activeDialog = null;
+      }
+      this.scheduleAutoSave(); this.notify(); return;
+    }
+    if (action === "cancel-work") {
+      cancelWork(this.state, this.economicHooks(), "Você interrompeu o trabalho.");
+      this.scheduleAutoSave(); this.notify(); return;
+    }
+    if (executeFrontierAction(this.state, action, this.economicHooks()) ||
+        executeLifeAction(this.state, action, this.economicHooks())) {
+      if (verb === "start-work") this.activeDialog = null;
+      this.scheduleAutoSave(); this.notify(); return;
+    }
+    if (action === "camp-rest") {
+      if (this.nearObject("wild-camp", 140) && this.state.inventory.wood >= 2) {
+        this.state.inventory.wood -= 2;
+        cancelWork(this.state);
+        this.state.minutes += 240;
+        while (this.state.minutes >= 1440 && this.playing()) {
+          this.state.minutes -= 1440; this.state.day++; this.newDay();
+        }
+        if (this.playing()) { this.state.apostle.hp = Math.min(this.state.apostle.maxHp, this.state.apostle.hp + 20); this.state.apostle.stamina = this.state.apostle.maxStamina; }
+        this.message("O abrigo e a fogueira permitiram quatro horas de descanso.", "success");
+        this.activeDialog = null;
+      } else this.message("Aproxime-se do acampamento com duas madeiras.", "warning");
+      this.scheduleAutoSave(); this.notify(); return;
+    }
     if (executeEconomicAction(this.state, action, this.economicHooks())) {
       this.scheduleAutoSave();
       this.notify();
@@ -1617,6 +1706,8 @@ export class GameStore {
         title: "Companheiro da linhagem",
       };
       this.state.family.push(partner);
+      recordLifeEvent(this.state, { day: this.state.day, kind: "marriage", personId: this.state.apostle.id,
+        relatedId: partner.id, text: `${this.state.apostle.name} e ${partner.name} formaram uma união.`, gold: this.state.gold, property: this.state.property.owned });
       this.remember(
         "Duas histórias, uma família",
         `Casei com ${npc.name}. Nosso lar poderá receber uma criança após dezesseis dias.`,
@@ -1733,6 +1824,9 @@ export class GameStore {
       title: "Herdeiro da linhagem",
     };
     this.state.family.push(child);
+    registerChildEducation(this.state, child);
+    recordLifeEvent(this.state, { day: this.state.day, kind: "birth", personId: child.id,
+      relatedId: this.state.apostle.id, text: `${child.name} nasceu na Casa ${child.surname}.`, gold: 0, property: false });
     this.state.simulation.lastChildDay = this.state.day;
     this.remember(
       "Uma vida começa",
@@ -1784,14 +1878,20 @@ export class GameStore {
       fresh.age < 16 ? "Herdeiro sob regência" : "Guardião da linhagem";
     fresh.memories = legacy.map((memory) => ({
       ...memory,
-      title: `Legado · ${memory.title}`,
+      title: `Legado · ${memory.title.replace(/^(Legado · )+/, "")}`,
     }));
     fresh.skills.leadership = Math.min(15, previous.skills.leadership * 0.2);
     this.state.apostle = fresh;
+    applyEducationToSuccessor(this.state, fresh);
+    this.reconcileLifeReferences();
+    recordLifeEvent(this.state, { day: this.state.day, kind: "inheritance", personId: fresh.id,
+      relatedId: previous.id, text: `${fresh.name} herdou o legado de ${previous.name}${this.state.property.owned ? ", incluindo a Parcela do Moinho" : ""}.`, gold: this.state.gold, property: this.state.property.owned });
+    cancelWork(this.state);
     this.state.phase = "playing";
     this.state.zone = "village";
     this.state.intro = false;
     reconcileWorker(this.state, this.economicHooks());
+    this.npcRoutes.clear();
     this.attackCooldown = this.dodgeCooldown = this.invulnerability = 0;
     this.enemyCooldowns = {};
     delete this.state.simulation.companionId;
@@ -1809,6 +1909,49 @@ export class GameStore {
     );
     this.scheduleAutoSave();
     this.notify();
+  }
+
+  exportCampaign(): string {
+    if (!this.state.started) throw new Error("Crie ou retome uma campanha antes de exportar.");
+    return serializeCampaign(this.state);
+  }
+
+  async importCampaign(text: string): Promise<void> {
+    // Stop a pending save of the old state from overwriting the imported campaign.
+    if (this.autosaveTimer) {
+      clearTimeout(this.autosaveTimer);
+      this.autosaveTimer = null;
+    }
+    const imported = await importSavedCampaign(text);
+    this.restoreSnapshot(imported);
+    this.message("Campanha importada. O tempo permaneceu pausado durante a transferência.", "success");
+    this.notify();
+  }
+
+  private restoreSnapshot(snapshot: GameState): boolean {
+    this.state = snapshot as PersistentGameState;
+    const simulation = this.state.simulation as Partial<SimulationMemory> | undefined;
+    this.state.simulation = {
+      ...simulation,
+      marriedAt: simulation?.marriedAt || {}, gathering: simulation?.gathering || {},
+      npcMemories: simulation?.npcMemories || {}, lastChildDay: simulation?.lastChildDay ?? -100,
+    };
+    const recovered = this.recoverPositions();
+    // A legacy position correction cannot be used to finish remote work.
+    if (this.state.frontier.work) {
+      const node = resourceNode(this.state.frontier.work.nodeId);
+      if (!node || node.zone !== this.state.zone || distance(this.state.apostle, node) > 120)
+        cancelWork(this.state);
+    }
+    this.reconcileLifeReferences();
+    this.state.phase = this.state.apostle.alive ? "playing" : "dead";
+    this.state.started = true;
+    this.messageId = Math.max(0, ...this.state.messages.map(message => message.id));
+    this.attackCooldown = this.dodgeCooldown = this.invulnerability = 0;
+    this.enemyCooldowns = {};
+    this.activeDialog = null;
+    this.announceAccumulator = this.autosaveAccumulator = 0;
+    return recovered;
   }
 
   async save(): Promise<void> {
@@ -1840,27 +1983,7 @@ export class GameStore {
         }
         return false;
       }
-      this.state = saved as PersistentGameState;
-      const simulation = this.state.simulation as
-        | Partial<SimulationMemory>
-        | undefined;
-      this.state.simulation = {
-        ...simulation,
-        marriedAt: simulation?.marriedAt || {},
-        gathering: simulation?.gathering || {},
-        npcMemories: simulation?.npcMemories || {},
-        lastChildDay: simulation?.lastChildDay ?? -100,
-      };
-      const recoveredPosition = this.recoverPositions();
-      this.state.phase = this.state.apostle.alive ? "playing" : "dead";
-      this.state.started = true;
-      this.messageId = Math.max(
-        0,
-        ...this.state.messages.map((message) => message.id),
-      );
-      this.attackCooldown = this.dodgeCooldown = this.invulnerability = 0;
-      this.enemyCooldowns = {};
-      this.activeDialog = null;
+      const recoveredPosition = this.restoreSnapshot(saved);
       if (recoveredPosition) this.message(
         "O caminho foi ajustado para um ponto seguro após a atualização das colisões.",
         "info",

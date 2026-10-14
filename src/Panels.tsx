@@ -33,14 +33,14 @@ import {
   ITEMS,
   OBJECTS,
   SKILL_NAMES,
-  WORLD_H,
-  WORLD_W,
 } from "./data";
 import { store } from "./simulation";
 import type { PersistentGameState } from "./simulation";
 import { cropProfile, RECIPES } from "./economy";
 import { findPath, objectApproach } from "./navigation";
 import type { NavigationContext } from "./navigation";
+import { objectsForZone, regionForZone, RESOURCE_NODES, WILDERNESS_ROADS } from "./regions";
+import { ToolsPanel, FrontierJobs, FamilyEducation, FamilyHistory, NpcNeeds, CampaignTransfer } from "./ExpansionPanels";
 import "./panels.css";
 
 const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -299,9 +299,8 @@ const npcAppearance = (
   sex: ["mira", "matron", "farmer"].includes(npc.id) ? "female" : "male",
 });
 const nearObject = (state: GameState, id: string, radius = 190) => {
-  const object = OBJECTS.find((item) => item.id === id);
+  const object = objectsForZone(state.zone).find((item) => item.id === id);
   return (
-    state.zone === "village" &&
     !!object &&
     Math.hypot(state.apostle.x - object.x, state.apostle.y - object.y) <= radius
   );
@@ -478,6 +477,7 @@ function Inventory({ state }: { state: GameState }) {
           </p>
         ) : null}
       </section>
+      <ToolsPanel state={state} mode="inventory" />
       <div className="panel-footnote">
         <Sword size={15} />
         <span>
@@ -857,6 +857,7 @@ function Journal({ state }: { state: GameState }) {
             A missão da cripta é opcional. Você também pode servir Valeverde com
             sua produção.
           </p>
+          <FrontierJobs state={state} />
           <VillageOrders state={state} />
         </>
       ) : tab === "Memórias" ? (
@@ -975,6 +976,7 @@ function Relations({ state }: { state: GameState }) {
             </div>
           </div>
         </div>
+        <NpcNeeds state={state} npc={npc} nearby={nearby} />
         <div className="panel-actions">
           {partner ? (
             <button
@@ -1142,6 +1144,8 @@ function Family({ state }: { state: GameState }) {
           </p>
         </div>
       </div>
+      <FamilyHistory state={state} person={person} />
+      <FamilyEducation state={state} person={person} eligible={eligible} />
       {person.id !== state.apostle.id ? (
         <button
           className="panel-button panel-button-outline panel-button-full"
@@ -1289,6 +1293,7 @@ function Crafting({ state }: { state: GameState }) {
           );
         })}
       </div>
+      <ToolsPanel state={state} mode="repair" />
       <div className="panel-footnote">
         <Wheat size={16} />
         <span>
@@ -1779,6 +1784,7 @@ function Market({ state }: { state: GameState }) {
           <p>Reúna materiais ou colheitas para negociar.</p>
         </div>
       ) : null}
+      {buying ? <ToolsPanel state={state} mode="market" /> : null}
       <div className="panel-footnote">
         <ArrowDownUp size={16} />
         <span>
@@ -1794,7 +1800,6 @@ function Market({ state }: { state: GameState }) {
   );
 }
 
-const MAP_LOCATIONS = OBJECTS;
 const MAP_SYMBOLS: Record<string, string> = {
   resource: "M0-45-30-12h14l-28 30h32v28h24V18h32L16-12h14Z",
   herb: "M0 42V-22M0 6c-42 0-40-35-40-35C-5-29 0 6 0 6Zm0-16c35 0 40-35 40-35C5-45 0-10 0-10Z",
@@ -1802,6 +1807,12 @@ const MAP_SYMBOLS: Record<string, string> = {
   well: "M-40-5 0-38 40-5M-30-12V30h60v-42M-38 30h76M-14 12h28v18h-28Z",
   sign: "M-34-35h68v50h-68Zm34 50v28M-18-20h36M-18-5h26",
   dungeon: "M-35 35V-15a35 35 0 0 1 70 0v50Zm15 0V-6a15 15 0 0 1 30 0v41",
+  cave: "M-42 36-8-38 20-24 44 36ZM-15 36V8a15 15 0 0 1 30 0v28",
+  portal: "M-38 0h76M14-24 38 0 14 24",
+  ore: "M-40 27-26-22 10-35 40 12 20 36ZM-22 2 0-12 18 8 2 24Z",
+  camp: "M-44 34 0-34 44 34ZM0-34v68M-10 34V12h20v22",
+  ruins: "M-35 38V-30h22v16h24v-16h22v68M-35 2h70M-9 38V15h18v23",
+  lake: "M-42-18c14-14 28 14 42 0s28 14 42 0M-42 3c14-14 28 14 42 0s28 14 42 0M-42 24c14-14 28 14 42 0s28 14 42 0",
 };
 const MAP_ROADS = [
   "M1260 476 1258 630 1256 842",
@@ -1823,8 +1834,12 @@ function WorldMap({
   onClose: () => void;
 }) {
   const [selectedId, setSelectedId] = useState("market");
+  const mapZone = state.zone === "orphanage" ? "village" : state.zone;
+  const region = regionForZone(mapZone);
+  const locations = region.objects;
   const selected =
-    OBJECTS.find((object) => object.id === selectedId) || OBJECTS[0];
+    locations.find((object) => object.id === selectedId) || locations[0];
+  const selectedResource = RESOURCE_NODES.find((node) => node.id === selected.id);
   const currentPosition =
     state.zone === "orphanage"
       ? OBJECTS.find((object) => object.id === "orphanage")!
@@ -1832,7 +1847,7 @@ function WorldMap({
   const positionX = currentPosition.x;
   const positionY = currentPosition.y;
   const route = useMemo(() => {
-    if (state.zone !== "village") return null;
+    if (state.zone === "orphanage" || state.zone === "dungeon") return null;
     const context: NavigationContext = {
       zone: state.zone,
       building: state.property.building,
@@ -1952,11 +1967,12 @@ function WorldMap({
     <>
       <div className="panel-map-art">
         <svg
-          viewBox={`0 0 ${WORLD_W} ${WORLD_H}`}
+          viewBox={`0 0 ${region.width} ${region.height}`}
           role="group"
-          aria-label="Mapa de Valeverde. Selecione um local para ver a rota de caminhada."
+          aria-label={`Mapa de ${region.name}. Selecione um local para ver a rota de caminhada.`}
         >
-          <rect width={WORLD_W} height={WORLD_H} fill="#e8e8d3" />
+          <rect width={region.width} height={region.height} fill={mapZone === "mine" ? "#5b5b53" : "#e8e8d3"} />
+          {mapZone === "village" ? <>
           <path
             d="M-120 436 102 524 244 702 388 908 320 1130 274 1304 406 1554 300 1774 136 1980"
             fill="none"
@@ -2006,6 +2022,17 @@ function WorldMap({
               <ellipse cx={x + 70} cy={y - 45} rx="80" ry="90" />
             </g>
           ))}
+          </> : mapZone === "mine" ? (
+            <g fill="#c7bea8" stroke="#a89b7e" strokeWidth="14">
+              {region.walkableAreas?.map((area, index) => <rect key={index} x={area.left} y={area.top} width={area.right - area.left} height={area.bottom - area.top} />)}
+            </g>
+          ) : (
+            <>
+              {region.decor.map((tree, index) => <circle key={index} cx={tree.x} cy={tree.y - 36} r={46 * (tree.scale ?? 1)} fill="#a2b18c" opacity=".68" />)}
+              <rect x="2280" y="1430" width="360" height="200" rx="75" fill="#a8c3c1" stroke="#c6d3c1" strokeWidth="28" />
+              {WILDERNESS_ROADS.map((road, index) => <polyline key={index} points={road.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round" />)}
+            </>
+          )}
           {route && !route.arrived ? (
             <polyline
               className="panel-map-route"
@@ -2020,7 +2047,7 @@ function WorldMap({
               strokeLinejoin="round"
             />
           ) : null}
-          {MAP_LOCATIONS.map((object) => (
+          {locations.map((object) => (
             <g
               key={object.id}
               role="button"
@@ -2074,7 +2101,7 @@ function WorldMap({
         <span className="panel-map-north">
           N <span>↑</span>
         </span>
-        <span className="panel-map-scale">Valeverde · Terras do reino</span>
+        <span className="panel-map-scale">{region.name} · Reino de Auren</span>
       </div>
       <div className="panel-map-legend">
         <span>
@@ -2117,7 +2144,7 @@ function WorldMap({
             {route && !route.arrived ? (
               <small>
                 Distância pela rota marcada:{" "}
-                {route.distance.toLocaleString("pt-BR")}
+                {route.distance.toLocaleString("pt-BR")} passos
               </small>
             ) : null}
           </span>
@@ -2125,7 +2152,7 @@ function WorldMap({
         <button
           className="panel-button panel-button-full"
           disabled={
-            state.zone !== "village" ||
+            state.zone === "orphanage" ||
             !route ||
             route.arrived ||
             state.phase !== "playing"
@@ -2141,9 +2168,17 @@ function WorldMap({
           {route?.arrived ? "Você já está aqui" : "Caminhar até aqui"}
         </button>
       </div>
+      {selectedResource ? <p className="panel-prose">{ITEMS[selectedResource.resource].name}: {state.frontier.resources[selected.id]?.remaining ?? selectedResource.capacity} trabalhos disponíveis. Cada trabalho dura {selectedResource.duration} s, usa {selectedResource.stamina} energia e rende {selectedResource.yield} unidades{selectedResource.tool ? ` com ${selectedResource.tool === "axe" ? "machado" : "picareta"}` : " sem ferramenta"}. O recurso se renova em {selectedResource.respawnDays} dias após esgotar.</p> : null}
       <p className="panel-prose">
         {(
           {
+            "wild-gate": "A trilha ao sudeste leva aos Ermos de Alvor. Atravesse a passagem para explorar a floresta e encontrar a mina.",
+            "wild-village": "Retorne a Valeverde para negociar, cuidar da família e visitar as oficinas.",
+            "wild-mine": "A Mina do Ferro Antigo tem galerias conectadas e veios de minério. Leve uma picareta e pão; não há combate obrigatório aqui.",
+            "mine-exit": "Esta passagem leva de volta ao ar livre, nos Ermos de Alvor.",
+            "wild-camp": "Um abrigo dos viajantes. Aqui você pode conhecer oportunidades de exploração e descansar com suas próprias provisões.",
+            "wild-ruins": "A Torre de Alvor guarda a memória de caminhos antigos. Chegar até ela registra uma descoberta para sua jornada.",
+            "wild-lake": "A margem do Lago do Espelho é um destino de exploração. A água é profunda; caminhe pelas trilhas ao redor.",
             orphanage:
               "O ponto de partida da sua história. Aqui, um descanso e uma conversa podem renovar sua jornada.",
             market:
@@ -2175,7 +2210,7 @@ function WorldMap({
         )[selected.id] || "Um local para descobrir durante a jornada."}
       </p>
       <div className="panel-location-list">
-        {MAP_LOCATIONS.map((object) => (
+        {locations.map((object) => (
           <button
             key={object.id}
             className={
@@ -2188,6 +2223,9 @@ function WorldMap({
             <ChevronRight size={14} />
           </button>
         ))}
+      </div>
+      <div className="panel-region-connections" aria-label="Regiões conectadas">
+        {["village", "wilderness", "mine"].map((zone, index) => <div key={zone} className={mapZone === zone ? "panel-region-current" : ""}><span>{index + 1}</span><strong>{regionForZone(zone as GameState["zone"]).name}</strong><small>{mapZone === zone ? "Você está aqui" : index === 0 ? "Vila e oficinas" : index === 1 ? "Floresta, ruínas e lago" : "Galerias e recursos"}</small></div>)}
       </div>
       <p className="panel-hint">
         {state.zone === "orphanage"
@@ -2319,16 +2357,17 @@ function Help({ state }: { state: GameState }) {
         <ScrollText size={17} />
       </div>
       <p className="panel-prose">
-        Kingdom Gods alpha 0.3 inclui uma vila, uma cripta, mercado, moinho,
-        padaria, forja e uma propriedade. Há produção, cultivo sazonal,
-        manutenção, contrato de trabalho, pedidos de abastecimento, combate,
-        relações e sucessão familiar. A campanha é individual e salva neste
-        navegador; multiplayer permanece para uma versão futura.
+        Kingdom Gods alpha 0.4 inclui Valeverde, os Ermos de Alvor e a Mina do
+        Ferro Antigo, além da cripta. Há ferramentas com desgaste, extração,
+        oportunidades de exploração, educação dos filhos, tutela e herança.
+        A campanha é individual; multiplayer será desenvolvido depois das
+        próximas etapas do mundo local.
       </p>
       <p className="panel-prose">
         O mapa traça caminhadas por rotas seguras; apóstolo e moradores
         contornam paredes, cercas e troncos.
       </p>
+      <CampaignTransfer />
       <div className="panel-save-row">
         <div>
           <strong>Seu progresso fica neste navegador</strong>

@@ -70,7 +70,7 @@ export const ITEMS: Record<
   },
   ore: {
     name: "Minério de ferro",
-    description: "Extraído da cripta. Tem valor no mercado.",
+    description: "Extraído na mina ou encontrado na cripta. Tem valor no mercado.",
     price: 12,
     weight: 2,
     icon: "ore",
@@ -208,6 +208,8 @@ export const ATTR_NAMES: Record<string, string> = {
   energy: "Energia",
 };
 export const SKILL_NAMES: Record<string, string> = {
+  woodcutting: "Lenharia",
+  herbalism: "Herbalismo",
   sword: "Espadas",
   farming: "Agricultura",
   mining: "Mineração",

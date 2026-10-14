@@ -1,5 +1,5 @@
 export type Blessing = "vigor" | "wisdom" | "fortune";
-export type Zone = "village" | "orphanage" | "dungeon";
+export type Zone = "village" | "orphanage" | "dungeon" | "wilderness" | "mine";
 export type Panel =
   | "inventory"
   | "character"
@@ -135,6 +135,82 @@ export interface GameState {
   savedAt: number | null;
   deaths: number;
   economy: EconomyState;
+  frontier: FrontierState;
+  life: LifeState;
+}
+
+export type ToolId = "axe" | "pickaxe";
+export interface ResourceNodeDefinition extends WorldObject {
+  zone: Zone;
+  resource: ItemId;
+  tool: ToolId | null;
+  duration: number;
+  stamina: number;
+  yield: number;
+  capacity: number;
+  respawnDays: number;
+  skill: string;
+}
+export interface WorkProgress {
+  nodeId: string;
+  zone: Zone;
+  elapsed: number;
+  duration: number;
+}
+export interface FrontierJob {
+  id: string;
+  title: string;
+  description: string;
+  kind: "survey" | "delivery";
+  item: ItemId | null;
+  quantity: number;
+  targets: string[];
+  reward: number;
+  deadline: number;
+  status: "available" | "accepted" | "complete" | "claimed" | "resolved" | "failed";
+}
+export interface FrontierState {
+  tools: Record<ToolId, { owned: boolean; durability: number }>;
+  toolStock: Record<ToolId, number>;
+  resources: Record<string, { remaining: number; readyDay: number | null }>;
+  work: WorkProgress | null;
+  discovered: string[];
+  jobs: FrontierJob[];
+  escrow: number;
+}
+export type EducationFocus = "farming" | "mining" | "wisdom";
+export interface EducationProfile {
+  focus: EducationFocus;
+  guardianId: string | null;
+  practice: number;
+  bond: number;
+  lessons: number;
+  lastLessonDay: number;
+}
+export interface LegacyEvent {
+  day: number;
+  kind: "birth" | "marriage" | "death" | "inheritance" | "education";
+  personId: string;
+  relatedId: string | null;
+  text: string;
+  gold: number;
+  property: boolean;
+}
+export interface LifeState {
+  needs: Record<string, { hunger: number; fatigue: number; goal: "work" | "eat" | "rest" | "socialize" }>;
+  education: Record<string, EducationProfile>;
+  history: LegacyEvent[];
+  heirId: string | null;
+  guardianId: string | null;
+}
+
+export interface ExpansionHooks {
+  message: (text: string, type?: string) => void;
+  remember: (title: string, text: string, emotion: string, intensity?: number) => void;
+  practice: (skill: string, amount: number) => void;
+  nearObject: (id: string) => boolean;
+  nearNpc: (id: string) => boolean;
+  rememberNpc?: (id: string, title: string, text: string, emotion: string) => void;
 }
 export type Season = "Primavera" | "Verão" | "Outono" | "Inverno";
 export interface CropPlan {

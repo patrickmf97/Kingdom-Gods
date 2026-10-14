@@ -1,6 +1,6 @@
-# KINGDOM GODS · alpha 0.3
+# KINGDOM GODS · alpha 0.4
 
-Versão **local e jogável** de um RPG sandbox medieval, inteiramente em português. Não existe servidor multiplayer nesta versão.
+RPG sandbox medieval **local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
 ## Executar
 
@@ -9,67 +9,63 @@ npm ci
 npm run dev
 ```
 
-Abra a URL exibida pelo Vite. Para gerar os arquivos estáticos: `npm run build`. Para verificar as regras: `npm test`. O build em `dist/` pode ser servido por qualquer servidor HTTP estático.
+`npm test` verifica as regras; `npm run build` valida TypeScript e gera `dist/`, servido por HTTP estático. A publicação existente usa Sites e mantém a mesma origem para preservar o IndexedDB.
 
-## Jogar
+## Começar e explorar
 
-Crie seu apóstolo, escolha uma bênção e converse com Elara. Receba seus pertences, explore o orfanato e caminhe ao portão sul. Depois, escolha seu caminho livremente.
+Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de Elara. Caminhe ao portão sul do orfanato. Depois, todas as oportunidades são opcionais.
 
-- WASD ou setas: movimento; clique/toque no chão: caminhar por uma rota que contorna obstáculos.
-- Mapa: selecione um local e use **Caminhar até aqui** para ir a pé. Controles manuais e ações cancelam a rota; o mapa não entra automaticamente em interiores.
-- E: interação próxima; Espaço ou botão direito: ataque; Shift: esquiva.
+- WASD ou setas: movimento. Clique/toque no mundo ou escolha **Caminhar até aqui** no mapa para seguir uma rota segura. Movimento manual e ações interrompem a rota.
+- E: interagir; Espaço ou botão direito: ataque; Shift: esquiva.
 - I: inventário; C: atributos; J: diário; R: relações; F: família; P: propriedade; M: mapa.
 - 1: equipar espada; 2: comer pão; 3: usar erva. Escape fecha painéis ou pausa.
-- No celular, joystick e botões de interação, ataque e esquiva aparecem automaticamente.
-- Painéis e diálogos pausam a simulação. Feche-os para continuar o tempo e renovar encontros e recursos.
+- No celular, use joystick, interação, ataque e esquiva. O guia fica no botão de ajustes do cabeçalho.
+- Painéis e diálogos pausam a simulação. A página fechada não faz o tempo avançar.
 
-## Novidades da alpha 0.3
+Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-- Colisões compartilhadas pela simulação e cena: paredes, balcões, cercas, troncos, pedra, poço e rio respeitam os pés dos personagens. Esquivas percorrem subpassos, evitando atravessar barreiras; movimento diagonal desliza por paredes.
-- Rotas físicas por clique/toque e mapa, com percurso visível, distância e tempo estimado. Caminhos contornam prédios e atravessam o rio pela ponte. Não há teletransporte nem entrada automática da navegação pelo mapa.
-- NPCs caminham por rotas válidas, com pontos de encontro espaçados e rótulos por proximidade. A trabalhadora entra na lavoura pela abertura da cerca.
-- Solo, plantações, galpão e cercas usam camadas separadas. A moradia construída fica ao lado leste da parcela, sem duplicar o galpão; sua porta continua interativa.
-- Salvamentos v1/v2 mantêm progressão e formato v2. Posições antigas dentro de obstáculos são ajustadas para um ponto próximo seguro, sem alterar moeda, inventário, família ou memórias.
+## Novidades da alpha 0.4
 
-## Economia da alpha 0.2
+- **Ermos de Alvor:** região aberta de 3072×2304 com bosque, estradas, acampamento, ruínas, lago e recursos. **Mina do Ferro Antigo:** mapa de 1280×1120 com galerias conectadas, três veios de ferro e uma área de pedra. Portais exigem presença física; o mapa não teletransporta. A cripta permanece separada e opcional.
+- **Ofícios:** machado e picareta têm estoque finito, propriedade e durabilidade. Comprar movimenta moedas para o comerciante. Reparar na forja usa 1 minério, 1 madeira e 3 coroas, restaurando 50 pontos até o limite de 100.
+- **Trabalho físico:** extração e coleta duram segundos, exigem energia, capacidade de carga e ferramenta adequada. Conclusão desgasta 3 pontos e desenvolve mineração, lenharia ou herbalismo. Mover, agir ou sofrer dano interrompe o esforço sem entregar recursos. Cargas esgotadas só retornam no dia previsto; trabalho parcial pode continuar após salvar e carregar.
+- **Oportunidades:** exploração de quatro marcos, entrega de quatro minérios e entrega de cinco ervas. Há prazo, materiais e recompensa reservada no orçamento existente; pagamento ocorre uma vez. Pedidos ignorados podem ser atendidos com estoque e fundos regionais reais. O diário registra estado e descobertas.
+- **NPCs:** fome e fadiga alteram destinos. Moradores caminham ao mercado e compram pão com economias ou verba disponível da vila, protegendo compromissos existentes; descansam na estalagem. Compartilhar pão presencialmente reduz fome e cria gratidão e confiança.
+- **Família:** foco educacional, tutor adulto vivo, lições presenciais uma vez por dia com pão e energia, vínculo e prática. Educação influencia o sucessor. Há regente para menores, preferência de herdeiro restrita à família elegível e histórico datado de nascimento, casamento, educação, morte e herança.
+- **Campanhas portáveis:** no guia, exporte um JSON ou importe um arquivo após conferir personagem, região, dia e ouro. A importação válida mantém o salvamento anterior como backup; arquivos inválidos não substituem o progresso. A tela inicial também permite importar em um dispositivo novo.
+- **Persistência v3:** migrações v1/v2 preservam campanha, extensões válidas, competências, família, moeda e compromissos. Dados atuais incompletos são rejeitados. O relógio continua pausado enquanto você está fora.
 
-- Moinho e padaria físicos, com oficinas e receitas: 2 trigo → 1 farinha; 1 farinha + 1 madeira → 2 pães; 3 minério + 2 madeira → 1 espada na forja. Produção exige proximidade, ingredientes e energia, e desenvolve competências.
-- Cultivo sazonal: primavera 2 dias/8 trigo; verão 2/10; outono 3/7; inverno 4/4. A prática pode melhorar o rendimento registrado ao plantar. Lavouras da versão anterior mantêm seu prazo original.
-- Casas perdem 3 pontos de condição por dia. Reparos usam 2 madeira + 1 pedra e restauram 25 pontos. Um tributo de até 2 coroas por dia vai para o orçamento da vila. Casas não criam renda nem pão automaticamente.
-- Lina pode trabalhar por 5 coroas diárias. Salários entram na poupança da NPC; pagamentos melhoram lealdade e três dias sem receber levam à demissão e memórias de ressentimento. Uma casa em condição inferior a 25 suspende o cultivo. Plantio e colheita automáticos usam sementes e prazos reais.
-- Pedidos opcionais no mural e no mercado têm mercadorias, prazo e orçamento finito. A recompensa é paga uma vez. Moradores podem resolver pedidos ignorados; fracassos reduzem prosperidade e afetam preços.
-- Migração automática dos salvamentos v1 para v2, com validação de lavouras, contratos, compromissos e moedas. Personagens, recursos, famílias, memórias e tempo ficam preservados.
+## Sistemas anteriores preservados
 
-## Funcionando
+Três bênçãos com efeitos concretos; atributos e prática sem níveis globais; combate, equipamento, cripta e missão opcional; inventário, consumo, comércio com estoque/capital e preços; moinho, padaria e forja com receitas; cultivo sazonal; propriedade única ligada ao Reino de Auren; construção, reparos, tributo e contrato de Lina; pedidos rotativos de abastecimento; calendário, fome, envelhecimento, ferimentos e morte; memórias, retirada autônoma diante de perigo e amizade que influencia um aliado.
 
-Origem órfã com 16 anos; aparência persistente; três bênçãos com efeitos; vila e interiores exploráveis; câmera, colisões e controles de toque; seis NPCs com rotinas e vínculos; inventário, consumo e equipamento; atributos e competências por prática, sem níveis globais; combate contra esqueletos; cripta e missão opcionais; estoque, moeda e preços; coleta, compra de parcela, construção e cultivo; calendário, fome, envelhecimento e morte; memórias emocionais; retirada autônoma diante de perigo e aliados que ajudam com base em amizade; casamento, descendência e árvore navegável; sucessão obrigatória por parceiro ou filhos, com regência para menores; reinício sem vantagens quando a linhagem termina.
+Quando o apóstolo morre, apenas cônjuge ou filhos vivos podem suceder. Um estranho não pode substituir a família elegível. Menores ficam sob regência e não combatem na cripta nem assinam contratos de terra, construção ou emprego; menores de doze anos não entram na mina. Sem família elegível, a linhagem termina e uma campanha nova começa sem os bens anteriores. A preferência de herdeiro não burla essas regras.
 
-Compra, venda, cultivo, missões e relações exigem presença física. Os comerciantes têm estoque e capital. A parcela é única e vinculada ao Reino de Auren: possuí-la não concede soberania.
+## Salvamentos
 
-IndexedDB guarda snapshots versionados e um backup. Há fallback para localStorage, validação de dados, salvamento após ações relevantes e a cada 45 segundos. O botão superior salva manualmente. Limpar os dados do navegador remove a campanha. O mundo não avança quando a página está fechada.
+IndexedDB mantém snapshot atual e backup; localStorage é fallback. O jogo salva após ações relevantes e periodicamente, além do botão manual do cabeçalho. Limpar dados do navegador remove as cópias locais: use **Exportar campanha** para guardar um arquivo ou transferir entre aparelhos. O arquivo tem limite de 2 MiB e é validado antes da importação. Não há sincronização automática entre dispositivos.
 
-## Simplificações temporárias
+## Simplificações e limites
 
-Uma região autoral, uma dungeon, uma propriedade, uma missão da cripta e pedidos rotativos de abastecimento. A economia representa produção e consumo regionais por regras agregadas; não simula cada elo industrial. A construção é uma casa predefinida, com custo de materiais, manutenção e tributo. Há uma trabalhadora contratável e três receitas; os demais ofícios ainda precisam de expansão. Relações usam afinidade, confiança e memórias, sem linguagem gerada por IA. A personalidade possui quatro traços iniciais; a autonomia ocorre em situações determinadas e explicadas. Filhos são gerados após dezesseis dias de casamento, com traços herdados básicos, e o envelhecimento usa um calendário de 360 dias. A tutela restringe combate e acesso à cripta. O relógio pode ser ajustado por `state.timeScale`; controles de teclado são fixos nesta versão. A navegação usa uma grade de busca local, limitada e simplificada em segmentos seguros; personagens podem compartilhar uma trilha, sem bloqueio físico entre suas próprias silhuetas.
+Duas regiões externas autorais (vila e Ermos), dois mapas subterrâneos/interiores de exploração (mina e cripta), além do orfanato. Apenas a região ativa é instanciada; texturas são geradas sob demanda e ficam em cache, e cenários distantes são ocultados. A navegação usa grade de 24 pixels e segmentos seguros, com pés de raio 9 e colisão por subpassos. Personagens respeitam obstáculos estáticos, sem bloqueio mútuo de suas silhuetas.
 
-## Ainda não desenvolvido
+Há uma propriedade, uma casa predefinida, uma trabalhadora contratável, duas ferramentas, três receitas e três oportunidades iniciais além dos pedidos rotativos e da missão da cripta. A economia representa produção e consumo regionais por regras agregadas. Necessidades de NPCs não causam mortes aleatórias; Elara permanece no orfanato com rotina simplificada. Educação é prática numérica e vínculo, sem escola completa ou simulação de infância minuto a minuto. Descendência usa traços básicos e dezesseis dias entre união e nascimento. O ano tem 360 dias. Não há linguagem gerada por IA; autonomia e relações seguem regras e memórias.
 
-Multiplayer real, contas, WebSocket/Colyseus, PostgreSQL, PvP, validação autoritativa remota, justiça criminal, guerras, diplomacia, múltiplos reinos, vassalos, múltiplos empregados e contratos personalizados, construção livre, cadeias produtivas completas, genética complexa, patologias detalhadas e simulação offline. Não há jogadores fictícios nem botões que anunciem esses recursos como disponíveis.
+Ainda não há política completa, guerras, múltiplos reinos, construção livre, genética detalhada, doenças complexas, centenas de profissões, contas, simulação offline ou multiplayer/PvP. O multiplayer será desenvolvido depois dos sistemas locais. A campanha é individual: NPCs não são apresentados como jogadores reais.
 
 ## Arquitetura
 
-- `src/types.ts` e `src/data.ts`: contratos e dados autorais.
-- `src/simulation.ts`: autoridade local, regras e estado da campanha.
-- `src/economy.ts`: receitas, plantio sazonal, manutenção, contratos, circulação de moedas e pedidos.
-- `src/persistence.ts`: snapshots, validação, recuperação e backups.
-- `src/transport.ts`: intenções serializáveis e interface para futura autoridade de servidor; implementação atual local.
-- `src/navigation.ts`: geometria física, colisão contínua por subpassos, recuperação de posição e busca limitada de caminhos.
-- `src/world.ts` e `src/art.ts`: cenas Phaser, câmera, rotas e pixel art determinística em camadas.
-- `src/App.tsx`, `src/Panels.tsx` e CSS: interface React responsiva, acessível por teclado.
-- `tests/`: verificações de simulação, economia, invariantes financeiros, contratos e sucessão, migração v1/v2, corrupção, backups, colisões, rotas e recuperação de posições.
-
-Para multiplayer será necessário configurar um servidor Node/Colyseus e PostgreSQL. As intenções do transporte oferecem uma fronteira para essa integração, mas o servidor ainda precisa implementar autenticação, validação, sincronização, propriedade e persistência. O modo local não depende desses serviços.
+- `types.ts`, `data.ts`: contratos, atributos, itens e dados básicos.
+- `regions.ts`, `navigation.ts`: regiões, conexões físicas, marcos, recursos, colisões e rotas.
+- `simulation.ts`: autoridade local e integração dos sistemas, sem autoridade remota fictícia.
+- `frontier.ts`: ferramentas, trabalho, recursos finitos, descobertas, reservas e oportunidades.
+- `life.ts`: necessidades, tutores, educação, regência e registros familiares.
+- `economy.ts`: produção, lavouras, manutenção, salários, orçamento e pedidos.
+- `persistence.ts`, `campaign-files.ts`: validação, migração v1/v2/v3, backups e intercâmbio de campanhas.
+- `world.ts`, `art.ts`, `region-art.ts`: Phaser, profundidade, câmera, culling e pixel art determinística.
+- `App.tsx`, `Panels.tsx`, `ExpansionPanels.tsx`: interface React responsiva e ações reais.
+- `transport.ts`: intenções serializáveis para a futura integração de servidor.
 
 ## Verificação
 
-Execute `npm test` e `npm run build` para verificar regras e compilação. A atualização anterior passou 55 testes e fluxos de produção, contratos e salvamento em Chromium. A alpha 0.3 passou 78 testes, 22 verificações no navegador e o fluxo completo do build estático. O recibo registra colisões, rotas, camadas, controles e recuperação em `docs/verification-alpha03.md`.
+As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo de execução da alpha 0.4 fica em `docs/verification-alpha04.md`, com fluxos no navegador e limites da verificação. O recibo da atualização anterior permanece em `docs/verification-alpha03.md`.

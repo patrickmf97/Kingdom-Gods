@@ -28,9 +28,11 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import type { Blessing, Creation, Dialog, Panel } from "./types";
+import type { Blessing, Creation, Dialog, GameState, Panel } from "./types";
 import { BLESSINGS, ITEMS, OBJECTS, WORLD_H, WORLD_W } from "./data";
 import { store } from "./simulation";
+import { objectsForZone, regionForZone, resourceNode, WILDERNESS_ROADS } from "./regions";
+import { MAX_CAMPAIGN_BYTES, parseCampaign } from "./campaign-files";
 import { mountWorld, worldInput } from "./world";
 import { GamePanel, ItemIcon, Portrait } from "./Panels";
 
@@ -55,63 +57,31 @@ function Sigil({ size = 36 }: { size?: number }) {
   );
 }
 function MiniMap({ onOpen }: { onOpen: () => void }) {
-  const s = store.state;
+  const state = store.state;
+  const region = regionForZone(state.zone);
+  const cave = state.zone === "mine";
   return (
-    <button
-      className="minimap"
-      onClick={onOpen}
-      aria-label="Abrir mapa de Valeverde"
-    >
-      <svg viewBox={`0 0 ${WORLD_W} ${WORLD_H}`} aria-hidden="true">
-        <rect width={WORLD_W} height={WORLD_H} fill="#bec69c" />
-        <path
-          d="M0 600Q300 500 320 1000T650 1920"
-          stroke="#78a69c"
-          strokeWidth="150"
-          fill="none"
-        />
-        <path
-          d="M720 650V880H1550L2100 340M1280 880V1100H1650L1900 900"
-          stroke="#e4d7ad"
-          strokeWidth="65"
-          fill="none"
-        />
-        {Array.from({ length: 35 }, (_, i) => (
-          <circle
-            key={i}
-            cx={(i * 353) % WORLD_W}
-            cy={(i * 541) % WORLD_H}
-            r={48 + (i % 3) * 18}
-            fill={i % 2 ? "#759064" : "#6b835d"}
-          />
-        ))}
-        {OBJECTS.filter((o) => o.w).map((o) => (
-          <rect
-            key={o.id}
-            x={o.x - (o.w || 50) / 2}
-            y={o.y - 80}
-            width={o.w || 50}
-            height={90}
-            fill="#926d50"
-            stroke="#604f3a"
-            strokeWidth="8"
-          />
-        ))}
-        <circle
-          cx={s.apostle.x}
-          cy={s.apostle.y}
-          r="60"
-          fill="#f9f3d6"
-          stroke="#2b493b"
-          strokeWidth="20"
-        />
+    <button className="minimap" onClick={onOpen} aria-label={`Abrir mapa de ${region.name}`}>
+      <svg viewBox={`0 0 ${region.width} ${region.height}`} aria-hidden="true">
+        <rect width={region.width} height={region.height} fill={cave ? "#303f3b" : "#bec69c"} />
+        {region.walkableAreas?.map((area, index) => <rect key={`floor-${index}`} x={area.left} y={area.top} width={area.right-area.left} height={area.bottom-area.top} fill="#9e9a7c" />)}
+        {state.zone === "village" ? <>
+          <path d="M-120 436 102 524 244 702 388 908 320 1130 274 1304 406 1554 300 1774 136 1980" stroke="#78a69c" strokeWidth="110" fill="none" />
+          <path d="M285 893H485M720 650V880H1550L2100 340M1280 880V1100H1650L1900 900" stroke="#e4d7ad" strokeWidth="65" fill="none" />
+        </> : null}
+        {state.zone === "wilderness" ? <>
+          {WILDERNESS_ROADS.map((road,index)=><polyline key={`road-${index}`} points={road.map(point=>`${point.x},${point.y}`).join(" ")} fill="none" stroke="#e4d7ad" strokeWidth="65" />)}
+          <rect x="2280" y="1430" width="360" height="200" rx="40" fill="#78a69c" />
+        </> : null}
+        {region.decor.filter((_,index)=>index%3===0).map((tree,index)=><circle key={`tree-${index}`} cx={tree.x} cy={tree.y-35} r="40" fill="#759064" />)}
+        {objectsForZone(state.zone).map(object=><circle key={object.id} cx={object.x} cy={object.y} r={cave ? 15 : 32} fill={object.kind === "ore" ? "#a9bbc0" : "#926d50"} />)}
+        <circle cx={state.apostle.x} cy={state.apostle.y} r={cave ? 24 : 50} fill="#f9f3d6" stroke="#2b493b" strokeWidth={cave ? 8 : 18} />
       </svg>
-      <span>
-        Valeverde <ArrowUpRight size={13} />
-      </span>
+      <span>{region.name} <ArrowUpRight size={13} /></span>
     </button>
   );
 }
+
 const navItems: { id: Panel; label: string; icon: typeof Users }[] = [
   { id: "inventory", label: "Inventário", icon: ShoppingBag },
   { id: "character", label: "Atributos", icon: Shield },
@@ -131,6 +101,11 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [sound, setSound] = useState(false);
+  const campaignInput = useRef<HTMLInputElement>(null);
+  const importDialog = useRef<HTMLDivElement>(null);
+  const [transferError, setTransferError] = useState("");
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [pendingImport, setPendingImport] = useState<{ text: string; name: string; campaign: GameState } | null>(null);
   const worldEl = useRef<HTMLDivElement>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const [creation, setCreation] = useState<Creation>({
@@ -166,14 +141,14 @@ export default function App() {
     document.body.dataset.overlay = String(
       !!panel ||
         !!dialog ||
-        paused ||
+        paused || pendingImport || transferBusy ||
         s.phase === "creation" ||
         s.phase === "dead",
     );
     return () => {
       document.body.dataset.overlay = "false";
     };
-  }, [panel, dialog, paused, s.phase]);
+  }, [panel, dialog, paused, s.phase, pendingImport, transferBusy]);
   useEffect(() => {
     const listener = (e: Event) => {
       setDialog((e as CustomEvent<Dialog>).detail);
@@ -194,10 +169,51 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
+    if (!pendingImport) return;
+    const previous = document.activeElement as HTMLElement | null;
+    importDialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const trap = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !transferBusy) { event.preventDefault(); setPendingImport(null); }
+      if (event.key !== "Tab") return;
+      const buttons = [...(importDialog.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
+      if (!buttons.length) { event.preventDefault(); return; }
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      if (event.shiftKey && index <= 0) { event.preventDefault(); buttons.at(-1)?.focus(); }
+      else if (!event.shiftKey && (index < 0 || index === buttons.length - 1)) { event.preventDefault(); buttons[0].focus(); }
+    };
+    document.addEventListener("keydown", trap);
+    return () => { document.removeEventListener("keydown", trap); previous?.focus(); };
+  }, [pendingImport, transferBusy]);
+  useEffect(() => {
+    const exportFile = () => {
+      try {
+        setTransferError("");
+        const text = store.exportCampaign();
+        const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+        const link = document.createElement("a");
+        const house = store.state.apostle.surname.replace(/[^a-z0-9_-]/gi, "").slice(0, 40) || "linhagem";
+        link.href = url;
+        link.download = `kingdom-gods-${house}-dia-${store.state.day}.json`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        store.notify("Arquivo da campanha preparado. Guarde-o para continuar em outro navegador.", "success");
+      } catch (error) {
+        setTransferError(error instanceof Error ? error.message : "Não foi possível exportar a campanha.");
+      }
+    };
+    const selectFile = () => { setTransferError(""); campaignInput.current?.click(); };
+    document.addEventListener("kg-export-campaign", exportFile);
+    document.addEventListener("kg-import-campaign", selectFile);
+    return () => {
+      document.removeEventListener("kg-export-campaign", exportFile);
+      document.removeEventListener("kg-import-campaign", selectFile);
+    };
+  }, []);
+  useEffect(() => {
     const listener = (e: KeyboardEvent) => {
       if (
         (e.target as HTMLElement).matches("input,select,textarea") ||
-        s.phase !== "playing"
+        s.phase !== "playing" || pendingImport || transferBusy
       )
         return;
       const keys: Record<string, Panel> = {
@@ -234,7 +250,7 @@ export default function App() {
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, [panel, dialog, paused, s.phase]);
+  }, [panel, dialog, paused, s.phase, pendingImport, transferBusy]);
   useEffect(() => {
     if (!sound) return;
     const audio = new AudioContext();
@@ -380,7 +396,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.3</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.4</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -562,18 +578,10 @@ export default function App() {
                 </span>
                 <div>
                   <small>
-                    {s.zone === "village"
-                      ? "REINO DE AUREN"
-                      : s.zone === "dungeon"
-                        ? "TERRITÓRIO SELVAGEM"
-                        : "VALEVERDE"}
+                    {s.zone === "wilderness" ? "TERRAS DE AUREN" : s.zone === "mine" ? "GALERIAS DE FERRO" : s.zone === "dungeon" ? "TERRITÓRIO SELVAGEM" : "REINO DE AUREN"}
                   </small>
                   <h1>
-                    {s.zone === "village"
-                      ? "Valeverde"
-                      : s.zone === "dungeon"
-                        ? "Cripta das Raízes"
-                        : "Orfanato de Santa Elara"}
+                    {regionForZone(s.zone).name}
                   </h1>
                 </div>
                 <span className="region-state">
@@ -583,7 +591,7 @@ export default function App() {
                     </>
                   ) : (
                     <>
-                      <Shield size={12} /> Terras protegidas
+                      <Shield size={12} /> {s.zone === "mine" ? "Extração pacífica" : s.zone === "wilderness" ? "Exploração livre" : "Terras protegidas"}
                     </>
                   )}
                 </span>
@@ -618,6 +626,13 @@ export default function App() {
                   </div>
                 </div>
               )}
+              {s.frontier.work && (
+                <div className="work-progress-hud" role="status" aria-live="polite">
+                  <div><strong>{resourceNode(s.frontier.work.nodeId)?.label || "Trabalhando"}</strong><span>{Math.max(0, Math.ceil(s.frontier.work.duration - s.frontier.work.elapsed))} s</span></div>
+                  <progress aria-label="Progresso do trabalho" value={s.frontier.work.elapsed} max={s.frontier.work.duration} />
+                  <button onClick={() => store.act("cancel-work")}>Interromper</button>
+                </div>
+              )}
               <div className="world-top-controls">
                 <button
                   className="map-toggle"
@@ -634,7 +649,7 @@ export default function App() {
                   {paused ? <Play size={17} /> : <Pause size={17} />}
                 </button>
               </div>
-              <div className="notification-feed" aria-live="polite">
+              <div className="notification-feed" aria-live="polite" style={{ visibility: s.frontier.work ? "hidden" : undefined }}>
                 {s.messages.slice(-3).map((m, i) => (
                   <div
                     className={`world-notice notice-${m.type}`}
@@ -846,6 +861,7 @@ export default function App() {
                     </button>
                   )}
                 </div>
+                <button className="text-link title-import-link" onClick={() => document.dispatchEvent(new CustomEvent("kg-import-campaign"))}>Importar campanha de outro dispositivo</button>
                 {confirmNew && (
                   <p className="new-caution">
                     A nova campanha substituirá o salvamento quando você criar o
@@ -871,7 +887,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  ALPHA 0.3 · CAMINHOS VIVOS <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.4 · ALÉM DE VALEVERDE <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />
@@ -1294,6 +1310,42 @@ export default function App() {
       {panel && (
         <GamePanel panel={panel} state={s} onClose={() => setPanel(null)} />
       )}
+      <input ref={campaignInput} type="file" accept=".json,application/json" hidden aria-label="Arquivo de campanha" onChange={async event => {
+        const file = event.target.files?.[0]; event.target.value = "";
+        if (!file) return;
+        setTransferBusy(true); setTransferError("");
+        try {
+          if (file.size > MAX_CAMPAIGN_BYTES) throw new Error("O arquivo excede o limite de 2 MiB.");
+          const text = await file.text();
+          const campaign = parseCampaign(text);
+          setPendingImport({ text, name: file.name, campaign });
+        } catch (error) {
+          setTransferError(error instanceof Error ? error.message : "Não foi possível ler esta campanha.");
+        } finally { setTransferBusy(false); }
+      }} />
+      {transferError && <div className="campaign-transfer-error" role="alert"><span>{transferError}</span><button aria-label="Fechar aviso de transferência" onClick={() => setTransferError("")}><X size={18} /></button></div>}
+      {pendingImport && <div ref={importDialog} className="campaign-import-overlay" role="dialog" aria-modal="true" aria-labelledby="campaign-import-title">
+        <section>
+          <span className="eyebrow">CONTINUAR UMA LINHAGEM</span>
+          <h2 id="campaign-import-title">Importar campanha</h2>
+          <p><strong>{pendingImport.campaign.apostle.name} {pendingImport.campaign.apostle.surname}</strong> · {pendingImport.campaign.apostle.age} anos</p>
+          <p>{regionForZone(pendingImport.campaign.zone).name} · dia {pendingImport.campaign.day} · {pendingImport.campaign.gold} coroas</p>
+          <small>{pendingImport.name}</small>
+          <p>{s.started || hasSave ? "Este arquivo substituirá a campanha atual neste navegador. O salvamento anterior ficará no backup local." : "A campanha será salva neste navegador para você continuar a jornada."}</p>
+          {!pendingImport.campaign.apostle.alive && <p>A vida deste apóstolo terminou. A importação preserva as regras de sucessão e morte permanente.</p>}
+          <div>
+            <button className="primary-button" disabled={transferBusy} onClick={async () => {
+              setTransferBusy(true);
+              try {
+                await store.importCampaign(pendingImport.text);
+                setPendingImport(null); setPanel(null); setDialog(null); setPaused(false); setHasSave(true); setTransferError("");
+              } catch (error) { setTransferError(error instanceof Error ? error.message : "Não foi possível gravar a campanha. O progresso atual foi mantido."); }
+              finally { setTransferBusy(false); }
+            }}>{transferBusy ? "Importando…" : "Confirmar importação"}</button>
+            <button className="secondary-button" disabled={transferBusy} onClick={() => setPendingImport(null)}>Cancelar</button>
+          </div>
+        </section>
+      </div>}
       {!ready && (
         <div className="loading-cover">
           <Sigil size={45} />
