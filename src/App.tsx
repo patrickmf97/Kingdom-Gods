@@ -178,8 +178,20 @@ export default function App() {
     const listener = (e: Event) => {
       setDialog((e as CustomEvent<Dialog>).detail);
     };
+    const panelListener = (e: Event) => {
+      const requested = (e as CustomEvent<Panel>).detail;
+      if (requested === "crafting" && store.state.phase === "playing") {
+        setDialog(null);
+        setPanel(requested);
+        setPaused(false);
+      }
+    };
     document.addEventListener("kg-interact", listener);
-    return () => document.removeEventListener("kg-interact", listener);
+    document.addEventListener("kg-panel", panelListener);
+    return () => {
+      document.removeEventListener("kg-interact", listener);
+      document.removeEventListener("kg-panel", panelListener);
+    };
   }, []);
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
@@ -300,10 +312,19 @@ export default function App() {
     } else if (action === "open-property") {
       setDialog(null);
       setPanel("property");
+    } else if (action === "open-crafting") {
+      setDialog(null);
+      setPanel("crafting");
+    } else if (action === "open-journal") {
+      setDialog(null);
+      setPanel("journal");
     }
   };
   const calendar = store.getCalendar();
   const a = s.apostle;
+  const supplyOrder = s.economy.orders.find(
+    (order) => order.status === "available" || order.status === "accepted",
+  );
   const nearest = s.phase === "playing" ? store.getNearest() : null;
   return (
     <div
@@ -359,7 +380,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.1</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.2</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -460,7 +481,7 @@ export default function App() {
             <div className="sidebar-section opportunities">
               <div className="section-title">
                 <h3>Oportunidades</h3>
-                <span className="tiny-number">2</span>
+                <span className="tiny-number">{supplyOrder ? 3 : 2}</span>
               </div>
               <button className="opportunity" onClick={() => open("property")}>
                 <span className="op-icon">
@@ -490,6 +511,21 @@ export default function App() {
                 </span>
                 <ChevronRight size={14} />
               </button>
+              {supplyOrder && (
+                <button className="opportunity" onClick={() => open("journal")}>
+                  <span className="op-icon">
+                    <ShoppingBag size={18} />
+                  </span>
+                  <span>
+                    <b>{supplyOrder.title}</b>
+                    <small>
+                      Prazo de {Math.max(0, supplyOrder.deadline - s.day)} dias
+                      · {supplyOrder.reward} coroas
+                    </small>
+                  </span>
+                  <ChevronRight size={14} />
+                </button>
+              )}
             </div>
             <div className="sidebar-memory">
               <span className="eyebrow">ECOS DA MEMÓRIA</span>
@@ -835,7 +871,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  PRIMEIRA VERSÃO JOGÁVEL <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.2 · ECONOMIA VIVA <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />
@@ -1182,7 +1218,10 @@ export default function App() {
                 </span>
                 <div>
                   <b>O mercado está aberto</b>
-                  <p>Os preços acompanham os estoques da vila.</p>
+                  <p>
+                    Prosperidade {s.economy.prosperity}%. Trigo, farinha e pão
+                    circulam pela vila.
+                  </p>
                   <button onClick={() => open("market")}>
                     Ver o mercado <ArrowUpRight size={11} />
                   </button>
@@ -1193,8 +1232,16 @@ export default function App() {
                   <Users size={16} />
                 </span>
                 <div>
-                  <b>Vidas que se cruzam</b>
-                  <p>Moradores trabalham, caminham e criam memórias.</p>
+                  <b>
+                    {s.economy.worker
+                      ? "Gente que trabalha com você"
+                      : "Vidas que se cruzam"}
+                  </b>
+                  <p>
+                    {s.economy.worker
+                      ? `Lina: ${s.economy.worker.wage} coroas por dia · lealdade ${s.economy.worker.loyalty}%.`
+                      : "Moradores trabalham, caminham e criam memórias."}
+                  </p>
                   <button onClick={() => open("relations")}>
                     Conhecer moradores <ArrowUpRight size={11} />
                   </button>

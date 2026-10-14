@@ -8,6 +8,7 @@ export type Panel =
   | "family"
   | "property"
   | "market"
+  | "crafting"
   | "map"
   | "help"
   | null;
@@ -16,6 +17,7 @@ export type ItemId =
   | "wood"
   | "stone"
   | "wheat"
+  | "flour"
   | "seed"
   | "sword"
   | "herb"
@@ -132,6 +134,57 @@ export interface GameState {
   messages: { id: number; text: string; type: string }[];
   savedAt: number | null;
   deaths: number;
+  economy: EconomyState;
+}
+export type Season = "Primavera" | "Verão" | "Outono" | "Inverno";
+export interface CropPlan {
+  season: Season;
+  readyDay: number;
+  yield: number;
+}
+export interface WorkerContract {
+  npcId: string;
+  wage: number;
+  hiredDay: number;
+  loyalty: number;
+  unpaidDays: number;
+}
+export interface EconomicEntry {
+  day: number;
+  type: string;
+  text: string;
+  goldDelta: number;
+}
+export interface VillageOrder {
+  id: string;
+  title: string;
+  item: ItemId;
+  quantity: number;
+  reward: number;
+  createdDay: number;
+  deadline: number;
+  status: "available" | "accepted" | "fulfilled" | "resolved" | "failed";
+}
+export interface EconomyState {
+  condition: number;
+  crop: CropPlan | null;
+  worker: WorkerContract | null;
+  npcSavings: Record<string, number>;
+  ledger: EconomicEntry[];
+  orders: VillageOrder[];
+  civicFunds: number;
+  prosperity: number;
+  lastOrderDay: number;
+}
+export interface Recipe {
+  id: string;
+  name: string;
+  station: string;
+  inputs: Partial<Record<ItemId, number>>;
+  outputs: Partial<Record<ItemId, number>>;
+  stamina: number;
+  skill: string;
+  description: string;
 }
 export interface Creation {
   name: string;

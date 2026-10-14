@@ -1,4 +1,15 @@
 import { ITEMS, OBJECTS, WORLD_H, WORLD_W } from "./data";
+import {
+  createEconomyState,
+  cropProfile,
+  executeEconomicAction,
+  harvestCrop,
+  plantCrop,
+  processEconomicDay,
+  reconcileWorker,
+  RECIPES,
+  type EconomicHooks,
+} from "./economy";
 import type {
   Apostle,
   Attributes,
@@ -118,6 +129,8 @@ function newApostle(creation = DEFAULT_CREATION): Apostle {
       trading: 0,
       building: 0,
       leadership: 0,
+      cooking: 0,
+      smithing: 0,
     },
     personality: { compassion: 55, courage: 50, loyalty: 60, anger: 15 },
     memories: [],
@@ -215,7 +228,7 @@ function newEnemies(): Enemy[] {
 }
 export function initialState(): PersistentGameState {
   return {
-    version: 1,
+    version: 2,
     started: false,
     intro: true,
     phase: "title",
@@ -236,6 +249,7 @@ export function initialState(): PersistentGameState {
       wood: 20,
       stone: 15,
       wheat: 18,
+      flour: 8,
       seed: 12,
       sword: 3,
       herb: 10,
@@ -258,6 +272,7 @@ export function initialState(): PersistentGameState {
     messages: [],
     savedAt: null,
     deaths: 0,
+    economy: createEconomyState(1),
     simulation: {
       marriedAt: {},
       gathering: {},
@@ -385,6 +400,28 @@ export class GameStore {
     this.message("Aproxime-se para fazer isso.", "warning");
     return false;
   }
+  private economicHooks(): EconomicHooks {
+    return {
+      message: (text, type) => this.message(text, type),
+      remember: (title, text, emotion, intensity) =>
+        this.remember(title, text, emotion, intensity),
+      rememberNpc: (id, title, text, emotion) => {
+        const memories = (this.state.simulation.npcMemories[id] ||= []);
+        memories.push({
+          id: `economic-npc-${++this.messageId}`,
+          day: this.state.day,
+          title,
+          text,
+          emotion,
+          intensity: 65,
+        });
+        if (memories.length > 40) memories.shift();
+      },
+      practice: (skill, amount) => this.practice(skill, amount),
+      nearObject: (id) => this.nearObject(id),
+      nearNpc: (id) => !!this.nearNpc(id),
+    };
+  }
 
   create(creation: Creation): void {
     this.state = initialState();
@@ -510,18 +547,15 @@ export class GameStore {
         this.state.npcs = this.state.npcs.filter((npc) => npc.id !== person.id);
       }
     }
-    // Villagers produce and consume even when the player is elsewhere.
-    market.bread = Math.min(40, market.bread + 4);
-    market.wheat = Math.min(40, market.wheat + 3);
-    market.seed = Math.min(24, market.seed + 2);
-    market.herb = Math.min(20, market.herb + 1);
-    market.wood = Math.min(36, market.wood + 3);
-    market.stone = Math.min(30, market.stone + 2);
-    this.state.merchantGold = Math.min(1200, this.state.merchantGold + 55);
-    if (property.building) {
-      this.state.gold += 6;
-      if (property.harvests > 0) inventory.bread++;
+    for (const npc of this.state.npcs) {
+      npc.mood =
+        npc.trust >= 60
+          ? "Amigável"
+          : this.state.day % 3 === 0
+            ? "Pensativo"
+            : "Tranquilo";
     }
+    processEconomicDay(this.state, this.economicHooks());
     if (inventory.bread > 0) {
       inventory.bread--;
       apostle.hp = Math.min(apostle.maxHp, apostle.hp + 8);
@@ -546,26 +580,11 @@ export class GameStore {
       this.damage(apostle.maxHp);
     } else if (apostle.age >= 80)
       this.damage(2 + Math.floor((apostle.age - 80) / 5));
-    for (const npc of this.state.npcs)
-      npc.mood =
-        npc.trust >= 60
-          ? "Amigável"
-          : this.state.day % 3 === 0
-            ? "Pensativo"
-            : "Tranquilo";
     if (
       this.state.zone !== "dungeon" &&
       this.state.enemies.every((enemy) => !enemy.alive)
     )
       this.state.enemies = newEnemies();
-    if (
-      property.plantedAt !== null &&
-      this.state.day - property.plantedAt === 2
-    )
-      this.message(
-        "O trigo amadureceu. Volte à sua parcela para colher.",
-        "success",
-      );
   }
   private updateNpcs(delta: number): void {
     const hour = this.state.minutes / 60;
@@ -585,7 +604,10 @@ export class GameStore {
         mira: { x: 1460, y: 1000 },
         aldric: { x: 1560, y: 790 },
         guard: { x: 2050, y: 450 },
-        farmer: { x: 1830, y: 1040 },
+        farmer:
+          this.state.economy.worker?.npcId === npc.id
+            ? { x: 1870, y: 1010 }
+            : { x: 1830, y: 1040 },
       };
       const destination = working
         ? workplaces[npc.id]
@@ -835,6 +857,7 @@ export class GameStore {
       1,
       Math.round(
         ITEMS[item].price *
+          (1 + (55 - this.state.economy.prosperity) / 500) *
           (buy
             ? scarcity * (1.15 - skillDiscount) * blessingDiscount
             : Math.min(1, scarcity) * (0.6 + skillDiscount)),
@@ -897,6 +920,7 @@ export class GameStore {
       const friend = this.state.npcs.find(
         (npc) =>
           npc.id !== "matron" &&
+          npc.id !== this.state.economy.worker?.npcId &&
           npc.trust >= 65 &&
           npc.relation >= 60 &&
           (this.state.simulation.npcMemories[npc.id]?.length || 0) >= 3,
@@ -958,13 +982,15 @@ export class GameStore {
       );
       return null;
     }
-    if (id === "market" || id === "forge")
+    if (["mill", "bakery", "forge"].includes(id)) return this.stationDialog(id);
+    if (id === "market")
       return {
-        name: id === "forge" ? "Forja de Aldric" : "Mercado de Valeverde",
-        role: "Comércio local",
-        text: "Os preços acompanham o estoque, sua experiência e sua bênção. Abra o mercado para negociar com os recursos da aldeia.",
+        name: "Mercado de Valeverde",
+        role: "Comércio e abastecimento",
+        text: "O trigo alimenta o moinho; farinha e lenha alimentam a padaria. Os preços acompanham os estoques e a prosperidade da vila.",
         options: [
           { label: "Abrir mercado", action: "open-market" },
+          { label: "Pedidos de abastecimento", action: "open-journal" },
           { label: "Voltar", action: "close" },
         ],
       };
@@ -1054,6 +1080,19 @@ export class GameStore {
           this.state.quest === "complete" ? "quest-claim" : "quest-accept",
         disabled: this.state.quest === "claimed",
       });
+    if (npc.id === "farmer")
+      options.push(
+        this.state.economy.worker
+          ? { label: "Encerrar contrato de trabalho", action: "dismiss-worker" }
+          : {
+              label: "Oferecer trabalho · 5 coroas por dia",
+              action: "hire:farmer",
+              disabled:
+                !this.state.property.owned ||
+                !this.state.property.building ||
+                this.state.economy.condition < 25,
+            },
+      );
     options.push({ label: "Voltar", action: "close" });
     const remembrance = this.state.simulation.npcMemories[npc.id]?.length
       ? " Lembro da atenção que você teve comigo."
@@ -1065,44 +1104,88 @@ export class GameStore {
       options,
     };
   }
+  private stationDialog(id: string): Dialog {
+    const recipe = RECIPES.find((candidate) => candidate.station === id)!;
+    return {
+      name: OBJECTS.find((object) => object.id === id)?.label || "Oficina",
+      role: "Produção por prática",
+      text: `${recipe.description} O trabalho exige ingredientes e ${recipe.stamina} de energia.`,
+      options: [
+        { label: "Ver receitas e produzir", action: "open-crafting" },
+        ...(id === "forge"
+          ? [{ label: "Negociar materiais", action: "open-market" }]
+          : []),
+        { label: "Voltar", action: "close" },
+      ],
+    };
+  }
   private propertyDialog(): Dialog {
     const p = this.state.property;
+    const e = this.state.economy;
+    const crop = e.crop;
+    const profile = cropProfile(this.state.day);
+    const options: Dialog["options"] = p.owned
+      ? [
+          {
+            label: "Plantar · 1 semente",
+            action: "plant",
+            disabled: p.plantedAt !== null || this.state.inventory.seed < 1,
+          },
+          {
+            label: "Colher trigo",
+            action: "harvest",
+            disabled: !crop || this.state.day < crop.readyDay,
+          },
+          ...(p.building
+            ? [
+                {
+                  label: "Reparar casa · 2 madeira, 1 pedra",
+                  action: "repair",
+                  disabled:
+                    e.condition >= 100 ||
+                    this.state.inventory.wood < 2 ||
+                    this.state.inventory.stone < 1,
+                },
+              ]
+            : [
+                {
+                  label: "Construir casa · 12 madeira, 8 pedra, 60 coroas",
+                  action: "build",
+                  disabled:
+                    this.state.inventory.wood < 12 ||
+                    this.state.inventory.stone < 8 ||
+                    this.state.gold < 60,
+                },
+              ]),
+          ...(e.worker
+            ? [{ label: "Encerrar contrato de Lina", action: "dismiss-worker" }]
+            : [
+                {
+                  label: "Contratar Lina · 5 coroas por dia",
+                  action: "hire:farmer",
+                  disabled:
+                    !p.building ||
+                    e.condition < 25 ||
+                    !this.state.npcs.some((npc) => npc.id === "farmer"),
+                },
+              ]),
+          { label: "Ver a propriedade", action: "open-property" },
+        ]
+      : [
+          {
+            label: `Comprar parcela · ${p.cost} coroas`,
+            action: "acquire-property",
+            disabled: this.state.gold < p.cost,
+          },
+        ];
+    options.push({ label: "Voltar", action: "close" });
     return {
       name: p.name,
-      role: p.owned
-        ? "Sua propriedade · Reino de Valeverde"
-        : "Terra à venda · Reino de Valeverde",
+      role: `${p.owned ? "Sua propriedade" : "Terra à venda"} · Reino de Auren`,
       text: p.owned
-        ? `Plante sementes, espere dois dias e colha trigo. Uma casa rende 6 ouro por dia e transforma sua experiência de colheita em um pão diário. ${p.plantedAt === null ? "A terra está pronta para plantar." : `Colheita em ${Math.max(0, 2 - (this.state.day - p.plantedAt))} dias.`}`
-        : `Esta parcela custa ${p.cost} ouro. A terra pertence à sua linhagem e será transmitida ao sucessor.`,
-      options: p.owned
-        ? [
-            {
-              label: "Plantar · 1 semente",
-              action: "plant",
-              disabled: p.plantedAt !== null || this.state.inventory.seed < 1,
-            },
-            {
-              label: "Colher trigo",
-              action: "harvest",
-              disabled:
-                p.plantedAt === null || this.state.day - p.plantedAt < 2,
-            },
-            {
-              label: "Construir casa · 12 madeira, 8 pedra, 60 ouro",
-              action: "build",
-              disabled: p.building,
-            },
-            { label: "Voltar", action: "close" },
-          ]
-        : [
-            {
-              label: `Comprar parcela · ${p.cost} ouro`,
-              action: "acquire-property",
-              disabled: this.state.gold < p.cost,
-            },
-            { label: "Voltar", action: "close" },
-          ],
+        ? `${crop ? `Trigo plantado no ${crop.season}: ${Math.max(0, crop.readyDay - this.state.day)} dias até a colheita, ${crop.yield} trigo previsto.` : `${profile.season}: uma semente produz ${profile.yield} trigo em ${profile.duration} dias.`} ${p.building ? `Casa em ${e.condition}% de condição, tributo de até 2 coroas por dia. ${e.worker ? "Lina trabalha por 5 coroas diárias." : "Uma trabalhadora pode cuidar da terra."}` : "Construa uma casa para contratar ajuda."}`
+        : `Esta parcela custa ${p.cost} coroas. Ela está vinculada ao Reino de Auren e passará aos sucessores da sua linhagem.`,
+      options,
     };
   }
   private questDialog(): Dialog {
@@ -1125,6 +1208,7 @@ export class GameStore {
           action: quest === "complete" ? "quest-claim" : "quest-accept",
           disabled: quest === "accepted" || quest === "claimed",
         },
+        { label: "Ver pedidos da vila", action: "open-journal" },
         { label: "Voltar", action: "close" },
       ],
     };
@@ -1168,6 +1252,11 @@ export class GameStore {
     if (npc) return this.npcDialog(npc);
     if (this.activeDialog === "property" && this.nearObject("property"))
       return this.propertyDialog();
+    if (
+      ["mill", "bakery", "forge"].includes(this.activeDialog) &&
+      this.nearObject(this.activeDialog)
+    )
+      return this.stationDialog(this.activeDialog);
     if (this.activeDialog === "sign" && this.nearObject("sign"))
       return this.questDialog();
     return null;
@@ -1200,6 +1289,11 @@ export class GameStore {
     if (!this.playing()) return;
     const [verb, id] = action.split(":");
     const item = id as ItemId;
+    if (executeEconomicAction(this.state, action, this.economicHooks())) {
+      this.scheduleAutoSave();
+      this.notify();
+      return;
+    }
     if ((verb === "buy" || verb === "sell") && ITEMS[item]) {
       if (!this.nearObject("market") && !this.nearObject("forge")) {
         this.message(
@@ -1289,7 +1383,7 @@ export class GameStore {
           p.owned = true;
           this.remember(
             "Minhas próprias raízes",
-            "Comprei a Parcela do Moinho no Reino de Valeverde. Esta terra pertencerá à minha linhagem.",
+            "Comprei a Parcela do Moinho no Reino de Auren. Esta terra pertencerá à minha linhagem.",
             "Orgulho",
             85,
           );
@@ -1304,31 +1398,9 @@ export class GameStore {
       } else if (!p.owned)
         this.message("Adquira a parcela primeiro.", "warning");
       else if (action === "plant") {
-        if (p.plantedAt === null && this.state.inventory.seed > 0) {
-          this.state.inventory.seed--;
-          p.plantedAt = this.state.day;
-          this.practice("farming", 1);
-          this.message(
-            "Sementes plantadas. O trigo cresce em dois dias.",
-            "success",
-          );
-        } else
-          this.message(
-            p.plantedAt !== null
-              ? "Já há uma plantação crescendo."
-              : "Você precisa de sementes.",
-            "warning",
-          );
+        plantCrop(this.state, this.economicHooks());
       } else if (action === "harvest") {
-        if (p.plantedAt !== null && this.state.day - p.plantedAt >= 2) {
-          const amount = 6 + Math.floor(this.state.apostle.skills.farming / 15);
-          this.state.inventory.wheat += amount;
-          this.state.inventory.seed++;
-          p.plantedAt = null;
-          p.harvests++;
-          this.practice("farming", 3);
-          this.message(`Colheita: ${amount} trigo e 1 semente.`, "success");
-        } else this.message("O trigo ainda não está pronto.", "warning");
+        harvestCrop(this.state, this.economicHooks());
       } else if (action === "build") {
         if (
           !p.building &&
@@ -1340,6 +1412,7 @@ export class GameStore {
           this.state.inventory.stone -= 8;
           this.state.gold -= 60;
           p.building = true;
+          this.state.economy.condition = 100;
           this.practice("building", 5);
           this.remember(
             "Um lar para a linhagem",
@@ -1347,7 +1420,10 @@ export class GameStore {
             "Segurança",
             90,
           );
-          this.message("Casa construída · +6 ouro por dia.", "success");
+          this.message(
+            "Casa construída. Mantenha os reparos e contrate ajuda para o cultivo.",
+            "success",
+          );
         } else
           this.message(
             p.building
@@ -1648,6 +1724,7 @@ export class GameStore {
     this.state.phase = "playing";
     this.state.zone = "village";
     this.state.intro = false;
+    reconcileWorker(this.state, this.economicHooks());
     this.attackCooldown = this.dodgeCooldown = this.invulnerability = 0;
     this.enemyCooldowns = {};
     delete this.state.simulation.companionId;

@@ -195,7 +195,12 @@ decor.push(
   { key: "pine", x: 2235, y: 515 },
   { key: "pine", x: 1980, y: 470 },
 );
-export const villageDecor = decor;
+export const villageDecor = decor.filter((item) => {
+  // Keep the mill, bakery, and their footpaths clear of canopy silhouettes.
+  const nearMill = item.x > 1120 && item.x < 1390 && item.y > 230 && item.y < 565;
+  const nearBakery = item.x > 1090 && item.x < 1510 && item.y > 1260 && item.y < 1660;
+  return !nearMill && !nearBakery;
+});
 
 function paintGround(c: Ctx) {
   const w = WORLD_W / 2,
@@ -297,6 +302,16 @@ function paintGround(c: Ctx) {
   // Village lanes converge on the market square, then lead to the homesteads.
   const paths = [
     [
+      [630, 238],
+      [629, 315],
+      [628, 421],
+    ],
+    [
+      [615, 728],
+      [653, 698],
+      [728, 645],
+    ],
+    [
       [204, 456],
       [290, 438],
       [388, 417],
@@ -347,9 +362,9 @@ function paintGround(c: Ctx) {
     ],
   ];
   paths.forEach((points, i) => {
-    line(c, points, i === 0 ? 34 : 25, "#9e9573");
-    line(c, points, i === 0 ? 29 : 21, P.path);
-    line(c, points, i === 0 ? 20 : 13, P.pathLight);
+    line(c, points, i === 2 ? 34 : 25, "#9e9573");
+    line(c, points, i === 2 ? 29 : 21, P.path);
+    line(c, points, i === 2 ? 20 : 13, P.pathLight);
   });
   ellipse(c, 578, 408, 113, 45, "#a5a084");
   ellipse(c, 578, 406, 107, 40, "#b5ae91");
@@ -687,6 +702,107 @@ function paintTree(c: Ctx, variant: number, pine = false) {
     rect(c, 10 + random() * 31, 11 + random() * 22, 3, 1, "#a3ac72");
 }
 
+function paintMill(c: Ctx) {
+  ellipse(c, 48, 79, 40, 6, "#354d3744");
+  // The tapered stone tower carries a timber cap and a front-facing doorway.
+  poly(c, [[34, 24], [60, 24], [68, 76], [26, 76]], "#a6a087");
+  poly(c, [[34, 24], [45, 24], [40, 76], [26, 76]], "#c3b998");
+  poly(c, [[55, 24], [60, 24], [68, 76], [58, 76]], "#817f6c");
+  for (let y = 31; y < 74; y += 6) {
+    const left = 34 - Math.floor((y - 24) / 7);
+    const width = 26 + Math.floor((y - 24) / 3.5);
+    rect(c, left, y, width, 1, "#928c74");
+    for (let x = left + (y % 12 ? 5 : 10); x < left + width; x += 11)
+      rect(c, x, y - 5, 1, 5, "#a8a083");
+  }
+  roof(c, 24, 7, 46, 20, 419, true);
+  rect(c, 44, 29, 7, 7, "#62533b");
+  rect(c, 46, 30, 3, 3, "#d6bc7c");
+  window(c, 44, 43, 7, 9, true);
+  door(c, 40, 59, 14, 20);
+  rect(c, 36, 78, 23, 3, "#b7ab89");
+  rect(c, 33, 81, 29, 2, "#cec19d");
+  // Flour sacks, a grinding stone, and wheat make its trade legible at a glance.
+  ellipse(c, 75, 72, 10, 7, "#746e56");
+  ellipse(c, 75, 69, 10, 6, "#ada68a");
+  ellipse(c, 75, 69, 3, 2, "#615e49");
+  rect(c, 68, 75, 16, 2, "#847652");
+  for (const [x, y] of [[14, 66], [20, 72]]) {
+    rect(c, x - 4, y, 9, 10, "#b4a27b");
+    rect(c, x - 3, y - 2, 7, 3, "#d6c49a");
+    rect(c, x - 1, y - 3, 3, 3, "#827050");
+    rect(c, x, y + 2, 1, 6, "#e0cfaa");
+  }
+  for (let i = 0; i < 5; i++) {
+    const x = 8 + i * 2;
+    rect(c, x, 52 + (i % 2), 1, 11, "#b4a260");
+    rect(c, x - 1, 51 + (i % 2), 3, 3, "#d5bd77");
+  }
+  rect(c, 6, 61, 14, 4, "#826343");
+}
+
+function paintMillSails(c: Ctx) {
+  // A single small texture rotates as a unit; no extra meshes or frame atlas.
+  for (let i = 0; i < 4; i++) {
+    c.save();
+    c.translate(35, 35);
+    c.rotate((Math.PI / 2) * i);
+    rect(c, -1, -32, 3, 34, "#655037");
+    rect(c, 2, -31, 10, 24, "#dfd0aa");
+    rect(c, 3, -30, 8, 22, "#eee1bb");
+    rect(c, 2, -31, 10, 1, "#b49667");
+    for (let y = -25; y < -7; y += 6) rect(c, 2, y, 10, 1, "#b6a47d");
+    rect(c, 6, -30, 1, 22, "#d1c097");
+    rect(c, -1, -31, 1, 30, "#a68b5e");
+    c.restore();
+  }
+  ellipse(c, 35, 35, 5, 5, "#655037");
+  ellipse(c, 35, 34, 3, 3, "#c1a573");
+  rect(c, 34, 33, 2, 2, "#ece0b7");
+}
+
+function paintBakery(c: Ctx) {
+  ellipse(c, 44, 66, 40, 5, "#354d3744");
+  rect(c, 8, 27, 60, 36, P.cream);
+  stones(c, 8, 56, 60, 8, 785);
+  rect(c, 8, 27, 3, 30, P.timber);
+  rect(c, 34, 27, 3, 30, P.timber);
+  rect(c, 65, 27, 3, 30, P.timber);
+  rect(c, 8, 38, 60, 3, P.timber);
+  roof(c, 3, 11, 71, 20, 645);
+  chimney(c, 57, 4);
+  door(c, 42, 43, 13, 21);
+  rect(c, 38, 64, 22, 3, "#b7ab89");
+  window(c, 16, 44, 13, 10, true);
+  // A loaf-shaped hanging sign sits beside the bright shop window.
+  rect(c, 9, 31, 21, 2, P.timber);
+  rect(c, 12, 32, 1, 3, P.timber);
+  rect(c, 26, 32, 1, 3, P.timber);
+  rect(c, 10, 34, 19, 9, "#795338");
+  rect(c, 11, 35, 17, 7, "#c19a5e");
+  ellipse(c, 19, 38, 6, 3, "#f0d099");
+  for (const x of [15, 19, 23]) rect(c, x, 36, 1, 3, "#b48344");
+  // A separate stone oven with a visible amber fire and a soot-dark mouth.
+  stones(c, 66, 39, 18, 25, 941);
+  poly(c, [[65, 39], [69, 34], [80, 34], [85, 39]], "#b4a58a");
+  rect(c, 69, 46, 12, 15, "#4a3d30");
+  rect(c, 72, 43, 6, 18, "#4a3d30");
+  rect(c, 71, 55, 9, 5, "#b86132");
+  rect(c, 73, 52, 3, 7, "#efb45c");
+  rect(c, 77, 54, 2, 5, "#f5cf7a");
+  rect(c, 68, 61, 15, 3, "#938367");
+  rect(c, 64, 65, 20, 2, "#b6a684");
+  for (let i = 0; i < 3; i++) {
+    rect(c, 66 + i * 5, 31, 4, 2, "#ac8757");
+    rect(c, 67 + i * 5, 30, 2, 1, "#dec089");
+  }
+  rect(c, 3, 56, 9, 9, "#b9a77f");
+  rect(c, 4, 54, 7, 3, "#d6c59e");
+  rect(c, 6, 58, 2, 4, "#e8d9b3");
+  rect(c, 56, 57, 8, 7, "#806344");
+  for (let i = 0; i < 3; i++) rect(c, 57, 58 + i * 2, 6, 1, "#b48c55");
+}
+
 function paintForge(c: Ctx) {
   ellipse(c, 47, 67, 43, 5, "#354d3744");
   stones(c, 8, 29, 64, 35, 127);
@@ -816,7 +932,7 @@ function paintMarket(c: Ctx) {
   rect(c, 2, 47, 5, 2, "#d0bd8b");
 }
 
-function paintFarm(c: Ctx, planted = true) {
+function paintFarm(c: Ctx, planted = true, ripe = true) {
   const random = rng(13076);
   ellipse(c, 67, 97, 61, 6, "#3d513639");
   rect(c, 12, 33, 106, 60, "#9c8760");
@@ -830,11 +946,11 @@ function paintFarm(c: Ctx, planted = true) {
         if (random() > 0.55) rect(c, x, y + 3, 2, 1, "#9c8352");
         continue;
       }
-      const tall = 5 + Math.round(random() * 2);
-      rect(c, x + 1, y - tall + 5, 1, tall, "#b5a265");
-      rect(c, x, y - tall + 4, 3, 3, "#d1b56d");
-      rect(c, x - 1, y - tall + 5, 1, 2, "#9d9956");
-      rect(c, x + 3, y - tall + 6, 1, 2, "#e0c784");
+      const tall = (ripe ? 5 : 3) + Math.round(random() * 2);
+      rect(c, x + 1, y - tall + 5, 1, tall, ripe ? "#b5a265" : "#527345");
+      rect(c, x, y - tall + 4, 3, ripe ? 3 : 2, ripe ? "#d1b56d" : "#86a95c");
+      rect(c, x - 1, y - tall + 5, 1, 2, ripe ? "#9d9956" : "#64884b");
+      rect(c, x + 3, y - tall + 6, 1, 2, ripe ? "#e0c784" : "#a3ba73");
     }
   }
   // A modest tool shed keeps this visibly a working, attainable homestead.
@@ -1541,8 +1657,12 @@ export function generateArt(scene: Phaser.Scene): void {
     house(c, 80, 70, "cottage"),
   );
   texture(scene, "forge", 180, 140, paintForge);
+  texture(scene, "mill", 190, 170, paintMill);
+  texture(scene, "mill-sails", 140, 140, paintMillSails);
+  texture(scene, "bakery", 175, 140, paintBakery);
   texture(scene, "market", 174, 120, paintMarket);
   texture(scene, "farm", 260, 210, (c) => paintFarm(c));
+  texture(scene, "farm-growing", 260, 210, (c) => paintFarm(c, true, false));
   texture(scene, "farm-empty", 260, 210, (c) => paintFarm(c, false));
   texture(scene, "well", 96, 84, paintWell);
   texture(scene, "crypt", 174, 140, paintCrypt);

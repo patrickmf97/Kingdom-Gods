@@ -1,4 +1,5 @@
 import type { GameState } from "./types";
+import { createEconomyState } from "./economy";
 
 const DATABASE = "kingdom-gods";
 const STORE = "snapshots";
@@ -6,7 +7,7 @@ const CURRENT = "current";
 const BACKUP = "backup";
 const LOCAL_CURRENT = "kingdom-gods:save";
 const LOCAL_BACKUP = "kingdom-gods:backup";
-const ITEMS = [
+const LEGACY_ITEMS = [
   "bread",
   "wood",
   "stone",
@@ -16,6 +17,7 @@ const ITEMS = [
   "herb",
   "ore",
 ] as const;
+const ITEMS = [...LEGACY_ITEMS, "flour"] as const;
 const ATTRIBUTES = [
   "strength",
   "dexterity",
@@ -29,7 +31,7 @@ const ATTRIBUTES = [
   "endurance",
   "energy",
 ] as const;
-const SKILLS = [
+const LEGACY_SKILLS = [
   "sword",
   "farming",
   "mining",
@@ -37,6 +39,7 @@ const SKILLS = [
   "building",
   "leadership",
 ] as const;
+const SKILLS = [...LEGACY_SKILLS, "cooking", "smithing"] as const;
 
 let lastPersistenceError: string | null = null;
 let memoryCurrent: GameState | null = null;
@@ -61,6 +64,9 @@ const nonnegative = (value: unknown): value is number =>
 const integer = (value: unknown): value is number =>
   number(value) && Number.isSafeInteger(value);
 const count = (value: unknown): value is number => integer(value) && value >= 0;
+const day = (value: unknown): value is number => count(value) && value >= 1;
+const percentage = (value: unknown): value is number =>
+  nonnegative(value) && value <= 100;
 const choice = (value: unknown, values: readonly string[]) =>
   string(value) && values.includes(value);
 const array = (value: unknown, check: (entry: unknown) => boolean) =>
@@ -125,7 +131,11 @@ function health(value: ObjectValue): boolean {
   );
 }
 
-function apostle(value: unknown): boolean {
+function apostle(
+  value: unknown,
+  items: readonly string[],
+  skills: readonly string[],
+): boolean {
   if (
     !person(value) ||
     !nonnegative(value.x) ||
@@ -140,7 +150,7 @@ function apostle(value: unknown): boolean {
     value.stamina <= value.maxStamina &&
     choice(value.blessing, ["vigor", "wisdom", "fortune"]) &&
     numericRecord(value.attributes, ATTRIBUTES) &&
-    numericRecord(value.skills, SKILLS) &&
+    numericRecord(value.skills, skills) &&
     object(value.skills) &&
     Object.values(value.skills).every(nonnegative) &&
     numericRecord(value.personality, [
@@ -150,7 +160,7 @@ function apostle(value: unknown): boolean {
       "anger",
     ]) &&
     array(value.memories, memory) &&
-    (value.equipment === null || choice(value.equipment, ITEMS))
+    (value.equipment === null || choice(value.equipment, items))
   );
 }
 
@@ -210,27 +220,27 @@ function simulation(value: unknown): boolean {
   );
 }
 
-/** Reject incompatible or damaged saves before they enter the simulation. */
-export function validateState(value: unknown): value is GameState {
-  try {
-    return (
+function baseState(
+  value: unknown,
+  items: readonly string[],
+  skills: readonly string[],
+): value is ObjectValue {
+  return (
       object(value) &&
-      value.version === 1 &&
       boolean(value.started) &&
       boolean(value.intro) &&
       choice(value.phase, ["title", "creation", "playing", "dead"]) &&
-      apostle(value.apostle) &&
+      apostle(value.apostle, items, skills) &&
       nonnegative(value.gold) &&
-      numericRecord(value.inventory, ITEMS, true) &&
+      numericRecord(value.inventory, items, true) &&
       nonnegative(value.minutes) &&
       value.minutes < 1440 &&
-      count(value.day) &&
-      value.day >= 1 &&
+      day(value.day) &&
       nonnegative(value.timeScale) &&
       choice(value.zone, ["village", "orphanage", "dungeon"]) &&
       array(value.npcs, npc) &&
       array(value.enemies, enemy) &&
-      numericRecord(value.market, ITEMS, true) &&
+      numericRecord(value.market, items, true) &&
       nonnegative(value.merchantGold) &&
       property(value.property) &&
       array(value.family, person) &&
@@ -253,6 +263,103 @@ export function validateState(value: unknown): value is GameState {
       (value.savedAt === null || count(value.savedAt)) &&
       count(value.deaths) &&
       simulation(value.simulation)
+  );
+}
+
+function economy(value: unknown): boolean {
+  return (
+    object(value) &&
+    percentage(value.condition) &&
+    (value.crop === null ||
+      (object(value.crop) &&
+        choice(value.crop.season, ["Primavera", "Verão", "Outono", "Inverno"]) &&
+        day(value.crop.readyDay) &&
+        count(value.crop.yield) &&
+        value.crop.yield > 0)) &&
+    (value.worker === null ||
+      (object(value.worker) &&
+        string(value.worker.npcId) &&
+        count(value.worker.wage) &&
+        value.worker.wage > 0 &&
+        day(value.worker.hiredDay) &&
+        percentage(value.worker.loyalty) &&
+        count(value.worker.unpaidDays))) &&
+    object(value.npcSavings) &&
+    Object.values(value.npcSavings).every(count) &&
+    array(value.ledger, (entry) =>
+      object(entry) &&
+      day(entry.day) &&
+      string(entry.type) &&
+      string(entry.text) &&
+      number(entry.goldDelta)) &&
+    array(value.orders, (order) =>
+      object(order) &&
+      string(order.id) &&
+      string(order.title) &&
+      choice(order.item, ITEMS) &&
+      count(order.quantity) &&
+      order.quantity > 0 &&
+      count(order.reward) &&
+      order.reward > 0 &&
+      day(order.createdDay) &&
+      day(order.deadline) &&
+      order.deadline >= order.createdDay &&
+      choice(order.status, ["available", "accepted", "fulfilled", "resolved", "failed"])) &&
+    count(value.civicFunds) &&
+    percentage(value.prosperity) &&
+    count(value.lastOrderDay)
+  );
+}
+
+function economicRelations(state: GameState): boolean {
+  const { property, economy, apostle } = state;
+  const { crop, worker } = economy;
+  if (
+    property.plantedAt === null
+      ? crop !== null
+      : !property.owned || crop === null || crop.readyDay <= property.plantedAt
+  )
+    return false;
+  if (
+    worker &&
+    (!property.owned ||
+      !property.building ||
+      worker.npcId === apostle.id ||
+      !state.npcs.some((npc) => npc.id === worker.npcId) ||
+      state.family.some((person) => person.id === worker.npcId && !person.alive))
+  )
+    return false;
+
+  const ids = new Set<string>();
+  let activeOrders = 0;
+  let reservedFunds = 0;
+  for (const order of economy.orders) {
+    if (ids.has(order.id)) return false;
+    ids.add(order.id);
+    if (order.status === "available" || order.status === "accepted") {
+      activeOrders++;
+      reservedFunds += order.reward;
+    }
+  }
+  if (activeOrders > 1 || reservedFunds > economy.civicFunds) return false;
+
+  const holdings = [
+    state.gold,
+    state.merchantGold,
+    economy.civicFunds,
+    ...Object.values(economy.npcSavings),
+  ];
+  return holdings.every(count) && count(holdings.reduce((sum, coins) => sum + coins, 0));
+}
+
+/** Current snapshots are complete v2 states; missing fields are never repaired. */
+export function validateState(value: unknown): value is GameState {
+  try {
+    return (
+      baseState(value, ITEMS, SKILLS) &&
+      value.version === 2 &&
+      economy(value.economy) &&
+      economicRelations(value as unknown as GameState)
     );
   } catch {
     // Unknown input can contain getters or proxies; validation must never crash loading.
@@ -260,8 +367,49 @@ export function validateState(value: unknown): value is GameState {
   }
 }
 
+/** Validate the original format before any defaults can hide damaged data. */
+function validateLegacyState(value: unknown): value is ObjectValue {
+  return baseState(value, LEGACY_ITEMS, LEGACY_SKILLS) && value.version === 1;
+}
+
+/** Upgrade an independent copy, keeping saved time and all existing extensions. */
+export function migrateState(value: unknown): GameState | null {
+  try {
+    if (!object(value)) return null;
+    if (value.version === 2) {
+      if (!validateState(value)) return null;
+      const snapshot: unknown = structuredClone(value);
+      return validateState(snapshot) ? snapshot : null;
+    }
+    if (!validateLegacyState(value)) return null;
+    const legacy = structuredClone(value);
+    const legacyApostle = legacy.apostle as ObjectValue;
+    const legacyProperty = legacy.property as ObjectValue;
+    const snapshot = {
+      ...legacy,
+      version: 2,
+      apostle: {
+        ...legacyApostle,
+        skills: { ...(legacyApostle.skills as ObjectValue), cooking: 0, smithing: 0 },
+      },
+      inventory: { ...(legacy.inventory as ObjectValue), flour: 0 },
+      market: { ...(legacy.market as ObjectValue), flour: 8 },
+      economy: createEconomyState(
+        legacy.day as number,
+        legacyProperty.plantedAt as number | null,
+      ),
+    };
+    return validateState(snapshot) ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
 function clone(state: GameState): GameState {
-  return JSON.parse(JSON.stringify(state)) as GameState;
+  // Keep portable saves serializable without discarding extensions in IndexedDB
+  // or the nonbrowser store, both of which support structured values.
+  JSON.stringify(state);
+  return structuredClone(state);
 }
 
 function describe(error: unknown): string {
@@ -351,9 +499,10 @@ function consider(
   result: ReadResult,
 ): void {
   if (value === undefined || value === null) return;
-  if (validateState(value)) {
+  const migrated = migrateState(value);
+  if (migrated) {
     try {
-      const snapshot = clone(value);
+      const snapshot = clone(migrated);
       if (validateState(snapshot)) {
         result.candidates.push({ state: snapshot, backup });
         return;
@@ -449,9 +598,9 @@ async function writeDatabase(
     const store = transaction.objectStore(STORE);
     const request = store.get(CURRENT);
     request.onsuccess = () => {
-      const current: unknown = request.result;
+      const current = migrateState(request.result);
       const prior =
-        validateState(current) &&
+        current &&
         (!previous || (current.savedAt ?? 0) >= (previous.savedAt ?? 0))
           ? current
           : previous;
@@ -475,14 +624,15 @@ async function writeDatabase(
 export function saveGame(state: GameState): Promise<void> {
   return enqueue(async () => {
     lastPersistenceError = null;
-    if (!validateState(state)) {
+    const migrated = migrateState(state);
+    if (!migrated) {
       lastPersistenceError =
         "O estado da campanha está inválido e não pôde ser salvo.";
       throw new Error(lastPersistenceError);
     }
     let snapshot: GameState;
     try {
-      snapshot = clone(state);
+      snapshot = clone(migrated);
       if (!validateState(snapshot))
         throw new Error("Não foi possível preparar os dados da campanha.");
     } catch (error) {

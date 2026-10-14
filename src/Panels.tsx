@@ -38,6 +38,7 @@ import {
 } from "./data";
 import { store } from "./simulation";
 import type { PersistentGameState } from "./simulation";
+import { cropProfile, RECIPES } from "./economy";
 import "./panels.css";
 
 const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -48,6 +49,7 @@ const ITEM_GROUP: Record<ItemId, string> = {
   wood: "Materiais",
   stone: "Materiais",
   wheat: "Materiais",
+  flour: "Materiais",
   seed: "Materiais",
   ore: "Materiais",
 };
@@ -86,6 +88,11 @@ const PANEL_META = {
     title: "Mercado de Valeverde",
     eyebrow: "Comércio & provisões",
     icon: ShoppingBasket,
+  },
+  crafting: {
+    title: "Produção de Valeverde",
+    eyebrow: "Do campo à oficina",
+    icon: Hammer,
   },
   map: {
     title: "Terras de Valeverde",
@@ -205,6 +212,14 @@ export function ItemIcon({ id, size = 42 }: { id: ItemId; size?: number }) {
           />
         </g>
       ) : null}
+      {id === "flour" ? (
+        <g {...strokes}>
+          <path d="m17 12-3-5h20l-4 5 7 23c1 7-27 7-26 0Z" fill="#e8dcc0" />
+          <path d="M17 12h13m-12 4h10" stroke="#967951" />
+          <path d="M22 34h9m-8-5h7m-5 0V20m0 5-4-3m4 0 4-3" stroke="#b89858" />
+          <path d="M15 31c1-5 2-8 3-11" stroke="#f8f1df" strokeWidth="3" />
+        </g>
+      ) : null}
       {id === "herb" ? (
         <g {...strokes}>
           <path d="m16 41 13-30m-8 20-6-9m10-1 6 2" stroke="#617852" />
@@ -279,7 +294,7 @@ const npcAppearance = (
     npc.id === "matron" ? "#bab6a8" : npc.id === "mira" ? "#aa744c" : "#5e4a35",
   eyes: "#53664e",
   outfit: npc.color,
-  sex: npc.id === "mira" || npc.id === "matron" ? "female" : "male",
+  sex: ["mira", "matron", "farmer"].includes(npc.id) ? "female" : "male",
 });
 const nearObject = (state: GameState, id: string, radius = 190) => {
   const object = OBJECTS.find((item) => item.id === id);
@@ -300,6 +315,8 @@ const atTradingPost = (state: GameState) =>
 const money = (value: number) =>
   new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value);
 const act = (action: string) => store.act(action);
+const openCrafting = () =>
+  document.dispatchEvent(new CustomEvent("kg-panel", { detail: "crafting" }));
 
 function Notice({
   children,
@@ -586,6 +603,170 @@ function Character({ state }: { state: GameState }) {
   );
 }
 
+function VillageOrders({ state }: { state: GameState }) {
+  const canAccept =
+    isPlaying(state) &&
+    (nearObject(state, "sign") || nearObject(state, "market"));
+  const canDeliver = isPlaying(state) && nearObject(state, "market");
+  const statuses = {
+    available: "Disponível",
+    accepted: "Aceito por você",
+    fulfilled: "Entregue por você",
+    resolved: "Atendido pela vila",
+    failed: "Prazo encerrado",
+  };
+  return (
+    <>
+      <div className="panel-section-heading">
+        <h3>Abastecimento da vila</h3>
+        <ShoppingBasket size={18} />
+      </div>
+      <p className="panel-prose">
+        Pedidos do conselho usam mercadorias reais e o fundo da vila. A
+        recompensa é paga uma vez, na entrega ao mercado. Moradores podem
+        atender pedidos disponíveis; aceitar um pedido reserva essa tarefa para
+        você.
+      </p>
+      <div className="panel-summary panel-economy-summary">
+        <span>
+          Fundo cívico <b>{money(state.economy.civicFunds)} ouro</b>
+        </span>
+        <span>
+          Prosperidade <b>{state.economy.prosperity}/100</b>
+        </span>
+      </div>
+      {state.economy.orders.length ? (
+        <div className="panel-order-list">
+          {[...state.economy.orders].reverse().map((order) => {
+            const active =
+              order.status === "available" || order.status === "accepted";
+            const inTime = state.day < order.deadline;
+            const enough = state.inventory[order.item] >= order.quantity;
+            return (
+              <article key={order.id} className="panel-order-card">
+                <span
+                  className={`panel-status ${["fulfilled", "resolved"].includes(order.status) ? "panel-status-good" : ""}`}
+                >
+                  {statuses[order.status]}
+                </span>
+                <h3>{order.title}</h3>
+                <div className="panel-order-goods">
+                  <ItemIcon id={order.item} size={40} />
+                  <div>
+                    <strong>
+                      {order.quantity} × {ITEMS[order.item].name}
+                    </strong>
+                    <p>
+                      {state.inventory[order.item]} na mochila · entregar antes
+                      do dia {order.deadline}
+                    </p>
+                  </div>
+                </div>
+                <div className="panel-order-reward">
+                  <Coins size={15} /> {money(order.reward)} ouro
+                </div>
+                {order.status === "available" ? (
+                  <button
+                    className="panel-button panel-button-full"
+                    disabled={
+                      !canAccept ||
+                      !inTime ||
+                      state.economy.civicFunds < order.reward
+                    }
+                    onClick={() => act(`order-accept:${order.id}`)}
+                  >
+                    Aceitar pedido <ArrowRight size={15} />
+                  </button>
+                ) : order.status === "accepted" ? (
+                  <button
+                    className="panel-button panel-button-full"
+                    disabled={
+                      !canDeliver ||
+                      !inTime ||
+                      !enough ||
+                      state.economy.civicFunds < order.reward
+                    }
+                    onClick={() => act(`order-deliver:${order.id}`)}
+                  >
+                    Entregar ao mercado <ArrowRight size={15} />
+                  </button>
+                ) : null}
+                {active && !inTime ? (
+                  <p className="panel-hint">O prazo deste pedido terminou.</p>
+                ) : null}
+                {order.status === "accepted" && !enough ? (
+                  <p className="panel-hint">
+                    Faltam {order.quantity - state.inventory[order.item]}{" "}
+                    unidades para a entrega.
+                  </p>
+                ) : null}
+                {active && state.economy.civicFunds < order.reward ? (
+                  <p className="panel-hint">
+                    O fundo da vila não cobre esta recompensa.
+                  </p>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="panel-hint">
+          O conselho ainda não publicou pedidos. Novas necessidades surgem com
+          os dias.
+        </p>
+      )}
+      <Notice good={canDeliver}>
+        {canDeliver
+          ? "Você está no mercado e pode aceitar pedidos ou entregar suas mercadorias."
+          : canAccept
+            ? "Você pode aceitar pedidos aqui. Entregue as mercadorias no mercado."
+            : "Consulte o mural ou o mercado para aceitar. Faça as entregas no mercado."}
+      </Notice>
+    </>
+  );
+}
+
+function EconomicRecords({ state }: { state: GameState }) {
+  return (
+    <>
+      <p className="panel-prose">
+        Plantios, produção, manutenção, salários e abastecimento deixam um
+        registro do que entrou e saiu da economia.
+      </p>
+      {state.economy.ledger.length ? (
+        <div className="panel-ledger">
+          {[...state.economy.ledger].reverse().map((entry, index) => (
+            <article key={`${entry.day}-${entry.type}-${index}`}>
+              <div>
+                <span>Dia {entry.day}</span>
+                {entry.goldDelta !== 0 ? (
+                  <b
+                    className={
+                      entry.goldDelta > 0
+                        ? "panel-ledger-credit"
+                        : "panel-ledger-debit"
+                    }
+                  >
+                    {entry.goldDelta > 0 ? "+" : "−"}
+                    {money(Math.abs(entry.goldDelta))} ouro
+                  </b>
+                ) : null}
+              </div>
+              <p>{entry.text}</p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="panel-empty">
+          <ScrollText size={32} />
+          <h3>O trabalho começa aqui</h3>
+          <p>Seus próximos plantios e atividades aparecerão neste registro.</p>
+        </div>
+      )}
+    </>
+  );
+}
+
 function Journal({ state }: { state: GameState }) {
   const [tab, setTab] = useState("Missões");
   const questReady = state.quest === "complete";
@@ -596,7 +777,7 @@ function Journal({ state }: { state: GameState }) {
   return (
     <>
       <div className="panel-tabs" role="group" aria-label="Seções do diário">
-        {["Missões", "Memórias"].map((name) => (
+        {["Missões", "Memórias", "Registros"].map((name) => (
           <button
             key={name}
             aria-pressed={tab === name}
@@ -671,11 +852,12 @@ function Journal({ state }: { state: GameState }) {
             </Notice>
           ) : null}
           <p className="panel-hint">
-            Uma missão local está disponível nesta versão. A jornada continua
-            depois de concluí-la.
+            A missão da cripta é opcional. Você também pode servir Valeverde com
+            sua produção.
           </p>
+          <VillageOrders state={state} />
         </>
-      ) : (
+      ) : tab === "Memórias" ? (
         <>
           <p className="panel-prose">
             Encontros, conquistas e despedidas deixam marcas. Estas são as
@@ -708,6 +890,8 @@ function Journal({ state }: { state: GameState }) {
             )}
           </div>
         </>
+      ) : (
+        <EconomicRecords state={state} />
       )}
     </>
   );
@@ -1009,12 +1193,131 @@ function Family({ state }: { state: GameState }) {
   );
 }
 
+function Crafting({ state }: { state: GameState }) {
+  return (
+    <>
+      <div className="panel-summary">
+        <span>
+          <Hammer size={16} /> Produção artesanal
+        </span>
+        <span>
+          Energia{" "}
+          <b>
+            {Math.floor(state.apostle.stamina)} / {state.apostle.maxStamina}
+          </b>
+        </span>
+      </div>
+      <p className="panel-prose">
+        Transforme sua colheita em provisões e seus materiais em equipamento.
+        Cada receita exige a oficina indicada, ingredientes e energia.
+      </p>
+      <div className="panel-recipe-list">
+        {RECIPES.map((recipe) => {
+          const inputs = Object.entries(recipe.inputs) as [ItemId, number][];
+          const outputs = Object.entries(recipe.outputs) as [ItemId, number][];
+          const station = OBJECTS.find(
+            (object) => object.id === recipe.station,
+          );
+          const nearby = isPlaying(state) && nearObject(state, recipe.station);
+          const enoughItems = inputs.every(
+            ([id, amount]) => state.inventory[id] >= amount,
+          );
+          const enoughEnergy = state.apostle.stamina >= recipe.stamina;
+          return (
+            <article className="panel-recipe-card" key={recipe.id}>
+              <div className="panel-recipe-heading">
+                <div className="item-market-icon">
+                  <ItemIcon id={outputs[0][0]} size={42} />
+                </div>
+                <div>
+                  <span className="panel-overline">
+                    {station?.label || recipe.station}
+                  </span>
+                  <h3>{recipe.name}</h3>
+                </div>
+              </div>
+              <p>{recipe.description}</p>
+              <div className="panel-resource-cost">
+                {inputs.map(([id, amount]) => (
+                  <span
+                    key={id}
+                    className={
+                      state.inventory[id] >= amount ? "panel-cost-ready" : ""
+                    }
+                  >
+                    <ItemIcon id={id} size={27} /> {state.inventory[id]} /{" "}
+                    {amount} {ITEMS[id].name.toLowerCase()}
+                  </span>
+                ))}
+              </div>
+              <div className="panel-recipe-output">
+                <ArrowRight size={15} />
+                <span>
+                  {outputs
+                    .map(([id, amount]) => `${amount} × ${ITEMS[id].name}`)
+                    .join(" · ")}
+                </span>
+              </div>
+              <div className="panel-recipe-details">
+                <span>{recipe.stamina} energia</span>
+                <span>
+                  Prática de{" "}
+                  {SKILL_NAMES[recipe.skill]?.toLowerCase() || recipe.skill}
+                </span>
+              </div>
+              <button
+                className="panel-button panel-button-full"
+                disabled={!nearby || !enoughItems || !enoughEnergy}
+                onClick={() => act(`craft:${recipe.id}`)}
+              >
+                <Hammer size={15} /> {recipe.name}
+              </button>
+              <p className="panel-hint">
+                {!isPlaying(state)
+                  ? "A produção fica disponível durante a jornada de um apóstolo vivo."
+                  : !nearby
+                    ? `Aproxime-se de ${station?.label || recipe.station} para produzir.`
+                    : !enoughItems
+                      ? "Reúna os ingredientes indicados para esta receita."
+                      : !enoughEnergy
+                        ? `Você precisa de ${recipe.stamina} de energia para produzir.`
+                        : "Você está na oficina e tem os recursos necessários."}
+              </p>
+            </article>
+          );
+        })}
+      </div>
+      <div className="panel-footnote">
+        <Wheat size={16} />
+        <span>
+          Trigo → farinha no moinho → pão na padaria. A madeira alimenta a
+          produção.
+        </span>
+      </div>
+    </>
+  );
+}
+
 function PropertyPanel({ state }: { state: GameState }) {
   const property = state.property;
+  const economy = state.economy;
   const nearby = isPlaying(state) && nearObject(state, "property");
-  const growth =
-    property.plantedAt == null ? 0 : state.day - property.plantedAt;
-  const ready = property.plantedAt != null && growth >= 2;
+  const season = cropProfile(state.day);
+  const ready = economy.crop != null && state.day >= economy.crop.readyDay;
+  const farmer = state.npcs.find((npc) => npc.id === "farmer");
+  const farmerPerson = state.family.find((person) => person.id === "farmer");
+  const farmerAvailable =
+    !!farmer && farmerPerson?.alive !== false && state.apostle.id !== "farmer";
+  const nearWorker =
+    isPlaying(state) &&
+    (nearObject(state, "property") || (!!farmer && nearNpc(state, farmer)));
+  const worker = economy.worker;
+  const canHire =
+    farmerAvailable &&
+    nearWorker &&
+    property.owned &&
+    property.building &&
+    economy.condition >= 25;
   return (
     <>
       <div className="panel-property-art">
@@ -1079,6 +1382,16 @@ function PropertyPanel({ state }: { state: GameState }) {
               <span>Colheitas realizadas</span>
               <b>{property.harvests}</b>
             </div>
+            {property.building ? (
+              <div>
+                <span>Condição da moradia</span>
+                <b>{economy.condition}/100</b>
+              </div>
+            ) : null}
+            <div>
+              <span>Estação do plantio</span>
+              <b>{season.season}</b>
+            </div>
             <div>
               <span>Moradia</span>
               <b>{property.building ? "Construída" : "Terreno"}</b>
@@ -1103,13 +1416,23 @@ function PropertyPanel({ state }: { state: GameState }) {
               </strong>
               <p>
                 {property.plantedAt == null
-                  ? "1 semente por plantio"
+                  ? `1 semente · ${season.duration} dias · ${season.yield + Math.floor(state.apostle.skills.farming / 20)} trigo previsto`
                   : ready
-                    ? "Leve a colheita ao mercado"
-                    : `${Math.max(0, 2 - growth)} dias até a colheita`}
+                    ? `${economy.crop?.yield || 0} trigo pronto · estação: ${economy.crop?.season}`
+                    : `${Math.max(0, (economy.crop?.readyDay || state.day) - state.day)} dias · ${economy.crop?.yield || 0} trigo · ${economy.crop?.season}`}
               </p>
             </div>
           </div>
+          <p className="panel-hint">
+            O plantio guarda o prazo e o rendimento da estação. A mudança de
+            estação preserva a colheita já plantada.
+          </p>
+          <button
+            className="panel-button panel-button-outline panel-button-full"
+            onClick={openCrafting}
+          >
+            <Hammer size={15} /> Abrir produção <ArrowRight size={15} />
+          </button>
           <div className="panel-actions">
             <button
               className="panel-button"
@@ -1130,46 +1453,190 @@ function PropertyPanel({ state }: { state: GameState }) {
               <Wheat size={15} /> Colher trigo
             </button>
           </div>
+          {!property.building ? (
+            <>
+              <div className="panel-section-heading">
+                <h3>Construir uma casa</h3>
+                <Hammer size={18} />
+              </div>
+              <p className="panel-prose">
+                Uma moradia permanente na sua própria terra.
+              </p>
+              <div className="panel-resource-cost">
+                <span
+                  className={
+                    state.inventory.wood >= 12 ? "panel-cost-ready" : ""
+                  }
+                >
+                  <ItemIcon id="wood" size={27} /> {state.inventory.wood} / 12
+                  madeira
+                </span>
+                <span
+                  className={
+                    state.inventory.stone >= 8 ? "panel-cost-ready" : ""
+                  }
+                >
+                  <ItemIcon id="stone" size={27} /> {state.inventory.stone} / 8
+                  pedra
+                </span>
+                <span className={state.gold >= 60 ? "panel-cost-ready" : ""}>
+                  <Coins size={16} /> 60 ouro
+                </span>
+              </div>
+              <button
+                className="panel-button panel-button-full"
+                disabled={
+                  !nearby ||
+                  property.building ||
+                  state.inventory.wood < 12 ||
+                  state.inventory.stone < 8 ||
+                  state.gold < 60
+                }
+                onClick={() => act("build")}
+              >
+                <Hammer size={15} />
+                Construir moradia
+              </button>
+            </>
+          ) : null}
+          {property.building ? (
+            <>
+              <div className="panel-section-heading">
+                <h3>Manutenção da moradia</h3>
+                <House size={18} />
+              </div>
+              <div
+                className="panel-condition-track"
+                role="progressbar"
+                aria-label="Condição da moradia"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={economy.condition}
+              >
+                <span style={{ width: `${economy.condition}%` }} />
+              </div>
+              <p className="panel-prose">
+                A casa perde 3 pontos de condição por dia. Reparar recupera 25
+                pontos, até 100, usando 2 madeira e 1 pedra.
+              </p>
+              <div className="panel-resource-cost">
+                <span
+                  className={
+                    state.inventory.wood >= 2 ? "panel-cost-ready" : ""
+                  }
+                >
+                  <ItemIcon id="wood" size={27} /> {state.inventory.wood} / 2
+                  madeira
+                </span>
+                <span
+                  className={
+                    state.inventory.stone >= 1 ? "panel-cost-ready" : ""
+                  }
+                >
+                  <ItemIcon id="stone" size={27} /> {state.inventory.stone} / 1
+                  pedra
+                </span>
+              </div>
+              <button
+                className="panel-button panel-button-full"
+                disabled={
+                  !nearby ||
+                  economy.condition >= 100 ||
+                  state.inventory.wood < 2 ||
+                  state.inventory.stone < 1
+                }
+                onClick={() => act("repair")}
+              >
+                <Hammer size={15} /> Reparar a moradia
+              </button>
+            </>
+          ) : null}
           <div className="panel-section-heading">
-            <h3>Construir uma casa</h3>
-            <Hammer size={18} />
+            <h3>Trabalho na parcela</h3>
+            <Users size={18} />
           </div>
-          <p className="panel-prose">
-            Uma moradia permanente na sua própria terra.
+          {worker ? (
+            <>
+              <div className="panel-worker-card">
+                {farmer ? (
+                  <Portrait person={npcAppearance(farmer)} size={52} />
+                ) : (
+                  <Users size={30} />
+                )}
+                <div>
+                  <strong>{farmer?.name || "Lina"}</strong>
+                  <p>
+                    {worker.wage} ouro por dia · contratada no dia{" "}
+                    {worker.hiredDay}
+                  </p>
+                </div>
+              </div>
+              <div className="panel-property-stats">
+                <div>
+                  <span>Lealdade</span>
+                  <b>{worker.loyalty}/100</b>
+                </div>
+                <div>
+                  <span>Dias sem salário</span>
+                  <b>{worker.unpaidDays}/3</b>
+                </div>
+                <div>
+                  <span>Poupança da trabalhadora</span>
+                  <b>{money(economy.npcSavings[worker.npcId] || 0)} ouro</b>
+                </div>
+              </div>
+              {worker.unpaidDays > 0 ? (
+                <Notice>
+                  Há salários não pagos. Lina encerra o contrato após três dias
+                  sem receber.
+                </Notice>
+              ) : null}
+              {economy.condition < 25 ? (
+                <Notice>
+                  O cultivo de Lina está suspenso até reparar a casa. O salário
+                  diário continua previsto.
+                </Notice>
+              ) : null}
+              <button
+                className="panel-button panel-button-outline panel-button-full"
+                disabled={!nearWorker}
+                onClick={() => act("dismiss-worker")}
+              >
+                Encerrar contrato
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="panel-prose">
+                Lina pode plantar e colher por 5 ouro por dia, usando as
+                sementes da sua mochila. A parcela precisa de uma casa com pelo
+                menos 25 pontos de condição.
+              </p>
+              <button
+                className="panel-button panel-button-full"
+                disabled={!canHire}
+                onClick={() => act("hire:farmer")}
+              >
+                <Users size={15} /> Contratar Lina · 5 ouro / dia
+              </button>
+              {!property.building || economy.condition < 25 ? (
+                <p className="panel-hint">
+                  Prepare uma moradia com condição mínima de 25 para contratar.
+                </p>
+              ) : null}
+              {!farmerAvailable ? (
+                <p className="panel-hint">
+                  Lina não está disponível para este contrato.
+                </p>
+              ) : null}
+            </>
+          )}
+          <p className="panel-hint">
+            O salário é pago a partir do dia seguinte e entra na poupança de
+            Lina. Cada pagamento aumenta a lealdade em 2; cada dia sem salário
+            reduz em 15. Três dias sem pagamento encerram o contrato. Encontre
+            Lina ou vá à parcela para tratar do contrato.
           </p>
-          <div className="panel-resource-cost">
-            <span
-              className={state.inventory.wood >= 12 ? "panel-cost-ready" : ""}
-            >
-              <ItemIcon id="wood" size={27} /> {state.inventory.wood} / 12
-              madeira
-            </span>
-            <span
-              className={state.inventory.stone >= 8 ? "panel-cost-ready" : ""}
-            >
-              <ItemIcon id="stone" size={27} /> {state.inventory.stone} / 8
-              pedra
-            </span>
-            <span className={state.gold >= 60 ? "panel-cost-ready" : ""}>
-              <Coins size={16} /> 60 ouro
-            </span>
-          </div>
-          <button
-            className="panel-button panel-button-full"
-            disabled={
-              !nearby ||
-              property.building ||
-              state.inventory.wood < 12 ||
-              state.inventory.stone < 8 ||
-              state.gold < 60
-            }
-            onClick={() => act("build")}
-          >
-            <Hammer size={15} />
-            {property.building
-              ? "Sua casa está construída"
-              : "Construir moradia"}
-          </button>
         </>
       )}
       {!nearby ? (
@@ -1209,6 +1676,43 @@ function Market({ state }: { state: GameState }) {
           Você pode negociar aqui. Os preços refletem a oferta e sua negociação.
         </Notice>
       )}
+      <div
+        className="panel-production-chain"
+        role="group"
+        aria-label="Estoque da cadeia de abastecimento"
+      >
+        <div>
+          <ItemIcon id="wheat" size={32} />
+          <span>
+            Trigo<b>{state.market.wheat}</b>
+          </span>
+        </div>
+        <ArrowRight size={14} />
+        <div>
+          <ItemIcon id="flour" size={32} />
+          <span>
+            Farinha<b>{state.market.flour}</b>
+          </span>
+        </div>
+        <ArrowRight size={14} />
+        <div>
+          <ItemIcon id="bread" size={32} />
+          <span>
+            Pão<b>{state.market.bread}</b>
+          </span>
+        </div>
+      </div>
+      <p className="panel-hint">
+        Estoque atual da vila. Moinhos consomem trigo; padarias consomem farinha
+        e madeira. A prosperidade está em {state.economy.prosperity}/100 e afeta
+        os preços conforme pedidos são atendidos ou fracassam.
+      </p>
+      <button
+        className="panel-button panel-button-outline panel-button-full"
+        onClick={openCrafting}
+      >
+        <Hammer size={15} /> Abrir produção <ArrowRight size={15} />
+      </button>
       <div className="panel-tabs" role="group" aria-label="Tipo de negociação">
         <button
           aria-pressed={buying}
@@ -1608,12 +2112,13 @@ function Help({ state }: { state: GameState }) {
           moradores.
         </li>
         <li>
-          <strong>Prepare sua mochila.</strong> Compre pão e uma espada no
-          mercado.
+          <strong>Prepare sua mochila.</strong> Compre provisões no mercado,
+          reúna materiais e conheça o moinho, a padaria e a forja.
         </li>
         <li>
-          <strong>Encontre um propósito.</strong> Consulte o mural e visite a
-          Cripta das Raízes.
+          <strong>Encontre um propósito.</strong> Consulte o mural para aceitar
+          pedidos de abastecimento ou a missão da Cripta das Raízes. Entregue os
+          pedidos no mercado.
         </li>
         <li>
           <strong>Crie raízes.</strong> Negocie, cultive sua terra e fortaleça
@@ -1627,19 +2132,59 @@ function Help({ state }: { state: GameState }) {
       <p className="panel-prose">
         Agora é {calendar.season}, dia {calendar.day}, mês {calendar.month} de{" "}
         {calendar.year}. O tempo avança enquanto você explora o mundo e pausa
-        nos painéis. Plantas precisam de dois dias para crescer; sua família e
-        seus laços amadurecem com a convivência.
+        nos painéis. O plantio guarda o prazo e a colheita da estação; sua
+        família e seus laços amadurecem com a convivência.
+      </p>
+      <div
+        className="panel-season-table"
+        role="table"
+        aria-label="Prazo e rendimento do trigo por estação"
+      >
+        <div role="row">
+          <span role="columnheader">Estação</span>
+          <span role="columnheader">Prazo</span>
+          <span role="columnheader">Trigo</span>
+        </div>
+        {[1, 91, 181, 271].map((day) => {
+          const crop = cropProfile(day);
+          return (
+            <div role="row" key={crop.season}>
+              <span role="cell">{crop.season}</span>
+              <span role="cell">{crop.duration} dias</span>
+              <span role="cell">{crop.yield}</span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="panel-hint">
+        Rendimentos base; a prática de agricultura acrescenta trigo à colheita.
+      </p>
+      <div className="panel-section-heading">
+        <h3>Produção e cuidado</h3>
+        <Hammer size={17} />
+      </div>
+      <p className="panel-prose">
+        No moinho, 2 trigo viram 1 farinha por 6 energia. Na padaria, 1 farinha
+        e 1 madeira viram 2 pães por 8 energia. Na forja, 3 minério e 2 madeira
+        viram 1 espada por 14 energia. Abra Produção no mercado ou na
+        propriedade e vá à oficina correspondente para trabalhar.
+      </p>
+      <p className="panel-prose">
+        Casas perdem 3 pontos de condição por dia. Reparos usam 2 madeira e 1
+        pedra para restaurar 25 pontos. Lina trabalha na parcela construída por
+        5 ouro por dia, plantando e colhendo com sementes reais. Mantenha
+        materiais, sementes e ouro para sustentar sua produção.
       </p>
       <div className="panel-section-heading">
         <h3>Sobre esta versão</h3>
         <ScrollText size={17} />
       </div>
       <p className="panel-prose">
-        Valeverde é uma experiência local jogável: uma vila, uma cripta, um
-        mercado, uma propriedade e uma missão. Há combate, coleta, cultivo,
-        comércio, relações, casamento e descendência. Expansão territorial,
-        política entre reinos e missões geradas por inteligência artificial
-        ainda não estão disponíveis.
+        Kingdom Gods alpha 0.2 inclui uma vila, uma cripta, mercado, moinho,
+        padaria, forja e uma propriedade. Há produção, cultivo sazonal,
+        manutenção, contrato de trabalho, pedidos de abastecimento, combate,
+        relações e sucessão familiar. A campanha é individual e salva neste
+        navegador; multiplayer permanece para uma versão futura.
       </p>
       <div className="panel-save-row">
         <div>
@@ -1769,6 +2314,8 @@ export function GamePanel({
             <PropertyPanel state={state} />
           ) : panel === "market" ? (
             <Market state={state} />
+          ) : panel === "crafting" ? (
+            <Crafting state={state} />
           ) : panel === "map" ? (
             <WorldMap state={state} />
           ) : (

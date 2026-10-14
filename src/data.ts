@@ -39,9 +39,17 @@ export const ITEMS: Record<
     weight: 1,
     icon: "wheat",
   },
+  flour: {
+    name: "Farinha de trigo",
+    description: "Moída a partir do trigo. Use na padaria para produzir pão.",
+    price: 13,
+    weight: 0.6,
+    icon: "flour",
+  },
   seed: {
     name: "Sementes de trigo",
-    description: "Plante na sua parcela. Crescem em dois dias.",
+    description:
+      "Plante na sua parcela. O prazo e a colheita dependem da estação.",
     price: 5,
     weight: 0.1,
     icon: "seed",
@@ -69,6 +77,24 @@ export const ITEMS: Record<
   },
 };
 export const OBJECTS: WorldObject[] = [
+  {
+    id: "mill",
+    kind: "mill",
+    x: 1260,
+    y: 430,
+    label: "Moinho de Valeverde",
+    w: 190,
+    h: 170,
+  },
+  {
+    id: "bakery",
+    kind: "bakery",
+    x: 1230,
+    y: 1410,
+    label: "Padaria do Carvalho",
+    w: 175,
+    h: 140,
+  },
   {
     id: "orphanage",
     kind: "house",
@@ -188,4 +214,6 @@ export const SKILL_NAMES: Record<string, string> = {
   trading: "Negociação",
   building: "Construção",
   leadership: "Liderança",
+  cooking: "Culinária",
+  smithing: "Ferraria",
 };

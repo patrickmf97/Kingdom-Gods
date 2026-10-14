@@ -24,6 +24,8 @@ const buildingKeys: Record<string, string> = {
   orphanage: "house-orphanage",
   market: "market",
   forge: "forge",
+  mill: "mill",
+  bakery: "bakery",
   inn: "house-inn",
   house1: "house-house1",
   property: "farm",
@@ -49,7 +51,12 @@ class KingdomScene extends Phaser.Scene {
   private objects: Phaser.GameObjects.GameObject[] = [];
   private actors = new Map<string, Actor>();
   private objectSprites = new Map<string, Phaser.GameObjects.Image>();
+  private ground?: Phaser.GameObjects.Image;
+  private foliage: Phaser.GameObjects.Image[] = [];
+  private season = "";
+  private millSails?: Phaser.GameObjects.Image;
   private propertyHouse?: Phaser.GameObjects.Image;
+  private propertyStatus?: Phaser.GameObjects.Text;
   private player?: Actor;
   private appearance = "";
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -115,7 +122,12 @@ class KingdomScene extends Phaser.Scene {
     this.objects = [];
     this.actors.clear();
     this.objectSprites.clear();
+    this.ground = undefined;
+    this.foliage = [];
+    this.season = "";
+    this.millSails = undefined;
     this.propertyHouse = undefined;
+    this.propertyStatus = undefined;
     this.player = undefined;
     this.appearance = "";
     this.motes = [];
@@ -127,7 +139,7 @@ class KingdomScene extends Phaser.Scene {
     const village = this.activeZone === "village";
     const w = village ? WORLD_W : 900;
     const h = village ? WORLD_H : 900;
-    this.keep(
+    this.ground = this.keep(
       this.add
         .image(0, 0, village ? "village-ground" : `${this.activeZone}-ground`)
         .setOrigin(0)
@@ -145,9 +157,10 @@ class KingdomScene extends Phaser.Scene {
             .setDepth(item.y),
         );
         if (item.scale) sprite.setScale(item.scale);
+        this.foliage.push(sprite);
       });
       OBJECTS.forEach((object) => this.addWorldObject(object));
-      if (this.textures.exists("property-house"))
+      if (this.textures.exists("property-house")) {
         this.propertyHouse = this.keep(
           this.add
             .image(1990, 792, "property-house")
@@ -155,6 +168,22 @@ class KingdomScene extends Phaser.Scene {
             .setDepth(792)
             .setVisible(store.state.property.building),
         );
+        this.propertyStatus = this.keep(
+          this.add
+            .text(1990, 807, "", {
+              fontFamily: "Arial, sans-serif",
+              fontSize: "10px",
+              color: "#f7d1a4",
+              stroke: "#394438",
+              strokeThickness: 3,
+              backgroundColor: "#354436dd",
+              padding: { x: 5, y: 3 },
+            })
+            .setOrigin(0.5)
+            .setDepth(890)
+            .setVisible(false),
+        );
+      }
     } else {
       const door = this.keep(
         this.add
@@ -247,6 +276,7 @@ class KingdomScene extends Phaser.Scene {
         .setScrollFactor(0)
         .setDepth(9000),
     );
+    this.updateSeason();
     this.resize();
     if (this.scenic) {
       this.cameras.main.stopFollow();
@@ -281,15 +311,27 @@ class KingdomScene extends Phaser.Scene {
           .setDepth(object.y),
       ),
     );
+    if (object.id === "tree1")
+      this.foliage.push(this.objectSprites.get(object.id)!);
+    if (object.id === "mill") {
+      this.millSails = this.keep(
+        this.add
+          .image(object.x - 1, object.y - 106, "mill-sails")
+          .setDepth(object.y + 1)
+          .setRotation(Math.PI / 9),
+      );
+    }
     if (
-      ["orphanage", "market", "forge", "inn", "property", "dungeon"].includes(
-        object.id,
-      )
+      [
+        "orphanage", "market", "forge", "mill", "bakery", "inn", "property", "dungeon",
+      ].includes(object.id)
     ) {
       const labels: Record<string, string> = {
         orphanage: "ORFANATO",
         market: "MERCADO",
         forge: "FORJA",
+        mill: "MOINHO",
+        bakery: "PADARIA",
         inn: "ESTALAGEM",
         property: "PARCELA DO MOINHO",
         dungeon: "CRIPTA DAS RAÍZES",
@@ -414,6 +456,12 @@ class KingdomScene extends Phaser.Scene {
           );
           actor.label.setFontSize(10);
         }
+        const role =
+          store.state.economy.worker?.npcId === npc.id
+            ? "Trabalhadora · parcela"
+            : npc.role;
+        const label = `${npc.name}\n${role}`;
+        if (actor.label.text !== label) actor.label.setText(label);
         this.positionActor(actor, npc.x, npc.y, time);
       });
     if (this.activeZone === "dungeon") {
@@ -643,7 +691,8 @@ class KingdomScene extends Phaser.Scene {
     }
     // Doors lie just below a building's footprint, leaving all interaction anchors reachable.
     for (const object of OBJECTS) {
-      if (!["house", "forge", "market"].includes(object.kind)) continue;
+      if (!["house", "forge", "market", "mill", "bakery"].includes(object.kind))
+        continue;
       const half = (object.w || 150) / 2 - 8;
       const top = object.y - (object.h || 120) + 34;
       if (
@@ -716,12 +765,26 @@ class KingdomScene extends Phaser.Scene {
     this.syncActors(time);
     if (this.activeZone === "village") {
       const farm = this.objectSprites.get("property");
-      if (farm && this.textures.exists("farm-empty"))
-        farm.setTexture(
-          store.state.property.plantedAt !== null ? "farm" : "farm-empty",
-        );
+      const planted = store.state.property.plantedAt !== null;
+      const ready =
+        planted &&
+        store.state.day >=
+          (store.state.economy.crop?.readyDay ?? store.state.property.plantedAt! + 2);
+      const farmKey = planted ? (ready ? "farm" : "farm-growing") : "farm-empty";
+      if (farm && farm.texture.key !== farmKey) farm.setTexture(farmKey);
       this.propertyHouse?.setVisible(store.state.property.building);
+      const condition = store.state.economy.condition;
+      const worn = store.state.property.building && condition < 25;
+      this.propertyHouse?.setTint(worn ? 0xaaa18c : 0xffffff);
+      if (this.propertyStatus) {
+        const status = `Precisa de reparos · ${Math.round(condition)}%`;
+        if (this.propertyStatus.text !== status)
+          this.propertyStatus.setText(status);
+        this.propertyStatus.setVisible(worn);
+      }
+      if (this.millSails && !blockedInput()) this.millSails.rotation += dt * 0.16;
     }
+    this.updateSeason();
     if (this.scenic) {
       this.cameras.main.centerOn(
         1190 + Math.sin(time / 50000) * 75,
@@ -741,16 +804,43 @@ class KingdomScene extends Phaser.Scene {
     this.motes.forEach((mote, index) => {
       const seed = mote.getData("seed") as number;
       const w = this.activeZone === "village" ? WORLD_W : 900;
+      const winter = this.activeZone === "village" && this.season === "Inverno";
+      const autumn = this.activeZone === "village" && this.season === "Outono";
       mote.setPosition(
         (mote.getData("startX") +
-          time / 190 +
+          time / (winter ? 450 : 190) +
           Math.sin(time / 3700 + seed) * 17) %
           w,
-        mote.getData("startY") + Math.sin(time / 2200 + seed) * 30,
+        winter || autumn
+          ? (mote.getData("startY") + time / (winter ? 65 : 100)) % WORLD_H
+          : mote.getData("startY") + Math.sin(time / 2200 + seed) * 30,
       );
       mote.setAlpha(
-        (0.16 + Math.sin(time / 1600 + index) * 0.11) * (dark ? 1.8 : 1),
+        (0.16 + Math.sin(time / 1600 + index) * 0.11) * (winter || dark ? 1.8 : 1),
       );
+    });
+  }
+
+  private updateSeason() {
+    if (this.activeZone !== "village") return;
+    const season = store.getCalendar().season;
+    if (season === this.season) return;
+    this.season = season;
+    const palette: Record<
+      string,
+      { ground: number; leaves: number; mote: number }
+    > = {
+      Primavera: { ground: 0xffffff, leaves: 0xffffff, mote: 0xf4ded9 },
+      Verão: { ground: 0xfff3d4, leaves: 0xe8f1c8, mote: 0xffdda0 },
+      Outono: { ground: 0xf4d4a8, leaves: 0xffb57a, mote: 0xd8a064 },
+      Inverno: { ground: 0xd5e2ee, leaves: 0xabc4d0, mote: 0xf0f6ff },
+    };
+    const colors = palette[season] || palette.Primavera;
+    this.ground?.setTint(colors.ground);
+    this.foliage.forEach((sprite) => sprite.setTint(colors.leaves));
+    this.motes.forEach((mote, index) => {
+      const tint = season === "Inverno" && index % 3 !== 0 ? 0xffffff : colors.mote;
+      mote.setFillStyle(tint, 0.65);
     });
   }
 
