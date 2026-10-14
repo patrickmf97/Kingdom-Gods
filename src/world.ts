@@ -3,6 +3,7 @@ import { store } from "./simulation";
 import { OBJECTS, WORLD_W, WORLD_H } from "./data";
 import { generateArt, createCharacterTexture, villageDecor } from "./art";
 import type { Dialog, GameState, Npc, WorldObject, Zone } from "./types";
+import { findPath, nearestWalkable, objectApproach, type Point, type NavigationContext } from "./navigation";
 
 export const worldInput = {
   x: 0,
@@ -60,8 +61,22 @@ class KingdomScene extends Phaser.Scene {
   private player?: Actor;
   private appearance = "";
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
-  private destination: { x: number; y: number; interact?: string } | null =
-    null;
+  private destination: { x: number; y: number; interact?: string; path: Point[] } | null = null;
+  private routeBlockedFor = 0;
+  private navigate = (event: Event) => {
+    if (store.state.phase !== "playing" || store.state.zone !== "village") return;
+    const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+    if (!id || !OBJECTS.some((object) => object.id === id)) return;
+    // The map closes in the same React update; accept its event before the overlay disappears.
+    worldInput.x = 0;
+    worldInput.y = 0;
+    this.planRoute(objectApproach(id, this.navigationContext()));
+  };
+  private releaseInput = () => {
+    worldInput.x = 0;
+    worldInput.y = 0;
+    this.input.keyboard?.resetKeys();
+  };
   private destinationRing?: Phaser.GameObjects.Graphics;
   private marker?: Phaser.GameObjects.Container;
   private markerText?: Phaser.GameObjects.Text;
@@ -103,9 +118,14 @@ class KingdomScene extends Phaser.Scene {
     worldInput.attack = () => this.attack();
     worldInput.interact = () => this.interact();
     worldInput.dodge = () => this.dodge();
+    document.addEventListener("kg-navigate", this.navigate);
+    window.addEventListener("blur", this.releaseInput);
     this.rebuild();
     this.scale.on("resize", () => this.resize());
     this.events.once("shutdown", () => {
+      document.removeEventListener("kg-navigate", this.navigate);
+      window.removeEventListener("blur", this.releaseInput);
+      this.releaseInput();
       worldInput.attack = () => {};
       worldInput.interact = () => {};
       worldInput.dodge = () => {};
@@ -154,7 +174,7 @@ class KingdomScene extends Phaser.Scene {
           this.add
             .image(item.x, item.y, item.key)
             .setOrigin(0.5, 1)
-            .setDepth(item.y),
+            .setDepth(item.y - 10 * (item.scale || 1)),
         );
         if (item.scale) sprite.setScale(item.scale);
         this.foliage.push(sprite);
@@ -163,14 +183,14 @@ class KingdomScene extends Phaser.Scene {
       if (this.textures.exists("property-house")) {
         this.propertyHouse = this.keep(
           this.add
-            .image(1990, 792, "property-house")
+            .image(2090, 790, "property-house")
             .setOrigin(0.5, 1)
-            .setDepth(792)
+            .setDepth(778)
             .setVisible(store.state.property.building),
         );
         this.propertyStatus = this.keep(
           this.add
-            .text(1990, 807, "", {
+            .text(2090, 805, "", {
               fontFamily: "Arial, sans-serif",
               fontSize: "10px",
               color: "#f7d1a4",
@@ -308,16 +328,29 @@ class KingdomScene extends Phaser.Scene {
         this.add
           .image(object.x, object.y, key)
           .setOrigin(0.5, 1)
-          .setDepth(object.y),
+          .setDepth(this.objectDepth(object)),
       ),
     );
+    if (object.id === "property") {
+      // Soil and crops share a ground layer. Each solid boundary sorts at its own feet.
+      for (const [key, depth] of [
+        ["farm-shed", 750], ["farm-fence-back", 742], ["farm-fence-front", 874],
+      ] as const) {
+        this.keep(this.add.image(object.x, object.y, key).setOrigin(0.5, 1).setDepth(depth));
+      }
+      for (const x of [1790, 2010]) {
+        for (let y = 750; y <= 870; y += 24) {
+          this.keep(this.add.image(x, y, "farm-fence-side").setOrigin(0.5, 1).setDepth(y));
+        }
+      }
+    }
     if (object.id === "tree1")
       this.foliage.push(this.objectSprites.get(object.id)!);
     if (object.id === "mill") {
       this.millSails = this.keep(
         this.add
           .image(object.x - 1, object.y - 106, "mill-sails")
-          .setDepth(object.y + 1)
+          .setDepth(this.objectDepth(object) + 1)
           .setRotation(Math.PI / 9),
       );
     }
@@ -351,6 +384,15 @@ class KingdomScene extends Phaser.Scene {
           .setAlpha(0.9),
       );
     }
+  }
+
+  private objectDepth(object: WorldObject): number {
+    // Transparent padding is not a wall: sort at the painted front edge.
+    const frontOffsets: Record<string, number> = {
+      orphanage: -10, inn: -10, house1: -10, market: -10,
+      forge: -12, mill: -18, bakery: -12, tree1: -10,
+    };
+    return object.id === "property" ? 0 : object.y + (frontOffsets[object.id] || 0);
   }
 
   private makeActor(
@@ -429,9 +471,17 @@ class KingdomScene extends Phaser.Scene {
       this.positionActor(this.player!, p.x, p.y, time, true);
     }
     const present = new Set(["player"]);
-    store.state.npcs
-      .filter((npc) => this.npcVisible(npc))
-      .forEach((npc, i) => {
+    const visibleNpcs = store.state.npcs.filter((npc) => this.npcVisible(npc));
+    const nearby = visibleNpcs.filter((npc) => Math.hypot(npc.x - p.x, npc.y - p.y) < 240)
+      .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
+    const interactionTarget = this.scenic ? null : store.getNearest();
+    const labelled: Npc[] = [];
+    for (const npc of nearby) {
+      if (labelled.length >= 3) break;
+      if (labelled.every((other) => Math.abs(npc.x - other.x) > 115 || Math.abs(npc.y - other.y) > 80))
+        labelled.push(npc);
+    }
+    visibleNpcs.forEach((npc, i) => {
         present.add(npc.id);
         let actor = this.actors.get(npc.id);
         if (!actor) {
@@ -460,9 +510,12 @@ class KingdomScene extends Phaser.Scene {
           store.state.economy.worker?.npcId === npc.id
             ? "Trabalhadora · parcela"
             : npc.role;
-        const label = `${npc.name}\n${role}`;
+        const close = nearby[0]?.id === npc.id && Math.hypot(npc.x - p.x, npc.y - p.y) < 140;
+        const label = close ? `${npc.name}\n${role}` : npc.name;
         if (actor.label.text !== label) actor.label.setText(label);
         this.positionActor(actor, npc.x, npc.y, time);
+        actor.label.setVisible(!this.scenic && labelled.some((person) => person.id === npc.id) &&
+          !(interactionTarget?.id === npc.id && interactionTarget.distance <= 120));
       });
     if (this.activeZone === "dungeon") {
       store.state.enemies.forEach((enemy) => {
@@ -525,7 +578,7 @@ class KingdomScene extends Phaser.Scene {
         x,
         y - (player ? 75 : actor.label.text.includes("\n") ? 76 : 63) + bob,
       )
-      .setDepth(y + 5);
+      .setDepth(8005);
     actor.x = x;
     actor.y = y;
   }
@@ -548,13 +601,13 @@ class KingdomScene extends Phaser.Scene {
 
   private interact(id?: string) {
     if (!this.canAct()) return;
+    this.clearRoute();
     const nearest = store.getNearest();
     if (!id && (!nearest || nearest.distance > 120)) {
       store.notify("Aproxime-se de alguém ou de um lugar para interagir.");
       return;
     }
     const dialog: Dialog | null = store.interact(id || nearest!.id);
-    this.destination = null;
     if (dialog)
       document.dispatchEvent(
         new CustomEvent("kg-interact", { detail: dialog }),
@@ -562,7 +615,9 @@ class KingdomScene extends Phaser.Scene {
   }
 
   private attack() {
-    if (!this.canAct() || this.time.now - this.attackTime < 280) return;
+    if (!this.canAct()) return;
+    this.clearRoute();
+    if (this.time.now - this.attackTime < 280) return;
     this.attackTime = this.time.now;
     const p = store.state.apostle;
     const facing = this.player?.sprite.flipX ? -1 : 1;
@@ -586,13 +641,13 @@ class KingdomScene extends Phaser.Scene {
       duration: 220,
       onComplete: () => effect.destroy(),
     });
-    this.destination = null;
+    this.clearRoute();
   }
 
   private dodge() {
     if (!this.canAct()) return;
+    this.clearRoute();
     const p = store.state.apostle;
-    const before = { x: p.x, y: p.y };
     const stamina = p.stamina;
     store.dodge();
     if (p.stamina >= stamina) return;
@@ -606,10 +661,6 @@ class KingdomScene extends Phaser.Scene {
       worldInput.y;
     if (!x && !y) x = this.player?.sprite.flipX ? -1 : 1;
     store.move(x, y, 0.36);
-    if (!this.allowed(p.x, p.y)) {
-      p.x = before.x;
-      p.y = before.y;
-    }
     if (this.player)
       this.tweens.add({
         targets: this.player.sprite,
@@ -617,7 +668,54 @@ class KingdomScene extends Phaser.Scene {
         duration: 100,
         yoyo: true,
       });
+    this.clearRoute();
+  }
+
+  private navigationContext(): NavigationContext {
+    return { zone: store.state.zone, building: store.state.property.building };
+  }
+
+  private clearRoute() {
     this.destination = null;
+    this.routeBlockedFor = 0;
+    this.destinationRing?.clear();
+  }
+
+  private planRoute(point: Point, interact?: string) {
+    const goal = nearestWalkable(point, this.navigationContext());
+    if (Math.hypot(goal.x - store.state.apostle.x, goal.y - store.state.apostle.y) < 1) {
+      this.clearRoute();
+      if (interact) this.interact(interact);
+      return;
+    }
+    const path = findPath(store.state.apostle, goal, this.navigationContext());
+    if (!path.length) {
+      this.clearRoute();
+      store.notify("Não há um caminho livre até esse lugar. Escolha outro acesso.");
+      return;
+    }
+    const endpoint = path[path.length - 1];
+    this.destination = { ...endpoint, path, interact };
+    this.routeBlockedFor = 0;
+    this.drawRoute();
+  }
+
+  private drawRoute() {
+    const graphics = this.destinationRing?.clear();
+    if (!graphics || !this.destination) return;
+    const points = [store.state.apostle, ...this.destination.path];
+    graphics.lineStyle(1.5, 0xf6dfa1, 0.5);
+    // Small dots keep the route readable without painting over the village.
+    graphics.fillStyle(0xf6dfa1, 0.6);
+    for (let i = 1; i < points.length; i++) {
+      const start = points[i - 1], end = points[i];
+      const distance = Math.hypot(end.x - start.x, end.y - start.y);
+      for (let at = 15; at < distance; at += 28) {
+        graphics.fillCircle(start.x + (end.x - start.x) * at / distance,
+          start.y + (end.y - start.y) * at / distance, 1.7);
+      }
+    }
+    graphics.strokeEllipse(this.destination.x, this.destination.y, 20, 10).setDepth(2);
   }
 
   private click(pointer: Phaser.Input.Pointer) {
@@ -626,126 +724,79 @@ class KingdomScene extends Phaser.Scene {
       this.attack();
       return;
     }
-    if (pointer.wasTouch && document.body.dataset.joystick === "true") return;
+    if (pointer.wasTouch && (Math.hypot(worldInput.x, worldInput.y) > 0.05 ||
+      document.body.dataset.joystick === "true")) return;
     const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
     const p = store.state.apostle;
-    let target: { x: number; y: number; id: string } | undefined;
+    let target: (Point & { id: string }) | undefined;
     if (this.activeZone === "village") {
-      const object = OBJECTS.find(
-        (obj) =>
-          Math.abs(point.x - obj.x) < (obj.w || 65) / 2 &&
-          point.y > obj.y - (obj.h || 75) &&
-          point.y < obj.y + 30,
-      );
-      if (object) target = { x: object.x, y: object.y + 46, id: object.id };
+      const object = OBJECTS.find((obj) =>
+        Math.abs(point.x - obj.x) < (obj.w || 65) / 2 &&
+        point.y > obj.y - (obj.h || 75) && point.y < obj.y + 30);
+      if (object) target = { ...objectApproach(object.id, this.navigationContext()), id: object.id };
+      if (store.state.property.building && point.x >= 2010 && point.x <= 2170 &&
+        point.y >= 650 && point.y <= 815)
+        target = { x: 2090, y: 815, id: "property" };
     } else if (Math.hypot(point.x - 450, point.y - 790) < 75)
       target = { x: 450, y: 755, id: "exit" };
-    const npc = store.state.npcs.find(
-      (person) =>
-        this.npcVisible(person) &&
-        Math.hypot(point.x - person.x, point.y - person.y + 25) < 38,
-    );
-    if (npc) target = { x: npc.x, y: npc.y + 50, id: npc.id };
-    if (target && Math.hypot(p.x - target.x, p.y - target.y) < 120) {
+    const npc = store.state.npcs.find((person) => this.npcVisible(person) &&
+      Math.hypot(point.x - person.x, point.y - person.y + 25) < 38);
+    if (npc) target = { x: npc.x, y: npc.y + 40, id: npc.id };
+    const source = target && (store.state.npcs.find((person) => person.id === target!.id) ||
+      (target.id === "property" && target.x === 2090 ? target :
+        OBJECTS.find((object) => object.id === target!.id)) || target);
+    if (target && source && Math.hypot(p.x - source.x, p.y - source.y) < 120) {
       this.interact(target.id);
       return;
     }
-    this.destination = target
-      ? { x: target.x, y: target.y, interact: target.id }
-      : { x: point.x, y: point.y };
-    this.destinationRing
-      ?.clear()
-      .lineStyle(1.5, 0xf6dfa1, 0.6)
-      .strokeEllipse(this.destination.x, this.destination.y, 20, 10);
-    this.destinationRing?.setDepth(this.destination.y - 2);
-  }
-
-  private allowed(x: number, y: number) {
-    if (this.activeZone !== "village")
-      return x >= 72 && x <= 828 && y >= 135 && y <= 800;
-    if (x < 70 || y < 90 || x > WORLD_W - 70 || y > WORLD_H - 70) return false;
-    const onBridge = x > 318 && x < 462 && y > 856 && y < 930;
-    if (!onBridge) {
-      const river = [
-        [-120, 436],
-        [102, 524],
-        [244, 702],
-        [388, 908],
-        [320, 1130],
-        [274, 1304],
-        [406, 1554],
-        [300, 1774],
-        [136, 1980],
-      ];
-      for (let i = 0; i < river.length - 1; i++) {
-        const [ax, ay] = river[i],
-          [bx, by] = river[i + 1];
-        const dx = bx - ax,
-          dy = by - ay;
-        const t = Math.max(
-          0,
-          Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)),
-        );
-        if (Math.hypot(x - ax - t * dx, y - ay - t * dy) < 47) return false;
-      }
-    }
-    // Doors lie just below a building's footprint, leaving all interaction anchors reachable.
-    for (const object of OBJECTS) {
-      if (!["house", "forge", "market", "mill", "bakery"].includes(object.kind))
-        continue;
-      const half = (object.w || 150) / 2 - 8;
-      const top = object.y - (object.h || 120) + 34;
-      if (
-        x > object.x - half &&
-        x < object.x + half &&
-        y > top &&
-        y < object.y - 10
-      )
-        return false;
-    }
-    return true;
+    this.planRoute(target || point, target?.id);
   }
 
   private move(dt: number) {
     const p = store.state.apostle;
-    let x =
-      (this.keys.right.isDown || this.keys.right2.isDown ? 1 : 0) -
-      (this.keys.left.isDown || this.keys.left2.isDown ? 1 : 0) +
-      worldInput.x;
-    let y =
-      (this.keys.down.isDown || this.keys.down2.isDown ? 1 : 0) -
-      (this.keys.up.isDown || this.keys.up2.isDown ? 1 : 0) +
-      worldInput.y;
-    if (x || y) this.destination = null;
-    else if (this.destination) {
-      x = this.destination.x - p.x;
-      y = this.destination.y - p.y;
-      if (Math.hypot(x, y) < 9) {
+    // A contextual autonomous decision replaces the player's pending travel order.
+    if (this.destination && (store.state.simulation.autonomousUntil || 0) > 0)
+      this.clearRoute();
+    let x = (this.keys.right.isDown || this.keys.right2.isDown ? 1 : 0) -
+      (this.keys.left.isDown || this.keys.left2.isDown ? 1 : 0) + worldInput.x;
+    let y = (this.keys.down.isDown || this.keys.down2.isDown ? 1 : 0) -
+      (this.keys.up.isDown || this.keys.up2.isDown ? 1 : 0) + worldInput.y;
+    const manual = Math.hypot(x, y) > 0.05;
+    if (manual) this.clearRoute();
+    let movementDt = dt;
+    if (!manual && this.destination) {
+      // An NPC can keep walking after being clicked; refresh its reachable approach.
+      const npc = store.state.npcs.find((person) => person.id === this.destination?.interact);
+      if (npc && Math.hypot(npc.x - this.destination.x, npc.y + 40 - this.destination.y) > 70)
+        this.planRoute({ x: npc.x, y: npc.y + 40 }, npc.id);
+      while (this.destination?.path.length &&
+        Math.hypot(this.destination.path[0].x - p.x, this.destination.path[0].y - p.y) < 1)
+        this.destination.path.shift();
+      if (this.destination && !this.destination.path.length) {
         const id = this.destination.interact;
-        this.destination = null;
+        this.clearRoute();
         if (id) this.interact(id);
-        x = 0;
-        y = 0;
+      }
+      const waypoint = this.destination?.path[0];
+      if (waypoint) {
+        x = waypoint.x - p.x;
+        y = waypoint.y - p.y;
+        // Clamp travel time, so a low frame rate cannot overshoot a corner.
+        movementDt = Math.min(dt, Math.hypot(x, y) / 170);
       }
     }
     const length = Math.hypot(x, y);
-    if (length > 0) {
-      x /= length;
-      y /= length;
+    if (length > 0.05) {
       const before = { x: p.x, y: p.y };
-      store.move(x, y, dt);
-      const after = { x: p.x, y: p.y };
-      if (!this.allowed(after.x, after.y)) {
-        if (this.allowed(after.x, before.y)) p.y = before.y;
-        else if (this.allowed(before.x, after.y)) p.x = before.x;
-        else {
-          p.x = before.x;
-          p.y = before.y;
-          this.destination = null;
-        }
+      store.move(x / length, y / length, movementDt);
+      if (this.destination) {
+        this.routeBlockedFor = Math.hypot(p.x - before.x, p.y - before.y) < 0.02
+          ? this.routeBlockedFor + dt : 0;
+        if (this.routeBlockedFor > 1.2 && !((store.state.simulation.autonomousUntil || 0) > 0))
+          this.planRoute(this.destination, this.destination.interact);
       }
     }
-    if (!this.destination) this.destinationRing?.clear();
+    if (this.destination) this.drawRoute();
   }
 
   update(time: number, delta: number) {
@@ -854,23 +905,18 @@ class KingdomScene extends Phaser.Scene {
       this.marker.setVisible(false);
       return;
     }
-    let target: { x: number; y: number } | undefined;
-    if (nearest.id === "exit") target = { x: 450, y: 790 };
-    else
-      target =
-        store.state.npcs.find((npc) => npc.id === nearest.id) ||
-        OBJECTS.find((obj) => obj.id === nearest.id);
-    if (!target) return;
-    const label = `${nearest.label}  ·  E`;
+    const npc = store.state.npcs.find((person) => person.id === nearest.id);
+    const role = npc && store.state.economy.worker?.npcId === npc.id
+      ? "Trabalhadora" : npc?.role;
+    const label = `${nearest.label}${role ? ` · ${role}` : ""}  ·  E`;
     if (label !== this.markerLabel) {
       this.markerText.setText(label);
       this.markerLabel = label;
     }
-    const isPerson = store.state.npcs.some((npc) => npc.id === nearest.id);
     this.marker
       .setPosition(
-        target.x,
-        target.y + (isPerson ? -88 : -40) + Math.sin(time / 380) * 3,
+        nearest.x,
+        nearest.y + (npc ? -112 : -40) + Math.sin(time / 380) * 3,
       )
       .setVisible(true);
   }

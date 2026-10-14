@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
   ArrowLeft,
@@ -39,6 +39,8 @@ import {
 import { store } from "./simulation";
 import type { PersistentGameState } from "./simulation";
 import { cropProfile, RECIPES } from "./economy";
+import { findPath, objectApproach } from "./navigation";
+import type { NavigationContext } from "./navigation";
 import "./panels.css";
 
 const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -1792,11 +1794,34 @@ function Market({ state }: { state: GameState }) {
   );
 }
 
-const MAP_LOCATIONS = OBJECTS.filter(
-  (object) =>
-    !["resource", "herb", "stone", "sign", "well"].includes(object.kind),
-);
-function WorldMap({ state }: { state: GameState }) {
+const MAP_LOCATIONS = OBJECTS;
+const MAP_SYMBOLS: Record<string, string> = {
+  resource: "M0-45-30-12h14l-28 30h32v28h24V18h32L16-12h14Z",
+  herb: "M0 42V-22M0 6c-42 0-40-35-40-35C-5-29 0 6 0 6Zm0-16c35 0 40-35 40-35C5-45 0-10 0-10Z",
+  stone: "M-40 27-26-22 10-35 40 12 20 36Z",
+  well: "M-40-5 0-38 40-5M-30-12V30h60v-42M-38 30h76M-14 12h28v18h-28Z",
+  sign: "M-34-35h68v50h-68Zm34 50v28M-18-20h36M-18-5h26",
+  dungeon: "M-35 35V-15a35 35 0 0 1 70 0v50Zm15 0V-6a15 15 0 0 1 30 0v41",
+};
+const MAP_ROADS = [
+  "M1260 476 1258 630 1256 842",
+  "M1230 1456 1306 1396 1456 1290",
+  "M408 912 580 876 776 834 1020 828 1256 842 1478 872 1882 896",
+  "M710 620 730 696 776 834",
+  "M1000 1080 1016 952 1020 828",
+  "M1564 660 1510 764 1478 872",
+  "M1640 1100 1606 984 1478 872",
+  "M1282 826 1284 940 1392 1090 1456 1290 1698 1446",
+  "M1882 896 1990 752 2116 548 2110 340",
+  "M776 834 692 1004 616 1236 630 1518 816 1906",
+];
+function WorldMap({
+  state,
+  onClose,
+}: {
+  state: GameState;
+  onClose: () => void;
+}) {
   const [selectedId, setSelectedId] = useState("market");
   const selected =
     OBJECTS.find((object) => object.id === selectedId) || OBJECTS[0];
@@ -1804,9 +1829,35 @@ function WorldMap({ state }: { state: GameState }) {
     state.zone === "orphanage"
       ? OBJECTS.find((object) => object.id === "orphanage")!
       : state.apostle;
-  const distance = Math.round(
-    Math.hypot(currentPosition.x - selected.x, currentPosition.y - selected.y),
-  );
+  const positionX = currentPosition.x;
+  const positionY = currentPosition.y;
+  const route = useMemo(() => {
+    if (state.zone !== "village") return null;
+    const context: NavigationContext = {
+      zone: state.zone,
+      building: state.property.building,
+    };
+    const origin = { x: positionX, y: positionY };
+    const destination = objectApproach(selected.id, context);
+    const waypoints = findPath(origin, destination, context);
+    const arrived = Math.hypot(
+      positionX - destination.x,
+      positionY - destination.y,
+    ) <= 12;
+    if (!waypoints.length && !arrived) return null;
+    const points = [origin, ...waypoints];
+    let distance = 0;
+    for (let index = 1; index < points.length; index++) {
+      distance += Math.hypot(
+        points[index].x - points[index - 1].x,
+        points[index].y - points[index - 1].y,
+      );
+    }
+    return { points, distance: Math.round(distance), arrived };
+  }, [positionX, positionY, selected.id, state.zone, state.property.building]);
+  const walkingSeconds = route
+    ? Math.ceil(route.distance / (state.apostle.age < 16 ? 130 : 170))
+    : null;
   const direction =
     `${selected.y < currentPosition.y - 100 ? "norte" : selected.y > currentPosition.y + 100 ? "sul" : ""}${Math.abs(selected.y - currentPosition.y) > 100 && Math.abs(selected.x - currentPosition.x) > 100 ? " / " : ""}${selected.x < currentPosition.x - 100 ? "oeste" : selected.x > currentPosition.x + 100 ? "leste" : ""}` ||
     "perto de você";
@@ -1902,23 +1953,41 @@ function WorldMap({ state }: { state: GameState }) {
       <div className="panel-map-art">
         <svg
           viewBox={`0 0 ${WORLD_W} ${WORLD_H}`}
-          role="img"
-          aria-label="Mapa de Valeverde. Selecione um local para ver suas coordenadas."
+          role="group"
+          aria-label="Mapa de Valeverde. Selecione um local para ver a rota de caminhada."
         >
           <rect width={WORLD_W} height={WORLD_H} fill="#e8e8d3" />
           <path
-            d="M0 500c220 20 180 440 580 350S810 1130 490 1330 110 1640 0 1700"
+            d="M-120 436 102 524 244 702 388 908 320 1130 274 1304 406 1554 300 1774 136 1980"
             fill="none"
             stroke="#b6c5c1"
             strokeWidth="130"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
           <path
-            d="M820 650 1100 840 1500 810 1900 880m-800-40-100 250 640 10m-160-305 90-170 490-285"
+            d="M285 893H485"
             fill="none"
-            stroke="#d5c39a"
-            strokeWidth="55"
-            strokeLinecap="round"
+            stroke="#a79674"
+            strokeWidth="70"
           />
+          <path
+            d="M285 893H485"
+            fill="none"
+            stroke="#dfcfac"
+            strokeWidth="45"
+          />
+          {MAP_ROADS.map((road, index) => (
+            <path
+              key={road}
+              d={road}
+              fill="none"
+              stroke="#d5c39a"
+              strokeWidth={index === 2 ? 58 : 42}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
           {[
             [190, 270],
             [320, 340],
@@ -1937,6 +2006,20 @@ function WorldMap({ state }: { state: GameState }) {
               <ellipse cx={x + 70} cy={y - 45} rx="80" ry="90" />
             </g>
           ))}
+          {route && !route.arrived ? (
+            <polyline
+              className="panel-map-route"
+              points={route.points
+                .map((point) => `${Math.round(point.x)},${Math.round(point.y)}`)
+                .join(" ")}
+              fill="none"
+              stroke="#9b7445"
+              strokeWidth="18"
+              strokeDasharray="34 24"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ) : null}
           {MAP_LOCATIONS.map((object) => (
             <g
               key={object.id}
@@ -1961,9 +2044,8 @@ function WorldMap({ state }: { state: GameState }) {
               />
               <path
                 d={
-                  object.kind === "dungeon"
-                    ? "M-35 35V-15a35 35 0 0 1 70 0v50Zm15 0V-6a15 15 0 0 1 30 0v41"
-                    : "M-42-7 0-40 42-7M-32-13V35h64v-48M-10 35V10h20v25"
+                  MAP_SYMBOLS[object.kind] ||
+                  "M-42-7 0-40 42-7M-32-13V35h64v-48M-10 35V10h20v25"
                 }
                 fill="none"
                 stroke={selectedId === object.id ? "#f3ebd7" : "#56664d"}
@@ -2001,6 +2083,11 @@ function WorldMap({ state }: { state: GameState }) {
         <span>
           <i /> Local selecionado
         </span>
+        {route && !route.arrived ? (
+          <span>
+            <i className="panel-route-legend" /> Caminho
+          </span>
+        ) : null}
       </div>
       <div className="panel-section-heading">
         <h3>{selected.label}</h3>
@@ -2011,8 +2098,48 @@ function WorldMap({ state }: { state: GameState }) {
           X {selected.x} · Y {selected.y}
         </span>
         <span>
-          {direction} · distância {distance}
+          {direction}
         </span>
+      </div>
+      <div className="panel-map-journey">
+        <div>
+          <Compass size={21} aria-hidden="true" />
+          <span>
+            <strong>
+              {state.zone === "orphanage"
+                ? "Sua jornada começa na saída do orfanato"
+                : route?.arrived
+                  ? "Você está junto a este local"
+                  : route
+                    ? `Cerca de ${walkingSeconds} s a pé`
+                    : "Nenhum caminho disponível até este local"}
+            </strong>
+            {route && !route.arrived ? (
+              <small>
+                Distância pela rota marcada:{" "}
+                {route.distance.toLocaleString("pt-BR")}
+              </small>
+            ) : null}
+          </span>
+        </div>
+        <button
+          className="panel-button panel-button-full"
+          disabled={
+            state.zone !== "village" ||
+            !route ||
+            route.arrived ||
+            state.phase !== "playing"
+          }
+          onClick={() => {
+            document.dispatchEvent(
+              new CustomEvent("kg-navigate", { detail: { id: selected.id } }),
+            );
+            onClose();
+          }}
+        >
+          <Compass size={15} aria-hidden="true" />
+          {route?.arrived ? "Você já está aqui" : "Caminhar até aqui"}
+        </button>
       </div>
       <p className="panel-prose">
         {(
@@ -2021,8 +2148,12 @@ function WorldMap({ state }: { state: GameState }) {
               "O ponto de partida da sua história. Aqui, um descanso e uma conversa podem renovar sua jornada.",
             market:
               "Compre provisões e sementes. Venda materiais e trigo para reunir ouro.",
+            mill:
+              "Transforme seu trigo em farinha. Caminhe até o moinho para usar suas ferramentas.",
+            bakery:
+              "Use farinha e lenha para assar pão. A produção acontece junto à padaria.",
             forge:
-              "Aldric conhece o ferro e os antigos caminhos. Procure-o para conversar.",
+              "Transforme minério e madeira em uma espada. Procure Aldric por perto para conversar.",
             inn: "Uma cama, uma pausa e a hospitalidade da vila. Descanse para recuperar vitalidade e energia.",
             house1:
               "Mira vive neste canto tranquilo de Valeverde. Procure-a por perto durante o dia.",
@@ -2030,6 +2161,16 @@ function WorldMap({ state }: { state: GameState }) {
               "Uma parcela à venda. Ao adquiri-la, você pode cultivar trigo e construir uma casa.",
             dungeon:
               "Uma antiga cripta ocupada por criaturas. Leve uma espada e provisões antes de entrar.",
+            tree1:
+              "Reúna madeira para sua moradia e para a padaria. Trabalhar consome energia; o recurso precisa de tempo para se renovar.",
+            herb1:
+              "Colha ervas para recuperar vitalidade. Guarde-as no inventário para usar durante a jornada.",
+            stone1:
+              "Reúna pedra para construir. A prática da extração desenvolve a competência de mineração.",
+            well:
+              "Beba água fresca para recuperar energia antes de voltar ao trabalho.",
+            sign:
+              "Leia oportunidades e pedidos da vila. Você decide se deseja participar.",
           } as Record<string, string>
         )[selected.id] || "Um local para descobrir durante a jornada."}
       </p>
@@ -2050,10 +2191,8 @@ function WorldMap({ state }: { state: GameState }) {
       </div>
       <p className="panel-hint">
         {state.zone === "orphanage"
-          ? "Você está no interior do Orfanato de Santa Elara. "
-          : ""}
-        Selecionar um local mostra suas informações. O deslocamento acontece a
-        pé, pelo mundo.
+          ? "Você está dentro do orfanato. Receba seus pertences e use a saída ao sul para explorar Valeverde."
+          : "Selecione um destino e caminhe pela rota marcada. Use o teclado ou o joystick para interromper a caminhada. Você também pode tocar no chão do mundo para indicar outro destino."}
       </p>
     </>
   );
@@ -2180,11 +2319,15 @@ function Help({ state }: { state: GameState }) {
         <ScrollText size={17} />
       </div>
       <p className="panel-prose">
-        Kingdom Gods alpha 0.2 inclui uma vila, uma cripta, mercado, moinho,
+        Kingdom Gods alpha 0.3 inclui uma vila, uma cripta, mercado, moinho,
         padaria, forja e uma propriedade. Há produção, cultivo sazonal,
         manutenção, contrato de trabalho, pedidos de abastecimento, combate,
         relações e sucessão familiar. A campanha é individual e salva neste
         navegador; multiplayer permanece para uma versão futura.
+      </p>
+      <p className="panel-prose">
+        O mapa traça caminhadas por rotas seguras; apóstolo e moradores
+        contornam paredes, cercas e troncos.
       </p>
       <div className="panel-save-row">
         <div>
@@ -2317,7 +2460,7 @@ export function GamePanel({
           ) : panel === "crafting" ? (
             <Crafting state={state} />
           ) : panel === "map" ? (
-            <WorldMap state={state} />
+            <WorldMap state={state} onClose={onClose} />
           ) : (
             <Help state={state} />
           )}

@@ -199,7 +199,8 @@ export const villageDecor = decor.filter((item) => {
   // Keep the mill, bakery, and their footpaths clear of canopy silhouettes.
   const nearMill = item.x > 1120 && item.x < 1390 && item.y > 230 && item.y < 565;
   const nearBakery = item.x > 1090 && item.x < 1510 && item.y > 1260 && item.y < 1660;
-  return !nearMill && !nearBakery;
+  const bridgeApproach = item.x >= 220 && item.x <= 315 && item.y >= 850 && item.y <= 960;
+  return !nearMill && !nearBakery && !bridgeApproach;
 });
 
 function paintGround(c: Ctx) {
@@ -381,18 +382,18 @@ function paintGround(c: Ctx) {
       );
     }
   }
-  // Bridge planks and rustic railing sit over the narrow crossing.
-  rect(c, 163, 441, 64, 26, "#4b5948");
-  rect(c, 162, 436, 64, 26, "#745b41");
-  for (let x = 164; x < 224; x += 5) {
-    rect(c, x, 436, 4, 25, "#a1865d");
-    rect(c, x, 437, 3, 1, "#c0a172");
+  // The full deck joins both dry banks; its painted rails match the collision span.
+  rect(c, 142, 435, 101, 33, "#4b5948");
+  rect(c, 142, 430, 101, 34, "#745b41");
+  for (let x = 143; x < 243; x += 5) {
+    rect(c, x, 430, Math.min(4, 243 - x), 34, "#a1865d");
+    rect(c, x, 431, Math.min(3, 243 - x), 1, "#c0a172");
   }
-  rect(c, 159, 432, 71, 3, "#5d4b35");
-  rect(c, 160, 455, 71, 3, "#5d4b35");
-  for (let x = 160; x < 232; x += 17) {
-    rect(c, x, 428, 3, 9, "#b09968");
-    rect(c, x, 451, 3, 9, "#b09968");
+  rect(c, 142, 428, 101, 3, "#5d4b35");
+  rect(c, 142, 465, 101, 3, "#5d4b35");
+  for (let x = 142; x < 243; x += 17) {
+    rect(c, x, 424, 3, 8, "#b09968");
+    rect(c, x, 461, 3, 8, "#b09968");
   }
   // Small grasses and flowers are clustered along lawn edges.
   for (let i = 0; i < 360; i++) {
@@ -932,7 +933,7 @@ function paintMarket(c: Ctx) {
   rect(c, 2, 47, 5, 2, "#d0bd8b");
 }
 
-function paintFarm(c: Ctx, planted = true, ripe = true) {
+function paintFarmFloor(c: Ctx, planted = true, ripe = true) {
   const random = rng(13076);
   ellipse(c, 67, 97, 61, 6, "#3d513639");
   rect(c, 12, 33, 106, 60, "#9c8760");
@@ -953,26 +954,6 @@ function paintFarm(c: Ctx, planted = true, ripe = true) {
       rect(c, x + 3, y - tall + 6, 1, 2, ripe ? "#e0c784" : "#a3ba73");
     }
   }
-  // A modest tool shed keeps this visibly a working, attainable homestead.
-  rect(c, 79, 15, 34, 24, "#a69b78");
-  rect(c, 82, 19, 27, 20, "#b9b08a");
-  rect(c, 82, 20, 2, 18, P.timber);
-  rect(c, 106, 20, 2, 18, P.timber);
-  roof(c, 75, 2, 42, 19, 881, true);
-  door(c, 94, 23, 10, 17);
-  window(c, 83, 23, 6, 6);
-  rect(c, 114, 30, 1, 12, "#64573f");
-  rect(c, 111, 28, 7, 2, "#9f9b83");
-  fence(c, 7, 30, 65);
-  fence(c, 7, 96, 39);
-  fence(c, 78, 96, 44);
-  for (let y = 34; y < 98; y += 12) {
-    rect(c, 8, y, 2, 6, "#9e865f");
-    rect(c, 119, y, 2, 6, "#9e865f");
-  }
-  rect(c, 10, 29, 2, 69, "#74674c");
-  rect(c, 120, 34, 2, 64, "#74674c");
-  rect(c, 50, 90, 21, 4, "#b29d71");
   ellipse(c, 33, 15, 11, 6, "#967b46");
   ellipse(c, 31, 12, 11, 6, "#d0b16c");
   for (let i = 0; i < 15; i++)
@@ -984,6 +965,36 @@ function paintFarm(c: Ctx, planted = true, ripe = true) {
   rect(c, 52, 4, 7, 6, "#c4aa7f");
   rect(c, 49, 4, 13, 2, "#6f6045");
   rect(c, 55, 12, 1, 6, "#b6a172");
+}
+
+function paintFarmShed(c: Ctx) {
+  // A modest tool shed keeps this visibly a working, attainable homestead.
+  rect(c, 79, 15, 34, 24, "#a69b78");
+  rect(c, 82, 19, 27, 20, "#b9b08a");
+  rect(c, 82, 20, 2, 18, P.timber);
+  rect(c, 106, 20, 2, 18, P.timber);
+  roof(c, 75, 2, 42, 19, 881, true);
+  door(c, 94, 23, 10, 17);
+  window(c, 83, 23, 6, 6);
+  rect(c, 114, 30, 1, 12, "#64573f");
+  rect(c, 111, 28, 7, 2, "#9f9b83");
+}
+
+function paintFarmFence(c: Ctx, front: boolean) {
+  if (front) {
+    fence(c, 7, 96, 39);
+    fence(c, 78, 96, 44);
+    rect(c, 50, 90, 21, 4, "#b29d71");
+  } else {
+    fence(c, 7, 30, 65);
+  }
+}
+
+function paintFarmSideFence(c: Ctx) {
+  // Short depth-sorted sections preserve the actor's silhouette along a fence.
+  rect(c, 2, 0, 2, 12, "#74674c");
+  rect(c, 0, 4, 2, 6, "#9e865f");
+  rect(c, 0, 4, 1, 6, "#c0a674");
 }
 
 function paintWell(c: Ctx) {
@@ -1661,9 +1672,13 @@ export function generateArt(scene: Phaser.Scene): void {
   texture(scene, "mill-sails", 140, 140, paintMillSails);
   texture(scene, "bakery", 175, 140, paintBakery);
   texture(scene, "market", 174, 120, paintMarket);
-  texture(scene, "farm", 260, 210, (c) => paintFarm(c));
-  texture(scene, "farm-growing", 260, 210, (c) => paintFarm(c, true, false));
-  texture(scene, "farm-empty", 260, 210, (c) => paintFarm(c, false));
+  texture(scene, "farm", 260, 210, (c) => paintFarmFloor(c));
+  texture(scene, "farm-growing", 260, 210, (c) => paintFarmFloor(c, true, false));
+  texture(scene, "farm-empty", 260, 210, (c) => paintFarmFloor(c, false));
+  texture(scene, "farm-shed", 260, 210, paintFarmShed);
+  texture(scene, "farm-fence-back", 260, 210, (c) => paintFarmFence(c, false));
+  texture(scene, "farm-fence-front", 260, 210, (c) => paintFarmFence(c, true));
+  texture(scene, "farm-fence-side", 8, 24, paintFarmSideFence);
   texture(scene, "well", 96, 84, paintWell);
   texture(scene, "crypt", 174, 140, paintCrypt);
   texture(scene, "sign", 68, 80, paintSign);

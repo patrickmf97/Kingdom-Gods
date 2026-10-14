@@ -1,4 +1,12 @@
-import { ITEMS, OBJECTS, WORLD_H, WORLD_W } from "./data";
+import { ITEMS, OBJECTS } from "./data";
+import {
+  findPath,
+  isWalkable,
+  moveWithCollisions,
+  nearestWalkable,
+  type NavigationContext,
+  type Point,
+} from "./navigation";
 import {
   createEconomyState,
   cropProfile,
@@ -320,6 +328,32 @@ export class GameStore {
   private announceAccumulator = 0;
   private autosaveAccumulator = 0;
   private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+  // Routes are transient intentions, not part of the campaign snapshot.
+  private npcRoutes = new Map<string, { target: string; points: Point[] }>();
+
+  private navigationContext(zone: Zone = this.state.zone): NavigationContext {
+    return { zone, building: this.state.property.building };
+  }
+
+  private recoverPositions(): boolean {
+    let moved = false;
+    const recover = (actor: Point, zone: Zone) => {
+      const context = this.navigationContext(zone);
+      if (!isWalkable(actor, context)) {
+        Object.assign(actor, nearestWalkable(actor, context));
+        moved = true;
+      }
+    };
+    recover(this.state.apostle, this.state.zone);
+    for (const npc of this.state.npcs) {
+      const zone = npc.id === "matron" ? "orphanage" :
+        this.state.zone === "dungeon" && this.state.simulation.companionId === npc.id
+          ? "dungeon" : "village";
+      recover(npc, zone);
+    }
+    this.npcRoutes.clear();
+    return moved;
+  }
 
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -378,7 +412,9 @@ export class GameStore {
     return (
       !!object &&
       this.state.zone === "village" &&
-      distance(this.state.apostle, object) <= radius
+      (distance(this.state.apostle, object) <= radius ||
+        (id === "property" && this.state.property.building &&
+          distance(this.state.apostle, { x: 2090, y: 815 }) <= radius))
     );
   }
   private nearNpc(id: string): Npc | null {
@@ -431,6 +467,7 @@ export class GameStore {
     this.attackCooldown = this.dodgeCooldown = this.invulnerability = 0;
     this.enemyCooldowns = {};
     this.activeDialog = null;
+    this.npcRoutes.clear();
     this.messageId = 0;
     this.remember(
       "Um novo caminho",
@@ -588,36 +625,64 @@ export class GameStore {
   }
   private updateNpcs(delta: number): void {
     const hour = this.state.minutes / 60;
+    const working = hour >= 7 && hour < 18;
+    const workplaces: Record<string, Point> = {
+      merchant: { x: 1280, y: 940 },
+      mira: { x: 1460, y: 1000 },
+      aldric: { x: 1560, y: 790 },
+      guard: { x: 2050, y: 450 },
+      farmer: this.state.economy.worker?.npcId === "farmer"
+        ? { x: 1900, y: 810 } : { x: 1830, y: 1040 },
+    };
+    // Distinct gathering spots keep conversations and silhouettes readable.
+    const evening: Record<string, Point> = {
+      merchant: { x: 940, y: 1180 },
+      mira: { x: 1040, y: 1180 },
+      aldric: { x: 1140, y: 1180 },
+      guard: { x: 980, y: 1280 },
+      farmer: { x: 1100, y: 1280 },
+    };
     for (const npc of this.state.npcs) {
       if (npc.id === "matron") continue;
-      if (
-        this.state.zone === "dungeon" &&
-        this.state.simulation.companionId === npc.id
-      ) {
-        npc.x = this.state.apostle.x + 40;
-        npc.y = this.state.apostle.y + 35;
-        continue;
+      const companion = this.state.zone === "dungeon" &&
+        this.state.simulation.companionId === npc.id;
+      const context = this.navigationContext(companion ? "dungeon" : "village");
+      if (!isWalkable(npc, context)) {
+        Object.assign(npc, nearestWalkable(npc, context));
+        this.npcRoutes.delete(npc.id);
       }
-      const working = hour >= 7 && hour < 18;
-      const workplaces: Record<string, { x: number; y: number }> = {
-        merchant: { x: 1280, y: 940 },
-        mira: { x: 1460, y: 1000 },
-        aldric: { x: 1560, y: 790 },
-        guard: { x: 2050, y: 450 },
-        farmer:
-          this.state.economy.worker?.npcId === npc.id
-            ? { x: 1870, y: 1010 }
-            : { x: 1830, y: 1040 },
-      };
-      const destination = working
-        ? workplaces[npc.id]
-        : hour < 22 && hour >= 18
-          ? { x: 920 + this.state.npcs.indexOf(npc) * 40, y: 1200 }
-          : { x: npc.homeX, y: npc.homeY };
+      const destination = companion
+        ? nearestWalkable({ x: this.state.apostle.x + 40, y: this.state.apostle.y + 35 }, context)
+        : working ? workplaces[npc.id]
+        : hour >= 18 && hour < 22 ? evening[npc.id]
+        : { x: npc.homeX, y: npc.homeY };
       if (!destination) continue;
-      const amount = Math.min(1, delta * 0.2);
-      npc.x += (destination.x - npc.x) * amount;
-      npc.y += (destination.y - npc.y) * amount;
+      // Companion routes refresh only after the apostle crosses a 32px cell.
+      const target = `${context.zone}:${context.building}:${Math.round(destination.x / (companion ? 32 : 1))}:${Math.round(destination.y / (companion ? 32 : 1))}`;
+      let route = this.npcRoutes.get(npc.id);
+      if (!route || route.target !== target) {
+        route = { target, points: findPath(npc, destination, context) };
+        this.npcRoutes.set(npc.id, route);
+      }
+      let remaining = (companion ? 180 : 74) * Math.min(delta, 1);
+      while (route.points.length && remaining > 0) {
+        const point = route.points[0];
+        const range = distance(npc, point);
+        if (range < 0.5) { route.points.shift(); continue; }
+        const step = Math.min(remaining, range);
+        const next = moveWithCollisions(npc, {
+          x: (point.x - npc.x) / range * step,
+          y: (point.y - npc.y) / range * step,
+        }, context);
+        const travelled = distance(npc, next);
+        Object.assign(npc, next);
+        remaining -= step;
+        if (travelled < step * 0.8) {
+          this.npcRoutes.delete(npc.id);
+          break;
+        }
+        if (step === range) route.points.shift();
+      }
     }
   }
   move(dx: number, dy: number, deltaSeconds: number): void {
@@ -626,23 +691,19 @@ export class GameStore {
       !Number.isFinite(dx + dy + deltaSeconds) ||
       deltaSeconds <= 0 ||
       (this.state.simulation.autonomousUntil || 0) > this.now
-    )
-      return;
+    ) return;
     const length = Math.hypot(dx, dy);
     if (!length) return;
-    const speed = this.state.apostle.age < 16 ? 130 : 170;
-    const limitX = this.state.zone === "village" ? WORLD_W : 900;
-    const limitY = this.state.zone === "village" ? WORLD_H : 900;
-    this.state.apostle.x = clamp(
-      this.state.apostle.x + (dx / length) * speed * deltaSeconds,
-      35,
-      limitX - 35,
-    );
-    this.state.apostle.y = clamp(
-      this.state.apostle.y + (dy / length) * speed * deltaSeconds,
-      35,
-      limitY - 35,
-    );
+    const apostle = this.state.apostle;
+    const context = this.navigationContext();
+    if (!isWalkable(apostle, context))
+      Object.assign(apostle, nearestWalkable(apostle, context));
+    const speed = apostle.age < 16 ? 130 : 170;
+    // Bound caller intervals while preserving the longer 0.36s dodge sweep.
+    const step = speed * Math.min(deltaSeconds, 1);
+    Object.assign(apostle, moveWithCollisions(apostle, {
+      x: dx / length * step, y: dy / length * step,
+    }, context));
   }
   attack(): void {
     if (
@@ -764,16 +825,10 @@ export class GameStore {
         );
         return;
       }
-      apostle.x = clamp(
-        apostle.x + ((exit.x - apostle.x) / range) * 205 * delta,
-        35,
-        865,
-      );
-      apostle.y = clamp(
-        apostle.y + ((exit.y - apostle.y) / range) * 205 * delta,
-        35,
-        865,
-      );
+      Object.assign(apostle, moveWithCollisions(apostle, {
+        x: ((exit.x - apostle.x) / range) * Math.min(range, 205 * delta),
+        y: ((exit.y - apostle.y) / range) * Math.min(range, 205 * delta),
+      }, this.navigationContext()));
     } else {
       delete this.state.simulation.autonomousUntil;
       delete this.state.simulation.autonomousReason;
@@ -787,8 +842,10 @@ export class GameStore {
       const range = distance(enemy, apostle);
       if (range <= 310 && range > 53) {
         const speed = 53 * delta;
-        enemy.x += ((apostle.x - enemy.x) / range) * speed;
-        enemy.y += ((apostle.y - enemy.y) / range) * speed;
+        Object.assign(enemy, moveWithCollisions(enemy, {
+          x: ((apostle.x - enemy.x) / range) * speed,
+          y: ((apostle.y - enemy.y) / range) * speed,
+        }, this.navigationContext()));
       }
       if (range <= 72 && this.enemyCooldowns[enemy.id] === 0) {
         this.enemyCooldowns[enemy.id] = 1.25;
@@ -874,12 +931,15 @@ export class GameStore {
   } {
     return getCalendar(this.state);
   }
-  getNearest(): { id: string; label: string; distance: number } | null {
+  getNearest(): { id: string; label: string; distance: number; x: number; y: number } | null {
     if (!this.playing()) return null;
     const points: { id: string; label: string; x: number; y: number }[] =
       this.state.zone === "village"
         ? [
             ...OBJECTS,
+            ...(this.state.property.building ? [
+              { id: "property", label: "Moradia da linhagem", x: 2090, y: 815 },
+            ] : []),
             ...this.state.npcs
               .filter((npc) => npc.id !== "matron")
               .map((npc) => ({ ...npc, label: npc.name })),
@@ -894,6 +954,8 @@ export class GameStore {
       .map((point) => ({
         id: point.id,
         label: point.label,
+        x: point.x,
+        y: point.y,
         distance: distance(this.state.apostle, point),
       }))
       .sort((a, b) => a.distance - b.distance)[0];
@@ -909,7 +971,9 @@ export class GameStore {
       this.notify();
       return;
     }
+    const companion = this.state.npcs.find(npc => npc.id === this.state.simulation.companionId);
     this.state.zone = zone;
+    this.npcRoutes.clear();
     if (zone === "orphanage") {
       this.state.apostle.x = 450;
       this.state.apostle.y = 750;
@@ -935,6 +999,8 @@ export class GameStore {
     if (zone === "village") {
       this.state.apostle.x = this.state.intro ? 710 : 2110;
       this.state.apostle.y = this.state.intro ? 760 : 470;
+      if (companion) Object.assign(companion,
+        nearestWalkable({ x: 2150, y: 490 }, this.navigationContext("village")));
       delete this.state.simulation.companionId;
     }
     this.activeDialog = null;
@@ -1412,6 +1478,7 @@ export class GameStore {
           this.state.inventory.stone -= 8;
           this.state.gold -= 60;
           p.building = true;
+          this.recoverPositions();
           this.state.economy.condition = 100;
           this.practice("building", 5);
           this.remember(
@@ -1784,6 +1851,7 @@ export class GameStore {
         npcMemories: simulation?.npcMemories || {},
         lastChildDay: simulation?.lastChildDay ?? -100,
       };
+      const recoveredPosition = this.recoverPositions();
       this.state.phase = this.state.apostle.alive ? "playing" : "dead";
       this.state.started = true;
       this.messageId = Math.max(
@@ -1793,6 +1861,10 @@ export class GameStore {
       this.attackCooldown = this.dodgeCooldown = this.invulnerability = 0;
       this.enemyCooldowns = {};
       this.activeDialog = null;
+      if (recoveredPosition) this.message(
+        "O caminho foi ajustado para um ponto seguro após a atualização das colisões.",
+        "info",
+      );
       this.message(
         getPersistenceError() ||
           "Jornada retomada. O tempo ficou pausado enquanto você estava fora.",

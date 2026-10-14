@@ -1,4 +1,4 @@
-# KINGDOM GODS · alpha 0.2
+# KINGDOM GODS · alpha 0.3
 
 Versão **local e jogável** de um RPG sandbox medieval, inteiramente em português. Não existe servidor multiplayer nesta versão.
 
@@ -15,14 +15,23 @@ Abra a URL exibida pelo Vite. Para gerar os arquivos estáticos: `npm run build`
 
 Crie seu apóstolo, escolha uma bênção e converse com Elara. Receba seus pertences, explore o orfanato e caminhe ao portão sul. Depois, escolha seu caminho livremente.
 
-- WASD ou setas: movimento; clique no chão: caminhar.
+- WASD ou setas: movimento; clique/toque no chão: caminhar por uma rota que contorna obstáculos.
+- Mapa: selecione um local e use **Caminhar até aqui** para ir a pé. Controles manuais e ações cancelam a rota; o mapa não entra automaticamente em interiores.
 - E: interação próxima; Espaço ou botão direito: ataque; Shift: esquiva.
 - I: inventário; C: atributos; J: diário; R: relações; F: família; P: propriedade; M: mapa.
 - 1: equipar espada; 2: comer pão; 3: usar erva. Escape fecha painéis ou pausa.
 - No celular, joystick e botões de interação, ataque e esquiva aparecem automaticamente.
 - Painéis e diálogos pausam a simulação. Feche-os para continuar o tempo e renovar encontros e recursos.
 
-## Novidades da alpha 0.2
+## Novidades da alpha 0.3
+
+- Colisões compartilhadas pela simulação e cena: paredes, balcões, cercas, troncos, pedra, poço e rio respeitam os pés dos personagens. Esquivas percorrem subpassos, evitando atravessar barreiras; movimento diagonal desliza por paredes.
+- Rotas físicas por clique/toque e mapa, com percurso visível, distância e tempo estimado. Caminhos contornam prédios e atravessam o rio pela ponte. Não há teletransporte nem entrada automática da navegação pelo mapa.
+- NPCs caminham por rotas válidas, com pontos de encontro espaçados e rótulos por proximidade. A trabalhadora entra na lavoura pela abertura da cerca.
+- Solo, plantações, galpão e cercas usam camadas separadas. A moradia construída fica ao lado leste da parcela, sem duplicar o galpão; sua porta continua interativa.
+- Salvamentos v1/v2 mantêm progressão e formato v2. Posições antigas dentro de obstáculos são ajustadas para um ponto próximo seguro, sem alterar moeda, inventário, família ou memórias.
+
+## Economia da alpha 0.2
 
 - Moinho e padaria físicos, com oficinas e receitas: 2 trigo → 1 farinha; 1 farinha + 1 madeira → 2 pães; 3 minério + 2 madeira → 1 espada na forja. Produção exige proximidade, ingredientes e energia, e desenvolve competências.
 - Cultivo sazonal: primavera 2 dias/8 trigo; verão 2/10; outono 3/7; inverno 4/4. A prática pode melhorar o rendimento registrado ao plantar. Lavouras da versão anterior mantêm seu prazo original.
@@ -41,7 +50,7 @@ IndexedDB guarda snapshots versionados e um backup. Há fallback para localStora
 
 ## Simplificações temporárias
 
-Uma região autoral, uma dungeon, uma propriedade, uma missão da cripta e pedidos rotativos de abastecimento. A economia representa produção e consumo regionais por regras agregadas; não simula cada elo industrial. A construção é uma casa predefinida, com custo de materiais, manutenção e tributo. Há uma trabalhadora contratável e três receitas; os demais ofícios ainda precisam de expansão. Relações usam afinidade, confiança e memórias, sem linguagem gerada por IA. A personalidade possui quatro traços iniciais; a autonomia ocorre em situações determinadas e explicadas. Filhos são gerados após dezesseis dias de casamento, com traços herdados básicos, e o envelhecimento usa um calendário de 360 dias. A tutela restringe combate e acesso à cripta. O relógio pode ser ajustado por `state.timeScale`; controles de teclado são fixos nesta versão.
+Uma região autoral, uma dungeon, uma propriedade, uma missão da cripta e pedidos rotativos de abastecimento. A economia representa produção e consumo regionais por regras agregadas; não simula cada elo industrial. A construção é uma casa predefinida, com custo de materiais, manutenção e tributo. Há uma trabalhadora contratável e três receitas; os demais ofícios ainda precisam de expansão. Relações usam afinidade, confiança e memórias, sem linguagem gerada por IA. A personalidade possui quatro traços iniciais; a autonomia ocorre em situações determinadas e explicadas. Filhos são gerados após dezesseis dias de casamento, com traços herdados básicos, e o envelhecimento usa um calendário de 360 dias. A tutela restringe combate e acesso à cripta. O relógio pode ser ajustado por `state.timeScale`; controles de teclado são fixos nesta versão. A navegação usa uma grade de busca local, limitada e simplificada em segmentos seguros; personagens podem compartilhar uma trilha, sem bloqueio físico entre suas próprias silhuetas.
 
 ## Ainda não desenvolvido
 
@@ -54,12 +63,13 @@ Multiplayer real, contas, WebSocket/Colyseus, PostgreSQL, PvP, validação autor
 - `src/economy.ts`: receitas, plantio sazonal, manutenção, contratos, circulação de moedas e pedidos.
 - `src/persistence.ts`: snapshots, validação, recuperação e backups.
 - `src/transport.ts`: intenções serializáveis e interface para futura autoridade de servidor; implementação atual local.
-- `src/world.ts` e `src/art.ts`: cenas Phaser, câmera, colisões e pixel art determinística.
+- `src/navigation.ts`: geometria física, colisão contínua por subpassos, recuperação de posição e busca limitada de caminhos.
+- `src/world.ts` e `src/art.ts`: cenas Phaser, câmera, rotas e pixel art determinística em camadas.
 - `src/App.tsx`, `src/Panels.tsx` e CSS: interface React responsiva, acessível por teclado.
-- `tests/`: 55 verificações de simulação, economia, invariantes financeiros, contratos e sucessão, migração v1/v2, corrupção de dados e recuperação de backups.
+- `tests/`: verificações de simulação, economia, invariantes financeiros, contratos e sucessão, migração v1/v2, corrupção, backups, colisões, rotas e recuperação de posições.
 
 Para multiplayer será necessário configurar um servidor Node/Colyseus e PostgreSQL. As intenções do transporte oferecem uma fronteira para essa integração, mas o servidor ainda precisa implementar autenticação, validação, sincronização, propriedade e persistência. O modo local não depende desses serviços.
 
-## Verificação da atualização
+## Verificação
 
-Build e 55 testes passaram. Fluxos completos foram verificados em Chromium: saída física, moagem, panificação, aquisição/construção, contratação, salários, plantio automático, pedidos, salvamento e retomada. Também foram verificados toque/joystick em 390×844, 844×390 e 390×500, além de colisões, estações, maturação e câmera responsiva. A migração foi verificada em IndexedDB usando uma campanha real capturada da publicação anterior, preservando personagem, itens, moeda, memórias e calendário.
+Execute `npm test` e `npm run build` para verificar regras e compilação. A atualização anterior passou 55 testes e fluxos de produção, contratos e salvamento em Chromium. A alpha 0.3 passou 78 testes, 22 verificações no navegador e o fluxo completo do build estático. O recibo registra colisões, rotas, camadas, controles e recuperação em `docs/verification-alpha03.md`.
