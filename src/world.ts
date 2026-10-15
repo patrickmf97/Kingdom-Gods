@@ -3,7 +3,8 @@ import { store } from "./simulation";
 import { generateArt, createCharacterTexture } from "./art";
 import { generateRegionArt } from "./region-art";
 import { objectsForZone, regionForZone, resourceNode } from "./regions";
-import type { Dialog, GameState, Npc, WorldObject, Zone } from "./types";
+import { ESTATE_DEFS, estateBuildings } from "./territory-data";
+import type { Dialog, EstateId, GameState, Npc, WorldObject, Zone } from "./types";
 import { findPath, nearestWalkable, objectApproach, type Point, type NavigationContext } from "./navigation";
 
 export const worldInput = {
@@ -21,6 +22,18 @@ type Actor = {
   health?: Phaser.GameObjects.Graphics;
   x: number;
   y: number;
+};
+type CullEntry = {
+  object: Phaser.GameObjects.Image | Phaser.GameObjects.Text;
+  margin: number;
+  enabled?: boolean;
+};
+type EstateVisual = {
+  sign: Phaser.GameObjects.Image;
+  structure: Phaser.GameObjects.Image;
+  label: Phaser.GameObjects.Text;
+  structureCull: CullEntry;
+  labelCull: CullEntry;
 };
 const buildingKeys: Record<string, string> = {
   orphanage: "house-orphanage",
@@ -55,7 +68,10 @@ class KingdomScene extends Phaser.Scene {
   private objectSprites = new Map<string, Phaser.GameObjects.Image>();
   private ground?: Phaser.GameObjects.Image;
   private foliage: Phaser.GameObjects.Image[] = [];
-  private culled: { object: Phaser.GameObjects.Image | Phaser.GameObjects.Text; margin: number }[] = [];
+  private culled: CullEntry[] = [];
+  private estateVisuals = new Map<EstateId, EstateVisual>();
+  private estateSignature = "";
+  private navigationGeometry = "";
   private season = "";
   private millSails?: Phaser.GameObjects.Image;
   private propertyHouse?: Phaser.GameObjects.Image;
@@ -152,6 +168,9 @@ class KingdomScene extends Phaser.Scene {
     this.ground = undefined;
     this.foliage = [];
     this.culled = [];
+    this.estateVisuals.clear();
+    this.estateSignature = "";
+    this.navigationGeometry = "";
     this.season = "";
     this.millSails = undefined;
     this.propertyHouse = undefined;
@@ -343,6 +362,10 @@ class KingdomScene extends Phaser.Scene {
   }
 
   private addWorldObject(object: WorldObject) {
+    if (object.kind === "estate") {
+      this.addEstate(object);
+      return;
+    }
     const kindKeys: Record<string, string> = {
       cave: "frontier-cave", camp: "frontier-camp", ruins: "frontier-ruins",
       portal: this.activeZone === "mine" ? "frontier-exit" : "frontier-sign",
@@ -417,6 +440,60 @@ class KingdomScene extends Phaser.Scene {
           .setAlpha(0.9),
       );
       this.culled.push({ object: label, margin: 140 });
+    }
+  }
+
+  private addEstate(object: WorldObject) {
+    const estate = ESTATE_DEFS.find((entry) => entry.id === object.id);
+    if (!estate) return;
+    const plot = this.keep(this.add.image(object.x, object.y, "estate-plot")
+      .setOrigin(0.5, 1).setDepth(0));
+    const structure = this.keep(this.add.image(object.x, object.y - 65, "estate-warehouse")
+      .setOrigin(0.5, 1).setDepth(object.y - 65).setVisible(false));
+    const sign = this.keep(this.add.image(object.x, object.y, "estate-sign-free")
+      .setOrigin(0.5, 1).setDepth(object.y - 2));
+    const label = this.keep(this.add.text(object.x, object.y + 20, "", {
+      fontFamily: "Arial, sans-serif", fontSize: "10px", color: "#f7edcc",
+      stroke: "#354a36", strokeThickness: 3, align: "center", lineSpacing: 4,
+    }).setOrigin(0.5, 0).setDepth(8004));
+    const structureCull: CullEntry = { object: structure, margin: 200, enabled: false };
+    const labelCull: CullEntry = { object: label, margin: 160 };
+    this.culled.push({ object: plot, margin: 220 }, structureCull,
+      { object: sign, margin: 100 }, labelCull);
+    this.objectSprites.set(object.id, sign);
+    this.estateVisuals.set(estate.id, { sign, structure, label, structureCull, labelCull });
+  }
+
+  private updateEstates() {
+    if (this.activeZone !== "wilderness") return;
+    // The interaction marker already names a nearby plot. Hide its permanent
+    // caption before the actor reaches it, so text never covers their body.
+    for (const estate of ESTATE_DEFS) {
+      const visual = this.estateVisuals.get(estate.id);
+      if (visual) visual.labelCull.enabled = Math.hypot(
+        store.state.apostle.x - estate.x, store.state.apostle.y - estate.y,
+      ) > 140;
+    }
+    const signature = ESTATE_DEFS.map(({ id }) => {
+      const holding = store.state.territory.parcels[id];
+      return `${id}:${holding.owned}:${holding.building}:${Math.round(holding.condition)}`;
+    }).join("|");
+    if (signature === this.estateSignature) return;
+    this.estateSignature = signature;
+    for (const estate of ESTATE_DEFS) {
+      const visual = this.estateVisuals.get(estate.id);
+      if (!visual) continue;
+      const holding = store.state.territory.parcels[estate.id];
+      visual.sign.setTexture(holding.owned ? "estate-sign-owned" : "estate-sign-free");
+      const built = holding.owned && holding.building !== "none";
+      visual.structureCull.enabled = built;
+      visual.structure.setVisible(built);
+      if (built) visual.structure.setTexture(`estate-${holding.building}`)
+        .setTint(holding.condition < 25 ? 0xaaa18c : 0xffffff);
+      const status = !holding.owned ? "Terra livre · registro em Auren"
+        : !built ? "Sua propriedade · Reino de Auren"
+        : `${holding.building === "warehouse" ? "Armazém" : "Abrigo"} · ${Math.round(holding.condition)}%`;
+      visual.label.setText(`${estate.name.toUpperCase()}\n${status}`);
     }
   }
 
@@ -709,7 +786,8 @@ class KingdomScene extends Phaser.Scene {
   }
 
   private navigationContext(): NavigationContext {
-    return { zone: store.state.zone, building: store.state.property.building };
+    return { zone: store.state.zone, building: store.state.property.building,
+      estates: estateBuildings(store.state) };
   }
 
   private clearRoute() {
@@ -846,6 +924,11 @@ class KingdomScene extends Phaser.Scene {
       (!shouldScenic && store.state.zone !== this.activeZone)
     )
       this.rebuild();
+    const geometry = `${store.state.zone}:${store.state.property.building}:${estateBuildings(store.state).join(",")}`;
+    if (geometry !== this.navigationGeometry) {
+      this.clearRoute();
+      this.navigationGeometry = geometry;
+    }
     const dt = Math.min(delta / 1000, 0.1);
     if (this.canAct()) {
       this.move(dt);
@@ -874,6 +957,7 @@ class KingdomScene extends Phaser.Scene {
       if (this.millSails && !blockedInput()) this.millSails.rotation += dt * 0.16;
     }
     this.updateSeason();
+    this.updateEstates();
     this.updateResources();
     this.updateWork(time);
     this.cullScenery();
@@ -984,8 +1068,8 @@ class KingdomScene extends Phaser.Scene {
 
   private cullScenery() {
     const view = this.cameras.main.worldView;
-    for (const { object, margin } of this.culled) {
-      object.setVisible(object.x >= view.left - margin && object.x <= view.right + margin &&
+    for (const { object, margin, enabled } of this.culled) {
+      object.setVisible(enabled !== false && object.x >= view.left - margin && object.x <= view.right + margin &&
         object.y >= view.top - margin && object.y <= view.bottom + margin);
     }
   }
@@ -1002,6 +1086,7 @@ class KingdomScene extends Phaser.Scene {
     }
     const npc = store.state.npcs.find((person) => person.id === nearest.id);
     const resource = resourceNode(nearest.id);
+    const estate = ESTATE_DEFS.some((entry) => entry.id === nearest.id);
     const role = npc && store.state.economy.worker?.npcId === npc.id
       ? "Trabalhadora" : npc?.role;
     const label = `${nearest.label}${role ? ` · ${role}` : ""}  ·  E`;
@@ -1012,7 +1097,7 @@ class KingdomScene extends Phaser.Scene {
     this.marker
       .setPosition(
         nearest.x,
-        nearest.y + (npc ? -112 : resource ? 24 : -40) + Math.sin(time / 380) * 3,
+        nearest.y + (npc ? -112 : estate ? 58 : resource ? 24 : -40) + Math.sin(time / 380) * 3,
       )
       .setVisible(true);
   }

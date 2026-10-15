@@ -1,8 +1,9 @@
 import { objectsForZone, regionForZone, type Rectangle as RegionRectangle } from "./regions";
-import type { Zone } from "./types";
+import { ESTATE_DEFS, estateSolid } from "./territory-data";
+import type { EstateId, Zone } from "./types";
 
 export type Point = { x: number; y: number };
-export type NavigationContext = { zone: Zone; building: boolean };
+export type NavigationContext = { zone: Zone; building: boolean; estates?: EstateId[] };
 
 const FEET_RADIUS = 9;
 const STEP = 4;
@@ -29,6 +30,9 @@ const villageCircles: Circle[] = [
   }),
 ];
 const builtHouse = rectangle(2026, 718, 2160, 778);
+const estateSolids = new Map(ESTATE_DEFS.map((estate) => [estate.id,
+  { ...estateSolid(estate.id), kind: "rectangle" as const },
+]));
 
 const regionBuckets = new Map<Zone, Map<string, Solid[]>>();
 function bucketsFor(zone: Zone): Map<string, Solid[]> {
@@ -153,6 +157,10 @@ export function isWalkable(point: Point, context: NavigationContext): boolean {
   }
   const nearby = bucketsFor(context.zone).get(`${Math.floor(point.x / BUCKET)},${Math.floor(point.y / BUCKET)}`) ?? [];
   if (nearby.some((solid) => touchesSolid(point, solid))) return false;
+  if (context.zone === "wilderness" && context.estates?.some((id) => {
+    const solid = estateSolids.get(id);
+    return solid && touchesSolid(point, solid);
+  })) return false;
   return context.zone !== "village" || !context.building || !touchesSolid(point, builtHouse);
 }
 
@@ -219,7 +227,12 @@ type GridData = { columns: number; rows: number; walkable: Uint8Array; edges: Ui
 const grids = new Map<string, GridData>();
 const DIRECTIONS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 function gridFor(context: NavigationContext): GridData {
-  const key = `${context.zone}:${context.building ? 1 : 0}`;
+  // Each finite set of constructed estates has its own grid. A plot acquired
+  // after an earlier route search immediately adds walls to future routes.
+  const estates = context.zone === "wilderness"
+    ? ESTATE_DEFS.filter((estate) => context.estates?.includes(estate.id)).map((estate) => estate.id).join(",")
+    : "";
+  const key = `${context.zone}:${context.building ? 1 : 0}:${estates}`;
   let grid = grids.get(key);
   if (grid) return grid;
   const region = regionForZone(context.zone);
@@ -353,6 +366,6 @@ export function objectApproach(id: string, context: NavigationContext): Point {
   // The property's gate is the entrance; other objects expose an open front.
   const destination = id === "property"
     ? { x: 1894, y: 906 }
-    : { x: object.x, y: object.y + (id === "dungeon" ? 60 : 28) };
+    : { x: object.x, y: object.y + (object.kind === "estate" ? 15 : id === "dungeon" ? 60 : 28) };
   return nearestWalkable(destination, context);
 }

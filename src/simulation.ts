@@ -3,6 +3,8 @@ import { objectsForZone, portalForZone, regionForZone, resourceNode } from "./re
 import { cancelWork, createFrontierState, discoverLocation, executeFrontierAction, processFrontierDay, updateFrontierWork } from "./frontier";
 import { applyEducationToSuccessor, availableGuardians, createLifeState, executeLifeAction, npcGoalDestination, processLifeDay, recordLifeEvent, registerChildEducation, updateLifeNeeds } from "./life";
 import { exportCampaign as serializeCampaign, importCampaign as importSavedCampaign } from "./campaign-files";
+import { createTerritoryState, executeTerritoryAction, processTerritoryDay, syncTerritoryDeeds } from "./territory";
+import { ESTATE_DEFS, estateBuildings } from "./territory-data";
 import {
   findPath,
   isWalkable,
@@ -29,6 +31,7 @@ import type {
   Creation,
   Dialog,
   Enemy,
+  ExpansionHooks,
   GameState,
   ItemId,
   Memory,
@@ -244,7 +247,7 @@ export function initialState(): PersistentGameState {
   const npcs = newNpcs();
   const apostle = newApostle();
   return {
-    version: 3,
+    version: 4,
     started: false,
     intro: true,
     phase: "title",
@@ -291,6 +294,7 @@ export function initialState(): PersistentGameState {
     economy: createEconomyState(1),
     frontier: createFrontierState(1),
     life: createLifeState(npcs, [], apostle),
+    territory: createTerritoryState(1),
     simulation: {
       marriedAt: {},
       gathering: {},
@@ -342,7 +346,7 @@ export class GameStore {
   private npcRoutes = new Map<string, { target: string; points: Point[] }>();
 
   private navigationContext(zone: Zone = this.state.zone): NavigationContext {
-    return { zone, building: this.state.property.building };
+    return { zone, building: this.state.property.building, estates: estateBuildings(this.state) };
   }
 
   private recoverPositions(): boolean {
@@ -374,6 +378,7 @@ export class GameStore {
     for (const listener of this.listeners) listener();
   }
   private scheduleAutoSave(): void {
+    syncTerritoryDeeds(this.state);
     if (typeof window === "undefined") return;
     if (this.autosaveTimer) clearTimeout(this.autosaveTimer);
     this.autosaveTimer = setTimeout(() => {
@@ -460,7 +465,7 @@ export class GameStore {
     for (const id of Object.keys(this.state.life.needs))
       if (!this.state.npcs.some(npc => npc.id === id)) delete this.state.life.needs[id];
   }
-  private economicHooks(): EconomicHooks {
+  private economicHooks(): EconomicHooks & ExpansionHooks {
     return {
       message: (text, type) => this.message(text, type),
       remember: (title, text, emotion, intensity) =>
@@ -480,6 +485,20 @@ export class GameStore {
       practice: (skill, amount) => this.practice(skill, amount),
       nearObject: (id) => this.nearObject(id),
       nearNpc: (id) => !!this.nearNpc(id),
+      rest: (hours, healing) => {
+        cancelWork(this.state);
+        this.state.minutes += hours * 60;
+        while (this.state.minutes >= 1440 && this.playing()) {
+          this.state.minutes -= 1440;
+          this.state.day++;
+          this.newDay();
+        }
+        if (this.playing()) {
+          this.state.apostle.hp = Math.min(this.state.apostle.maxHp, this.state.apostle.hp + healing);
+          this.state.apostle.stamina = this.state.apostle.maxStamina;
+        }
+        this.activeDialog = null;
+      },
     };
   }
 
@@ -588,7 +607,7 @@ export class GameStore {
       this.message(`${apostle.name} completou ${apostle.age} anos.`);
     }
     if (priorAge < 16 && apostle.age >= 16) {
-      apostle.title = "Guardião da linhagem";
+      apostle.title = this.state.territory.charter ? "Guardião de Alvor" : "Guardião da linhagem";
       this.remember(
         "Minha própria voz",
         "Aos dezesseis anos, a regência terminou. Agora escolho os rumos da minha linhagem.",
@@ -631,6 +650,7 @@ export class GameStore {
     }
     processFrontierDay(this.state, this.economicHooks());
     processEconomicDay(this.state, this.economicHooks());
+    processTerritoryDay(this.state, this.economicHooks());
     processLifeDay(this.state, this.economicHooks());
     if (inventory.bread > 0) {
       inventory.bread--;
@@ -1083,6 +1103,14 @@ export class GameStore {
     }
     if (!this.nearObject(id)) return null;
     this.activeDialog = id;
+    const estate = ESTATE_DEFS.find(parcel => parcel.id === id);
+    if (estate) return {
+      name: estate.name, role: "Registro territorial de Auren",
+      text: this.state.territory.parcels[estate.id].owned
+        ? "Esta terra pertence à sua linhagem e segue vinculada a Auren. Gerencie construções, provisões e obrigações no registro de propriedades."
+        : `Terreno disponível por ${estate.cost} coroas, dentro dos limites concedidos pelo reino. Examine a área e consulte o registro antes de construir.`,
+      options: [{ label: "Consultar terreno e construções", action: "open-property" }, { label: "Continuar explorando", action: "close" }],
+    };
     const portal = portalForZone(this.state.zone, id);
     if (portal) return {
       name: portal.label, role: "Estrada de Auren",
@@ -1342,6 +1370,7 @@ export class GameStore {
           disabled: quest === "accepted" || quest === "claimed",
         },
         { label: "Ver pedidos da vila", action: "open-journal" },
+        { label: "Registro de terras e Auren", action: "open-property" },
         { label: "Voltar", action: "close" },
       ],
     };
@@ -1402,6 +1431,10 @@ export class GameStore {
     if (!this.playing()) return;
     const [verb, id] = action.split(":");
     const item = id as ItemId;
+    if (this.state.territory.arrears > 0 && ["acquire-property", "build"].includes(action)) {
+      this.message("Quite as obrigações de Auren no mural antes de ampliar suas propriedades.", "warning");
+      this.notify(); return;
+    }
     if (this.state.apostle.age < 16 && (["acquire-property", "build"].includes(action) || action.startsWith("hire:"))) {
       this.message("Sob regência, contratos de terra, construção e emprego ficam reservados ao adulto responsável.", "warning");
       this.notify(); return;
@@ -1423,6 +1456,13 @@ export class GameStore {
     }
     if (action === "cancel-work") {
       cancelWork(this.state, this.economicHooks(), "Você interrompeu o trabalho.");
+      this.scheduleAutoSave(); this.notify(); return;
+    }
+    if (executeTerritoryAction(this.state, action, this.economicHooks())) {
+      if (verb === "estate-build") {
+        this.recoverPositions();
+        cancelWork(this.state);
+      }
       this.scheduleAutoSave(); this.notify(); return;
     }
     if (executeFrontierAction(this.state, action, this.economicHooks()) ||
@@ -1533,8 +1573,9 @@ export class GameStore {
       }
       const p = this.state.property;
       if (action === "acquire-property") {
-        if (!p.owned && this.state.gold >= p.cost) {
+        if (!p.owned && this.state.gold >= p.cost && Number.isSafeInteger(this.state.economy.civicFunds + p.cost)) {
           this.state.gold -= p.cost;
+          this.state.economy.civicFunds += p.cost;
           p.owned = true;
           this.remember(
             "Minhas próprias raízes",
@@ -1875,7 +1916,7 @@ export class GameStore {
     fresh.y = 1100;
     if (fresh.partnerId === previous.id) delete fresh.partnerId;
     fresh.title =
-      fresh.age < 16 ? "Herdeiro sob regência" : "Guardião da linhagem";
+      fresh.age < 16 ? "Herdeiro sob regência" : this.state.territory.charter ? "Guardião de Alvor" : "Guardião da linhagem";
     fresh.memories = legacy.map((memory) => ({
       ...memory,
       title: `Legado · ${memory.title.replace(/^(Legado · )+/, "")}`,
@@ -1913,6 +1954,7 @@ export class GameStore {
 
   exportCampaign(): string {
     if (!this.state.started) throw new Error("Crie ou retome uma campanha antes de exportar.");
+    syncTerritoryDeeds(this.state);
     return serializeCampaign(this.state);
   }
 
@@ -1956,6 +1998,7 @@ export class GameStore {
 
   async save(): Promise<void> {
     if (!this.state.started) return;
+    syncTerritoryDeeds(this.state);
     const oldSavedAt = this.state.savedAt;
     this.state.savedAt = Date.now();
     try {

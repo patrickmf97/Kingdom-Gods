@@ -248,6 +248,101 @@ function paintPortal(c: Context, underground = false) {
   box(c, 24, 28, 12, 1, "#c6b182");
 }
 
+function paintEstatePlot(c: Context) {
+  // Boundary stones and a beaten approach are flat ground, not an enclosing
+  // fence. The complete plot remains traversable before a building is raised.
+  box(c, 4, 7, 102, 80, "#8b927040");
+  for (const [x, y] of [[5, 8], [103, 8], [5, 84], [103, 84]]) {
+    box(c, x - 2, y, 5, 3, "#646e54");
+    box(c, x - 1, y - 1, 4, 2, "#bdba94");
+  }
+  for (let x = 13; x < 99; x += 11) {
+    box(c, x, 10, 5, 1, "#b1ad80");
+    if (x < 42 || x > 64) box(c, x, 86, 5, 1, "#b1ad80");
+  }
+  for (let y = 20; y < 80; y += 11) {
+    box(c, 6, y, 1, 5, "#b1ad80");
+    box(c, 104, y, 1, 5, "#b1ad80");
+  }
+  oval(c, 55, 85, 12, 8, "#b8ad824f");
+  box(c, 52, 71, 6, 15, "#b8ad824f");
+}
+
+function paintEstateSign(c: Context, owned: boolean) {
+  oval(c, 16, 24, 12, 3, "#3b4d343b");
+  box(c, 14, 9, 3, 16, "#6b5539");
+  box(c, 14, 9, 1, 16, "#b29361");
+  box(c, 4, 3, 24, 14, "#5a5037");
+  box(c, 5, 4, 22, 11, owned ? "#59765b" : "#ab9268");
+  box(c, 6, 4, 20, 1, owned ? "#86a27b" : "#c9b18a");
+  if (owned) {
+    polygon(c, [[13, 7], [19, 7], [18, 11], [16, 13], [13, 10]], "#ddc789");
+    box(c, 15, 8, 2, 3, "#f4e1ac");
+  } else {
+    box(c, 8, 7, 15, 1, "#5c543a");
+    box(c, 11, 10, 10, 1, "#5c543a");
+  }
+}
+
+function paintEstateBuilding(c: Context, shelter: boolean) {
+  // The 120×66 wall base is x±60/y−130..y−65 in world coordinates.
+  // Roof overhangs provide depth but never add invisible collision.
+  const wall = shelter ? "#c7b892" : "#acaa8b";
+  const roof = shelter ? "#9a614b" : "#526e62";
+  const roofLight = shelter ? "#b57456" : "#6d8975";
+  box(c, 14, 43, 60, 32, "#5b533c");
+  box(c, 16, 44, 56, 28, wall);
+  for (let y = 48; y < 70; y += 6) {
+    box(c, 16, y, 56, 1, shelter ? "#b3a47d" : "#929578");
+  }
+  for (const x of [16, 31, 56, 69]) box(c, x, 44, 3, 29, "#6e5e42");
+  box(c, 14, 71, 60, 5, "#696a53");
+  for (let x = 15; x < 73; x += 10) {
+    box(c, x, 72, 8, 2, "#a39c7b");
+    box(c, x + 2, 75, 7, 1, "#494e3d");
+  }
+  box(c, 37, 49, 15, 23, "#4a4532");
+  box(c, 39, 51, 11, 21, shelter ? "#97784c" : "#8b7750");
+  for (const x of [40, 44, 48]) box(c, x, 52, 1, 20, "#5e553a");
+  box(c, 39, 56, 11, 2, "#c0a16b");
+  box(c, 39, 67, 11, 2, "#b39a65");
+  box(c, 46, 61, 2, 2, "#ead195");
+  box(c, 35, 73, 19, 3, "#b9ad88");
+  if (shelter) {
+    for (const x of [21, 60]) {
+      box(c, x, 51, 9, 12, "#584e35");
+      box(c, x + 1, 52, 7, 9, "#dfbd70");
+      box(c, x + 4, 52, 1, 10, "#796646");
+      box(c, x + 1, 56, 7, 1, "#796646");
+      box(c, x - 1, 63, 11, 2, "#8e7750");
+    }
+  } else {
+    for (const x of [20, 59]) {
+      box(c, x, 55, 10, 15, "#70613f");
+      box(c, x + 1, 56, 8, 12, "#b19a63");
+      box(c, x + 4, 56, 1, 12, "#7a6844");
+      box(c, x + 1, 59, 8, 2, "#d0b57c");
+      box(c, x + 1, 65, 8, 2, "#8b744a");
+    }
+  }
+  polygon(c, [[9, 44], [18, 16], [69, 16], [79, 44]], "#3e493b");
+  polygon(c, [[10, 41], [19, 13], [68, 13], [78, 41]], roof);
+  for (let y = 17; y <= 38; y += 5) {
+    const inset = Math.floor((41 - y) / 3);
+    box(c, 11 + inset, y, 66 - inset * 2, 1, roofLight);
+    for (let x = 13 + inset + (y % 2) * 4; x < 74 - inset; x += 10)
+      box(c, x, y + 1, 1, 3, "#324b3d55");
+  }
+  box(c, 18, 12, 51, 3, roofLight);
+  box(c, 9, 41, 70, 3, shelter ? "#82543e" : "#405b4d");
+  box(c, 9, 44, 70, 2, "#4b503b");
+  if (shelter) {
+    box(c, 62, 8, 7, 23, "#858771");
+    box(c, 61, 7, 9, 3, "#c0baa0");
+    for (let y = 13; y < 31; y += 6) box(c, 63, y, 5, 1, "#b3b09a");
+  }
+}
+
 /** Texture canvases are generated once; only the active region is instantiated. */
 export function generateRegionArt(scene: Phaser.Scene, zone: Zone) {
   if (zone !== "wilderness" && zone !== "mine") {
@@ -263,4 +358,11 @@ export function generateRegionArt(scene: Phaser.Scene, zone: Zone) {
   texture(scene, "frontier-ruins", 240, 200, paintRuins);
   texture(scene, "frontier-ore", 76, 56, (c) => paintOre(c));
   texture(scene, "frontier-ore-empty", 76, 56, (c) => paintOre(c, true));
+  if (zone === "wilderness") {
+    texture(scene, "estate-plot", 220, 180, paintEstatePlot);
+    texture(scene, "estate-sign-free", 64, 56, (c) => paintEstateSign(c, false));
+    texture(scene, "estate-sign-owned", 64, 56, (c) => paintEstateSign(c, true));
+    texture(scene, "estate-warehouse", 176, 152, (c) => paintEstateBuilding(c, false));
+    texture(scene, "estate-shelter", 176, 152, (c) => paintEstateBuilding(c, true));
+  }
 }

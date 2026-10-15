@@ -396,7 +396,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.4</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.5</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -887,7 +887,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  ALPHA 0.4 · ALÉM DE VALEVERDE <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.5 · TERRAS E LEGADO <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />

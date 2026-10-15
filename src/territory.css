@@ -1,0 +1,63 @@
+.territory-panels { min-width: 0; }
+.territory-panels .panel-button { min-height: 44px; white-space: normal; }
+.territory-realm-banner { display: flex; gap: 13px; align-items: center; margin-bottom: 20px; }
+.territory-realm-banner > svg { flex-shrink: 0; color: #977b49; }
+.territory-realm-banner h3 { margin: 6px 0; font-size: 25px; }
+.territory-realm-banner p { margin: 6px 0 0; font-size: 11px; }
+.territory-realm-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 15px 0 20px; }
+.territory-realm-stats > div { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #ded7c4; padding-top: 13px; }
+.territory-realm-stats span { font-size: 9px; color: #6a705b; }
+.territory-realm-stats b { color: #526647; font: 26px Georgia, serif; }
+.territory-realm-stats small { font: 11px Inter, Arial, sans-serif; }
+.territory-influence-guide { border-top: 1px solid #ded7c4; border-bottom: 1px solid #ded7c4; padding: 5px 0; margin-bottom: 17px; color: #526647; }
+.territory-influence-guide summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 11px; }
+.territory-influence-guide summary::before { content: "+"; margin-right: 9px; }
+.territory-influence-guide[open] summary::before { content: "−"; }
+.territory-influence-guide p { font-size: 11px; line-height: 1.8; }
+.territory-charter { margin: 20px 0 27px; padding: 0 15px 15px; border: 1px solid #d7ccb0; border-radius: 9px; background: #f1ecdd; }
+.territory-charter .panel-section-heading { margin-top: 20px; }
+.territory-requirements { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 11px; font-size: 10px; color: #7b715a; }
+.territory-requirements li { display: flex; gap: 9px; align-items: flex-start; line-height: 1.5; }
+.territory-requirements li > svg { flex-shrink: 0; margin-top: 1px; }
+.territory-requirement-done { color: #4c6c4e; }
+.territory-requirement-circle { display: block; width: 10px; height: 10px; flex-shrink: 0; margin: 3px 2px 0; border: 1px solid #a89a7d; border-radius: 50%; }
+.territory-arrears { display: flex; gap: 10px; background: #f1e4d4; border: 1px solid #d9bba0; border-radius: 7px; padding: 14px; margin: 15px 0; color: #82553c; }
+.territory-arrears > svg { flex-shrink: 0; }
+.territory-arrears strong { font-size: 11px; }
+.territory-arrears p { margin-bottom: 0; font-size: 10px; line-height: 1.7; }
+.territory-estate { min-width: 0; }
+.territory-estate-heading { display: flex; gap: 11px; align-items: center; }
+.territory-estate-heading > svg { flex-shrink: 0; color: #8c754b; }
+.territory-estate-heading > div { min-width: 0; }
+.territory-estate-heading h3 { margin-bottom: 4px; }
+.territory-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; margin: 18px 0; }
+.territory-facts > div { min-width: 0; }
+.territory-facts dt { color: #7b715a; font-size: 9px; }
+.territory-facts dd { color: #526647; font-size: 10px; margin: 5px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.territory-building-options { display: grid; gap: 13px; }
+.territory-building-option { border-top: 1px solid #ded7c4; padding-top: 15px; }
+.territory-building-option > strong { color: #526647; font-size: 12px; }
+.territory-building-option > p { font-size: 11px; line-height: 1.8; }
+.territory-cost { color: #816c46 !important; }
+.territory-condition-caption { display: flex; justify-content: space-between; gap: 8px; margin: 10px 0; color: #526647; font-size: 10px; }
+.territory-condition-caption b { font-weight: 500; }
+.territory-storage { margin-top: 20px; border-top: 1px solid #ded7c4; padding-top: 17px; }
+.territory-storage-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: #526647; margin-bottom: 12px; }
+.territory-storage-heading strong { font-size: 11px; font-weight: 500; }
+.territory-storage-heading > span { margin-left: auto; font-size: 10px; }
+.territory-item-label { display: block; margin: 16px 0 9px; color: #617057; font-size: 10px; }
+.territory-item-select { width: 100%; min-width: 0; min-height: 44px; color: #354f40; background: #faf7ee; border: 1px solid #c9c4b1; border-radius: 6px; padding: 9px; font: 11px Inter, Arial, sans-serif; }
+.territory-transfer-counts { display: flex; justify-content: space-between; gap: 10px; margin: 13px 0; font-size: 10px; color: #617057; }
+.territory-transfer-counts b { font-weight: 600; }
+.territory-transfer-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.territory-transfer-actions .panel-button { margin: 0; font-size: 9px; padding: 10px 8px; gap: 5px; }
+.territory-transfer-actions svg { flex-shrink: 0; }
+.territory-original-farm { margin-top: 34px; padding-top: 22px; border-top: 1px solid #ded7c4; }
+@media (max-width: 390px) {
+  .territory-realm-banner h3 { font-size: 22px; }
+  .territory-realm-stats { gap: 6px; }
+  .territory-realm-stats span { font-size: 8px; }
+  .territory-realm-stats b { font-size: 23px; }
+  .territory-estate .panel-overline { font-size: 7px; letter-spacing: 1px; }
+  .territory-charter { padding-left: 12px; padding-right: 12px; }
+}

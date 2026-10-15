@@ -41,6 +41,8 @@ import { findPath, objectApproach } from "./navigation";
 import type { NavigationContext } from "./navigation";
 import { objectsForZone, regionForZone, RESOURCE_NODES, WILDERNESS_ROADS } from "./regions";
 import { ToolsPanel, FrontierJobs, FamilyEducation, FamilyHistory, NpcNeeds, CampaignTransfer } from "./ExpansionPanels";
+import { TerritoryPanels } from "./TerritoryPanels";
+import { estateBuildings, estateSolid } from "./territory-data";
 import "./panels.css";
 
 const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -82,8 +84,8 @@ const PANEL_META = {
     icon: Users,
   },
   property: {
-    title: "Um lugar para chamar seu",
-    eyebrow: "Terras do reino",
+    title: "Propriedades e Auren",
+    eyebrow: "Terras, trabalho e reconhecimento",
     icon: House,
   },
   market: {
@@ -1801,6 +1803,7 @@ function Market({ state }: { state: GameState }) {
 }
 
 const MAP_SYMBOLS: Record<string, string> = {
+  estate: "M-42 30h84M-34 30v-58h68v58M-34-10h68M-12-28v58M12-28v58M-42-36h84",
   resource: "M0-45-30-12h14l-28 30h32v28h24V18h32L16-12h14Z",
   herb: "M0 42V-22M0 6c-42 0-40-35-40-35C-5-29 0 6 0 6Zm0-16c35 0 40-35 40-35C5-45 0-10 0-10Z",
   stone: "M-40 27-26-22 10-35 40 12 20 36Z",
@@ -1846,11 +1849,14 @@ function WorldMap({
       : state.apostle;
   const positionX = currentPosition.x;
   const positionY = currentPosition.y;
+  const estates = estateBuildings(state);
+  const estateSignature = estates.join(",");
   const route = useMemo(() => {
     if (state.zone === "orphanage" || state.zone === "dungeon") return null;
     const context: NavigationContext = {
       zone: state.zone,
       building: state.property.building,
+      estates,
     };
     const origin = { x: positionX, y: positionY };
     const destination = objectApproach(selected.id, context);
@@ -1869,7 +1875,7 @@ function WorldMap({
       );
     }
     return { points, distance: Math.round(distance), arrived };
-  }, [positionX, positionY, selected.id, state.zone, state.property.building]);
+  }, [positionX, positionY, selected.id, state.zone, state.property.building, estateSignature]);
   const walkingSeconds = route
     ? Math.ceil(route.distance / (state.apostle.age < 16 ? 130 : 170))
     : null;
@@ -2031,6 +2037,7 @@ function WorldMap({
               {region.decor.map((tree, index) => <circle key={index} cx={tree.x} cy={tree.y - 36} r={46 * (tree.scale ?? 1)} fill="#a2b18c" opacity=".68" />)}
               <rect x="2280" y="1430" width="360" height="200" rx="75" fill="#a8c3c1" stroke="#c6d3c1" strokeWidth="28" />
               {WILDERNESS_ROADS.map((road, index) => <polyline key={index} points={road.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round" />)}
+              {estates.map((id) => { const solid = estateSolid(id); return <rect key={id} x={solid.left} y={solid.top} width={solid.right - solid.left} height={solid.bottom - solid.top} fill="#9b8059" stroke="#efe3c5" strokeWidth="8" />; })}
             </>
           )}
           {route && !route.arrived ? (
@@ -2179,6 +2186,8 @@ function WorldMap({
             "wild-camp": "Um abrigo dos viajantes. Aqui você pode conhecer oportunidades de exploração e descansar com suas próprias provisões.",
             "wild-ruins": "A Torre de Alvor guarda a memória de caminhos antigos. Chegar até ela registra uma descoberta para sua jornada.",
             "wild-lake": "A margem do Lago do Espelho é um destino de exploração. A água é profunda; caminhe pelas trilhas ao redor.",
+            "oak-hollow": "Uma parcela registrável dos Ermos. Compre a escritura no marco e construa um armazém ou abrigo. A posse tem tributo diário e permanece vinculada a Auren.",
+            "stone-rise": "Uma segunda parcela disponível nos Ermos. Sua família precisa da Carta de Guardião de Alvor para manter duas terras nesta região.",
             orphanage:
               "O ponto de partida da sua história. Aqui, um descanso e uma conversa podem renovar sua jornada.",
             market:
@@ -2205,7 +2214,7 @@ function WorldMap({
             well:
               "Beba água fresca para recuperar energia antes de voltar ao trabalho.",
             sign:
-              "Leia oportunidades e pedidos da vila. Você decide se deseja participar.",
+              "Leia oportunidades e pedidos da vila. Aqui também funciona o registro de Auren, onde você pode quitar tributos dos Ermos e solicitar a Carta de Guardião de Alvor.",
           } as Record<string, string>
         )[selected.id] || "Um local para descobrir durante a jornada."}
       </p>
@@ -2357,9 +2366,12 @@ function Help({ state }: { state: GameState }) {
         <ScrollText size={17} />
       </div>
       <p className="panel-prose">
-        Kingdom Gods alpha 0.4 inclui Valeverde, os Ermos de Alvor e a Mina do
+        Kingdom Gods alpha 0.5 inclui Valeverde, os Ermos de Alvor e a Mina do
         Ferro Antigo, além da cripta. Há ferramentas com desgaste, extração,
         oportunidades de exploração, educação dos filhos, tutela e herança.
+        Nos Ermos, registre terras, construa armazéns ou abrigos e mantenha
+        seus tributos em dia. Feitos reconhecidos pela vila dão acesso à
+        Carta de Guardião de Alvor e à segunda parcela.
         A campanha é individual; multiplayer será desenvolvido depois das
         próximas etapas do mundo local.
       </p>
@@ -2493,7 +2505,7 @@ export function GamePanel({
           ) : panel === "family" ? (
             <Family state={state} />
           ) : panel === "property" ? (
-            <PropertyPanel state={state} />
+            <><TerritoryPanels state={state} onClose={onClose} /><PropertyPanel state={state} /></>
           ) : panel === "market" ? (
             <Market state={state} />
           ) : panel === "crafting" ? (

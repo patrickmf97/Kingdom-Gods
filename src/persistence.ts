@@ -3,6 +3,9 @@ import { createEconomyState } from "./economy";
 import { createFrontierState, FRONTIER_JOB_DEFS } from "./frontier";
 import { createLifeState } from "./life";
 import { REGIONS, RESOURCE_NODES, resourceNode } from "./regions";
+import { ITEMS as ITEM_DEFINITIONS } from "./data";
+import { createTerritoryState, syncTerritoryDeeds } from "./territory";
+import { territoryDeedValue, territoryInfluence } from "./territory-data";
 
 const DATABASE = "kingdom-gods";
 const STORE = "snapshots";
@@ -457,20 +460,61 @@ function economicRelations(state: GameState): boolean {
     state.merchantGold,
     economy.civicFunds,
     ...Object.values(economy.npcSavings),
-    ...(state.version === 3 ? [state.frontier.escrow] : []),
+    ...(state.version >= 3 ? [state.frontier.escrow] : []),
   ];
   return holdings.every(count) && count(holdings.reduce((sum, coins) => sum + coins, 0));
 }
 
-/** Current snapshots are complete v3 states; missing fields are never repaired. */
+function territory(state: GameState): boolean {
+  const value: unknown = state.territory;
+  if (!object(value) || !object(value.parcels) ||
+    Object.keys(value.parcels).length !== 2 ||
+    !percentage(value.influence) || !boolean(value.charter) ||
+    !count(value.arrears) || !day(value.lastTaxDay) || value.lastTaxDay > state.day ||
+    !Array.isArray(value.deeds) || value.deeds.length > 13 ||
+    !value.deeds.every((deed) => string(deed) && territoryDeedValue(deed) !== null) ||
+    new Set(value.deeds).size !== value.deeds.length ||
+    value.deeds.filter((deed: string) => deed.startsWith("civic:")).length > 6 ||
+    value.influence !== territoryInfluence(value.deeds)) return false;
+
+  let owned = 0;
+  for (const id of ["oak-hollow", "stone-rise"] as const) {
+    const holding = value.parcels[id];
+    if (!object(holding) || !boolean(holding.owned) ||
+      !choice(holding.building, ["none", "warehouse", "shelter"]) ||
+      !percentage(holding.condition) || !numericRecord(holding.storage, ITEMS, true) ||
+      !object(holding.storage) || Object.keys(holding.storage).length !== ITEMS.length) return false;
+    const stock = holding.storage;
+    const empty = ITEMS.every((item) => stock[item] === 0);
+    if (!holding.owned) {
+      if (holding.registeredDay !== null || holding.building !== "none" ||
+        holding.condition !== 0 || !empty) return false;
+      continue;
+    }
+    owned++;
+    if (!day(holding.registeredDay) || holding.registeredDay > state.day) return false;
+    if (holding.building === "none" && (holding.condition !== 0 || !empty)) return false;
+    if (holding.building !== "warehouse" && !empty) return false;
+    const weight = ITEMS.reduce((sum, item) => sum +
+      (stock[item] as number) * ITEM_DEFINITIONS[item].weight, 0);
+    if (!Number.isFinite(weight) || weight > 120 + 1e-7) return false;
+  }
+  return (owned <= 1 || value.charter) &&
+    (!value.charter || value.influence >= 12) &&
+    (owned > 0 || value.charter || value.arrears === 0) &&
+    (!value.charter || state.property.owned || owned > 0);
+}
+
+/** Current snapshots are complete v4 states; missing fields are never repaired. */
 export function validateState(value: unknown): value is GameState {
   try {
     return (
       baseState(value, ITEMS, SKILLS, ZONES) &&
-      value.version === 3 &&
+      value.version === 4 &&
       economy(value.economy) &&
       frontier(value as unknown as GameState) &&
       life(value as unknown as GameState) &&
+      territory(value as unknown as GameState) &&
       economicRelations(value as unknown as GameState)
     );
   } catch {
@@ -489,13 +533,28 @@ function validateV2State(value: unknown): value is ObjectValue {
     economy(value.economy) && economicRelations(value as unknown as GameState);
 }
 
+function validateV3State(value: unknown): value is ObjectValue {
+  return baseState(value, ITEMS, SKILLS, ZONES) && value.version === 3 &&
+    economy(value.economy) && frontier(value as unknown as GameState) &&
+    life(value as unknown as GameState) && economicRelations(value as unknown as GameState);
+}
+
 /** Upgrade an independent copy, keeping saved time and all existing extensions. */
 export function migrateState(value: unknown): GameState | null {
   try {
     if (!object(value)) return null;
-    if (value.version === 3) {
+    if (value.version === 4) {
       if (!validateState(value)) return null;
       const snapshot: unknown = structuredClone(value);
+      return validateState(snapshot) ? snapshot : null;
+    }
+    if (value.version === 3) {
+      if (!validateV3State(value)) return null;
+      const snapshot = {
+        ...structuredClone(value), version: 4,
+        territory: createTerritoryState(value.day as number),
+      } as unknown as GameState;
+      syncTerritoryDeeds(snapshot);
       return validateState(snapshot) ? snapshot : null;
     }
     if (!validateV2State(value) && !validateLegacyState(value)) return null;
@@ -517,7 +576,7 @@ export function migrateState(value: unknown): GameState | null {
       ),
     };
     const v2Apostle = v2.apostle as Apostle;
-    const snapshot = {
+    const v3 = {
       ...v2,
       version: 3,
       apostle: {
@@ -527,7 +586,8 @@ export function migrateState(value: unknown): GameState | null {
       frontier: createFrontierState(v2.day as number),
       life: createLifeState(v2.npcs as Npc[], v2.family as Person[], v2Apostle),
     };
-    return validateState(snapshot) ? snapshot : null;
+    if (!validateV3State(v3)) return null;
+    return migrateState(v3);
   } catch {
     return null;
   }

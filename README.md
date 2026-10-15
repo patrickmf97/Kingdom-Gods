@@ -1,4 +1,4 @@
-# KINGDOM GODS · alpha 0.4
+# KINGDOM GODS · alpha 0.5
 
 RPG sandbox medieval **local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
@@ -24,7 +24,19 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-## Novidades da alpha 0.4
+## Novidades da alpha 0.5
+
+- **Terras registradas:** Clareira do Carvalho (80 coroas) e Alto da Pedra (120) nos Ermos de Alvor. Placas físicas e mapa indicam acesso. Cada parcela mede 220×180 e permanece vinculada a Auren. Um adulto pode registrar um terreno adicional; o segundo exige carta do reino.
+- **Armazém:** obra de 8 madeiras, 4 pedras e 10 energia; depósito persistente com limite de 120 de peso. Deposite ou retire 1 ou 5 unidades presencialmente. Retiradas respeitam a capacidade da mochila, inclusive quando o prédio precisa de reparos.
+- **Abrigo:** obra de 6 madeiras, 3 pedras e 10 energia; uma madeira permite descansar quatro horas, recuperando energia e até 20 de vida. O calendário, a alimentação e os impostos continuam funcionando durante esse descanso.
+- **Manutenção e obrigações:** construções perdem 2 de condição por dia; abaixo de 25, depósito e descanso ficam suspensos. Reparo de 3 madeiras, 2 pedras e 8 energia recupera 40 pontos. Cada novo terreno custa 1 coroa/dia, e a carta acrescenta 1. Ouro entra no tesouro cívico; saldo não pago vira dívida, quitável no mural. Dívidas restringem expansão e uso, preservando os bens armazenados.
+- **Reconhecimento de Auren:** serviços cumpridos concedem influência uma única vez: 4 por contrato dos Ermos, 3 por até seis pedidos cívicos, 2 pela primeira colheita/casa/obra de cada terreno. No mural, com 12 de influência, propriedade, nenhuma dívida e 60 coroas, obtenha a carta de **Guardião de Alvor**. Ela permite o segundo registro e cria uma obrigação diária; não torna o personagem rei.
+- **Legado e salvamentos v4:** terrenos, depósitos, carta e obrigações passam aos sucessores familiares elegíveis. Migrações v1/v2/v3 preservam a campanha e reconhecem serviços anteriores disponíveis no histórico, sem avançar o relógio. Sem família elegível, a nova campanha começa sem vantagens.
+- **Construções físicas:** bases bloqueiam movimento, esquiva e rotas do mapa. As duas clareiras removem apenas árvores locais; estradas, água e recursos ficam acessíveis.
+
+Abra **Propriedades** para consultar o registro. Vá pessoalmente à placa do terreno para comprar, construir e usar o depósito/abrigo; procure o mural de Valeverde para a carta e quitação de dívidas.
+
+## Base da alpha 0.4 preservada
 
 - **Ermos de Alvor:** região aberta de 3072×2304 com bosque, estradas, acampamento, ruínas, lago e recursos. **Mina do Ferro Antigo:** mapa de 1280×1120 com galerias conectadas, três veios de ferro e uma área de pedra. Portais exigem presença física; o mapa não teletransporta. A cripta permanece separada e opcional.
 - **Ofícios:** machado e picareta têm estoque finito, propriedade e durabilidade. Comprar movimenta moedas para o comerciante. Reparar na forja usa 1 minério, 1 madeira e 3 coroas, restaurando 50 pontos até o limite de 100.
@@ -37,7 +49,7 @@ Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverd
 
 ## Sistemas anteriores preservados
 
-Três bênçãos com efeitos concretos; atributos e prática sem níveis globais; combate, equipamento, cripta e missão opcional; inventário, consumo, comércio com estoque/capital e preços; moinho, padaria e forja com receitas; cultivo sazonal; propriedade única ligada ao Reino de Auren; construção, reparos, tributo e contrato de Lina; pedidos rotativos de abastecimento; calendário, fome, envelhecimento, ferimentos e morte; memórias, retirada autônoma diante de perigo e amizade que influencia um aliado.
+Três bênçãos com efeitos concretos; atributos e prática sem níveis globais; combate, equipamento, cripta e missão opcional; inventário, consumo, comércio com estoque/capital e preços; moinho, padaria e forja com receitas; cultivo sazonal; Parcela do Moinho ligada ao Reino de Auren; construção, reparos, tributo e contrato de Lina; pedidos rotativos de abastecimento; calendário, fome, envelhecimento, ferimentos e morte; memórias, retirada autônoma diante de perigo e amizade que influencia um aliado.
 
 Quando o apóstolo morre, apenas cônjuge ou filhos vivos podem suceder. Um estranho não pode substituir a família elegível. Menores ficam sob regência e não combatem na cripta nem assinam contratos de terra, construção ou emprego; menores de doze anos não entram na mina. Sem família elegível, a linhagem termina e uma campanha nova começa sem os bens anteriores. A preferência de herdeiro não burla essas regras.
 
@@ -49,9 +61,9 @@ IndexedDB mantém snapshot atual e backup; localStorage é fallback. O jogo salv
 
 Duas regiões externas autorais (vila e Ermos), dois mapas subterrâneos/interiores de exploração (mina e cripta), além do orfanato. Apenas a região ativa é instanciada; texturas são geradas sob demanda e ficam em cache, e cenários distantes são ocultados. A navegação usa grade de 24 pixels e segmentos seguros, com pés de raio 9 e colisão por subpassos. Personagens respeitam obstáculos estáticos, sem bloqueio mútuo de suas silhuetas.
 
-Há uma propriedade, uma casa predefinida, uma trabalhadora contratável, duas ferramentas, três receitas e três oportunidades iniciais além dos pedidos rotativos e da missão da cripta. A economia representa produção e consumo regionais por regras agregadas. Necessidades de NPCs não causam mortes aleatórias; Elara permanece no orfanato com rotina simplificada. Educação é prática numérica e vínculo, sem escola completa ou simulação de infância minuto a minuto. Descendência usa traços básicos e dezesseis dias entre união e nascimento. O ano tem 360 dias. Não há linguagem gerada por IA; autonomia e relações seguem regras e memórias.
+Há a fazenda original e dois terrenos adicionais, construções em posições fixas (uma por terreno), uma trabalhadora contratável, duas ferramentas, três receitas e três oportunidades iniciais além dos pedidos rotativos e da missão da cripta. A economia representa produção e consumo regionais por regras agregadas. Necessidades de NPCs não causam mortes aleatórias; Elara permanece no orfanato com rotina simplificada. Educação é prática numérica e vínculo, sem escola completa ou simulação de infância minuto a minuto. Descendência usa traços básicos e dezesseis dias entre união e nascimento. O ano tem 360 dias. Não há linguagem gerada por IA; autonomia e relações seguem regras e memórias.
 
-Ainda não há política completa, guerras, múltiplos reinos, construção livre, genética detalhada, doenças complexas, centenas de profissões, contas, simulação offline ou multiplayer/PvP. O multiplayer será desenvolvido depois dos sistemas locais. A campanha é individual: NPCs não são apresentados como jogadores reais.
+A política inicial limita-se a registro territorial, influência, carta e obrigações. Ainda não há política completa, guerras, múltiplos reinos, construção livre, genética detalhada, doenças complexas, centenas de profissões, contas, simulação offline ou multiplayer/PvP. O multiplayer será desenvolvido depois dos sistemas locais. A campanha é individual: NPCs não são apresentados como jogadores reais.
 
 ## Arquitetura
 
@@ -59,13 +71,14 @@ Ainda não há política completa, guerras, múltiplos reinos, construção livr
 - `regions.ts`, `navigation.ts`: regiões, conexões físicas, marcos, recursos, colisões e rotas.
 - `simulation.ts`: autoridade local e integração dos sistemas, sem autoridade remota fictícia.
 - `frontier.ts`: ferramentas, trabalho, recursos finitos, descobertas, reservas e oportunidades.
+- `territory-data.ts`, `territory.ts`: parcelas, limites de posse, construções, depósitos, influência e obrigações.
 - `life.ts`: necessidades, tutores, educação, regência e registros familiares.
 - `economy.ts`: produção, lavouras, manutenção, salários, orçamento e pedidos.
-- `persistence.ts`, `campaign-files.ts`: validação, migração v1/v2/v3, backups e intercâmbio de campanhas.
+- `persistence.ts`, `campaign-files.ts`: validação, migração v1/v2/v3/v4, backups e intercâmbio de campanhas.
 - `world.ts`, `art.ts`, `region-art.ts`: Phaser, profundidade, câmera, culling e pixel art determinística.
-- `App.tsx`, `Panels.tsx`, `ExpansionPanels.tsx`: interface React responsiva e ações reais.
+- `App.tsx`, `Panels.tsx`, `ExpansionPanels.tsx`, `TerritoryPanels.tsx`: interface React responsiva e ações reais.
 - `transport.ts`: intenções serializáveis para a futura integração de servidor.
 
 ## Verificação
 
-As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo de execução da alpha 0.4 fica em `docs/verification-alpha04.md`, com fluxos no navegador e limites da verificação. O recibo da atualização anterior permanece em `docs/verification-alpha03.md`.
+As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo desta entrega fica em `docs/verification-alpha05.md`, com fluxos no navegador e limites da verificação. As verificações anteriores permanecem em `docs/verification-alpha04.md` e `docs/verification-alpha03.md`.

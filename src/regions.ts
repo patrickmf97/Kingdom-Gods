@@ -1,5 +1,6 @@
 import { villageDecor, type VillageDecoration } from "./art";
 import { OBJECTS, WORLD_H, WORLD_W } from "./data";
+import { ESTATE_DEFS, estateObject } from "./territory-data";
 import type { Point, ResourceNodeDefinition, WorldObject, Zone } from "./types";
 
 export interface Rectangle { left: number; top: number; right: number; bottom: number }
@@ -86,6 +87,20 @@ for (let row = 0; row < 17; row++) {
     wildernessDecor.push({ x: Math.round(x), y: Math.round(y), key: (row + column) % 4 === 0 ? "pine" : (row + column) % 3 === 0 ? "tree2" : "tree1", scale: 0.85 + forestRandom() * 0.35 });
   }
 }
+// Generate the original forest first. Its scale draws share the coordinate
+// generator, so inserting parcel exclusions inside the loop would move every
+// later tree in existing campaigns. Only clear the two plots and their south
+// approaches, including nearby canopy overhangs that would hide the signs.
+for (let index = wildernessDecor.length - 1; index >= 0; index--) {
+  const item = wildernessDecor[index];
+  const reserved = ESTATE_DEFS.some((estate) =>
+    item.x >= estate.x - estate.width / 2 - 75 &&
+    item.x <= estate.x + estate.width / 2 + 75 &&
+    item.y >= estate.y - estate.height - 40 &&
+    item.y <= estate.y + 180);
+  if (reserved) wildernessDecor.splice(index, 1);
+}
+wildernessObjects.push(...ESTATE_DEFS.map((estate) => estateObject(estate.id)));
 
 const villageWalls: Rectangle[] = [
   rect(616, 524, 810, 610), rect(912, 984, 1094, 1070), rect(1566, 1024, 1720, 1090),

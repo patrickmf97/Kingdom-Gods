@@ -137,6 +137,25 @@ export interface GameState {
   economy: EconomyState;
   frontier: FrontierState;
   life: LifeState;
+  territory: TerritoryState;
+}
+
+export type EstateId = "oak-hollow" | "stone-rise";
+export type EstateBuilding = "none" | "warehouse" | "shelter";
+export interface EstateHolding {
+  owned: boolean;
+  registeredDay: number | null;
+  building: EstateBuilding;
+  condition: number;
+  storage: Record<ItemId, number>;
+}
+export interface TerritoryState {
+  parcels: Record<EstateId, EstateHolding>;
+  influence: number;
+  deeds: string[];
+  charter: boolean;
+  arrears: number;
+  lastTaxDay: number;
 }
 
 export type ToolId = "axe" | "pickaxe";
@@ -211,6 +230,7 @@ export interface ExpansionHooks {
   nearObject: (id: string) => boolean;
   nearNpc: (id: string) => boolean;
   rememberNpc?: (id: string, title: string, text: string, emotion: string) => void;
+  rest?: (hours: number, healing: number) => void;
 }
 export type Season = "Primavera" | "Verão" | "Outono" | "Inverno";
 export interface CropPlan {
