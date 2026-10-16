@@ -35,6 +35,7 @@ import {
   SKILL_NAMES,
 } from "./data";
 import { store } from "./simulation";
+import { getRendererMode, setRendererMode } from "./world";
 import type { PersistentGameState } from "./simulation";
 import { cropProfile, RECIPES } from "./economy";
 import { findPath, objectApproach } from "./navigation";
@@ -2247,6 +2248,28 @@ function WorldMap({
 
 function Help({ state }: { state: GameState }) {
   const calendar = store.getCalendar();
+  const [rendererMode, updateRendererMode] = useState(getRendererMode);
+  const [rendererStatus, setRendererStatus] = useState("");
+  const [rendererLoading, setRendererLoading] = useState(false);
+  useEffect(() => {
+    const changed = () => {
+      updateRendererMode(getRendererMode());
+      setRendererStatus("");
+    };
+    const status = (event: Event) => {
+      const detail = (event as CustomEvent<{ mode: "3d" | "2d"; loading?: boolean; message?: string }>).detail;
+      if (!detail) return;
+      updateRendererMode(detail.mode);
+      setRendererLoading(!!detail.loading);
+      setRendererStatus(detail.message || "");
+    };
+    window.addEventListener("kg-renderer-change", changed);
+    window.addEventListener("kg-renderer-status", status);
+    return () => {
+      window.removeEventListener("kg-renderer-change", changed);
+      window.removeEventListener("kg-renderer-status", status);
+    };
+  }, []);
   return (
     <>
       <div className="panel-help-intro">
@@ -2256,6 +2279,26 @@ function Help({ state }: { state: GameState }) {
           Conheça Valeverde, cuide de si e construa um legado com suas escolhas.
         </p>
       </div>
+      <div className="panel-section-heading">
+        <h3>Um novo olhar sobre o reino</h3>
+        <Compass size={17} />
+      </div>
+      <div className="renderer-choice" role="group" aria-label="Visual do mundo" aria-busy={rendererLoading}>
+        <button className="panel-button" aria-pressed={rendererMode === "3d"} onClick={() => setRendererMode("3d")}>Visual 3D</button>
+        <button className="panel-button" aria-pressed={rendererMode === "2d"} onClick={() => setRendererMode("2d")}>Visual 2D</button>
+      </div>
+      <p className="panel-prose">
+        O visual 3D usa cenários e personagens medievais estilizados, câmera elevada
+        e iluminação suave. Você joga a mesma campanha: trocar o visual mantém
+        inventário, terras, família e memórias. O visual 2D continua disponível
+        para aparelhos que precisem de uma opção mais leve.
+      </p>
+      {rendererStatus && <p className="renderer-help-status" role="status">{rendererStatus}</p>}
+      <p className="panel-hint">
+        No mundo 3D, abra Câmera para girar, aproximar ou restaurar a vista.
+        No computador, use Z e X para girar e a roda do mouse para ajustar a distância.
+        Esta primeira versão mantém terreno plano e animações simples.
+      </p>
       <div className="panel-section-heading">
         <h3>Controles</h3>
         <span>Teclado</span>
@@ -2366,7 +2409,7 @@ function Help({ state }: { state: GameState }) {
         <ScrollText size={17} />
       </div>
       <p className="panel-prose">
-        Kingdom Gods alpha 0.5 inclui Valeverde, os Ermos de Alvor e a Mina do
+        Kingdom Gods alpha 0.6 traz o mundo jogável em 3D. Inclui Valeverde, os Ermos de Alvor e a Mina do
         Ferro Antigo, além da cripta. Há ferramentas com desgaste, extração,
         oportunidades de exploração, educação dos filhos, tutela e herança.
         Nos Ermos, registre terras, construa armazéns ou abrigos e mantenha

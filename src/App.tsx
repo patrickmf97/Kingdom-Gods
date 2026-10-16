@@ -3,6 +3,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   BookOpen,
+  Camera,
   Check,
   ChevronRight,
   Coins,
@@ -16,6 +17,8 @@ import {
   Pause,
   Play,
   Save,
+  RotateCcw,
+  RotateCw,
   Settings2,
   Shield,
   ShoppingBag,
@@ -27,14 +30,17 @@ import {
   VolumeX,
   X,
   Zap,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import type { Blessing, Creation, Dialog, GameState, Panel } from "./types";
 import { BLESSINGS, ITEMS, OBJECTS, WORLD_H, WORLD_W } from "./data";
 import { store } from "./simulation";
 import { objectsForZone, regionForZone, resourceNode, WILDERNESS_ROADS } from "./regions";
 import { MAX_CAMPAIGN_BYTES, parseCampaign } from "./campaign-files";
-import { mountWorld, worldInput } from "./world";
+import { getRendererMode, mountWorld, worldInput } from "./world";
 import { GamePanel, ItemIcon, Portrait } from "./Panels";
+import "./three.css";
 
 function Sigil({ size = 36 }: { size?: number }) {
   return (
@@ -101,6 +107,9 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [sound, setSound] = useState(false);
+  const [rendererMode, setRendererMode] = useState(getRendererMode);
+  const [rendererNotice, setRendererNotice] = useState("");
+  const [cameraOpen, setCameraOpen] = useState(false);
   const campaignInput = useRef<HTMLInputElement>(null);
   const importDialog = useRef<HTMLDivElement>(null);
   const [transferError, setTransferError] = useState("");
@@ -120,6 +129,29 @@ export default function App() {
   });
   const [confirmNew, setConfirmNew] = useState(false);
   useEffect(() => store.subscribe(redraw), []);
+  useEffect(() => {
+    const changed = () => {
+      setRendererMode(getRendererMode());
+      setCameraOpen(false);
+      setRendererNotice("");
+    };
+    const status = (event: Event) => {
+      const detail = (event as CustomEvent<{ mode: "3d" | "2d"; loading?: boolean; message?: string }>).detail;
+      if (!detail) return;
+      setRendererMode(detail.mode);
+      if (detail.mode !== "3d") setCameraOpen(false);
+      if (detail.mode === "2d" && detail.message && !detail.loading) setRendererNotice(detail.message);
+    };
+    window.addEventListener("kg-renderer-change", changed);
+    window.addEventListener("kg-renderer-status", status);
+    return () => {
+      window.removeEventListener("kg-renderer-change", changed);
+      window.removeEventListener("kg-renderer-status", status);
+    };
+  }, []);
+  useEffect(() => {
+    if (panel || dialog || paused || pendingImport || transferBusy || s.phase !== "playing") setCameraOpen(false);
+  }, [panel, dialog, paused, pendingImport, transferBusy, s.phase]);
   useEffect(() => {
     store
       .hasSave()
@@ -237,6 +269,7 @@ export default function App() {
         return;
       }
       if (e.key === "Escape") {
+        if (cameraOpen) { setCameraOpen(false); return; }
         setPanel(null);
         setDialog(null);
         setPaused((v) => (panel || dialog ? false : !v));
@@ -250,7 +283,7 @@ export default function App() {
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
-  }, [panel, dialog, paused, s.phase, pendingImport, transferBusy]);
+  }, [panel, dialog, paused, s.phase, pendingImport, transferBusy, cameraOpen]);
   useEffect(() => {
     if (!sound) return;
     const audio = new AudioContext();
@@ -396,7 +429,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.5</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.6 · {rendererMode.toUpperCase()}</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -564,12 +597,18 @@ export default function App() {
             </div>
           </aside>
         )}
-        <main className="world-area">
+        <main className={`world-area ${cameraOpen ? "camera-open" : ""}`}>
           <div
             className="world-canvas"
             ref={worldEl}
             aria-label="Mundo explorável de Kingdom Gods"
           />
+          {rendererNotice && (s.phase === "title" || s.phase === "playing") && (
+            <div className="renderer-notice" role="status">
+              <span>{rendererNotice}</span>
+              <button onClick={() => setRendererNotice("")} aria-label="Fechar informação visual"><X size={16} /></button>
+            </div>
+          )}
           {s.phase === "playing" && (
             <>
               <div className="region-header">
@@ -634,6 +673,11 @@ export default function App() {
                 </div>
               )}
               <div className="world-top-controls">
+                {rendererMode === "3d" && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
+                  <button className="map-toggle camera-toggle" aria-label="Controles da câmera" aria-expanded={cameraOpen} aria-controls="world-camera-controls" onClick={() => setCameraOpen((value) => !value)}>
+                    <Camera size={17} /><span>Câmera</span>
+                  </button>
+                )}
                 <button
                   className="map-toggle"
                   onClick={() => open("map")}
@@ -649,6 +693,19 @@ export default function App() {
                   {paused ? <Play size={17} /> : <Pause size={17} />}
                 </button>
               </div>
+              {cameraOpen && rendererMode === "3d" && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
+                <div className="camera-controls" id="world-camera-controls" role="group" aria-label="Ajustar câmera 3D">
+                  {([
+                    { action: "left", label: "Girar câmera à esquerda", Icon: RotateCcw },
+                    { action: "right", label: "Girar câmera à direita", Icon: RotateCw },
+                    { action: "in", label: "Aproximar câmera", Icon: ZoomIn },
+                    { action: "out", label: "Afastar câmera", Icon: ZoomOut },
+                    { action: "reset", label: "Restaurar câmera", Icon: Compass },
+                  ] as const).map(({ action, label, Icon }) => (
+                    <button key={action} title={label} aria-label={label} onClick={() => document.dispatchEvent(new CustomEvent("kg-camera", { detail: { action } }))}><Icon size={20} /></button>
+                  ))}
+                </div>
+              )}
               <div className="notification-feed" aria-live="polite" style={{ visibility: s.frontier.work ? "hidden" : undefined }}>
                 {s.messages.slice(-3).map((m, i) => (
                   <div
@@ -828,7 +885,7 @@ export default function App() {
               <div className="title-grain" />
               <div className="title-copy">
                 <span className="title-overline">
-                  <span /> UM RPG SANDBOX DE FANTASIA MEDIEVAL
+                  <span /> {rendererMode === "3d" ? "UM MUNDO MEDIEVAL EM 3D" : "UM RPG SANDBOX DE FANTASIA MEDIEVAL"}
                 </span>
                 <h1>
                   Um deus.
@@ -887,7 +944,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  ALPHA 0.5 · TERRAS E LEGADO <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.6 · MUNDO EM 3D <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />

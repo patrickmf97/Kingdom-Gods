@@ -1,6 +1,6 @@
-# KINGDOM GODS · alpha 0.5
+# KINGDOM GODS · alpha 0.6 · 3D
 
-RPG sandbox medieval **local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
+RPG sandbox medieval **3D, local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
 ## Executar
 
@@ -24,7 +24,18 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-## Novidades da alpha 0.5
+## Novidades da alpha 0.6
+
+- **Mundo tridimensional:** vila, Ermos, mina, cripta e orfanato usam geometria 3D real. Há casas de madeira e pedra, telhados, árvores instanciadas, estradas, ponte, água, plantações e recursos. As coordenadas e colisões autorais foram mantidas.
+- **Personagens:** apóstolo e moradores com volume, rosto e cores salvas; esqueletos distintos, espada visível conforme equipamento e animações simples de caminhada, trabalho e ataque.
+- **Câmera:** acompanha o apóstolo. Abra o botão de câmera para girar, aproximar, afastar ou restaurar; Z/X giram e a roda do mouse controla a distância. WASD e joystick seguem as direções da tela após a rotação. Clique/toque no cenário seleciona personagens, objetos ou um destino no chão; o mapa continua oferecendo rotas seguras.
+- **Sistemas preservados:** comércio, trabalho, combate, terrenos, depósitos, família, memórias e sucessão continuam na mesma simulação. Trocar a aparência não reinicia a campanha nem altera o formato v4 de salvamento.
+- **Escolha visual:** em Controles e informações, selecione Visual 3D ou Visual 2D. Só o renderizador escolhido é carregado. Navegadores sem suporte ao 3D recebem a versão 2D com aviso. A perda de contexto gráfico durante a partida também troca o visual preservando o estado.
+- **Celular:** resolução de renderização limitada, florestas instanciadas e sombras simples para conter o custo gráfico. O desempenho depende do aparelho; os testes automatizados de navegador não equivalem a medir 60 FPS em um telefone real.
+
+O 3D atual é estilizado, com modelos gerados no código, chão plano e construções de posição fixa. A interface, o criador visual e o mapa permanecem em 2D. Não há saltos, múltiplos andares navegáveis ou animações de captura de movimento.
+
+## Base da alpha 0.5 preservada
 
 - **Terras registradas:** Clareira do Carvalho (80 coroas) e Alto da Pedra (120) nos Ermos de Alvor. Placas físicas e mapa indicam acesso. Cada parcela mede 220×180 e permanece vinculada a Auren. Um adulto pode registrar um terreno adicional; o segundo exige carta do reino.
 - **Armazém:** obra de 8 madeiras, 4 pedras e 10 energia; depósito persistente com limite de 120 de peso. Deposite ou retire 1 ou 5 unidades presencialmente. Retiradas respeitam a capacidade da mochila, inclusive quando o prédio precisa de reparos.
@@ -75,10 +86,13 @@ A política inicial limita-se a registro territorial, influência, carta e obrig
 - `life.ts`: necessidades, tutores, educação, regência e registros familiares.
 - `economy.ts`: produção, lavouras, manutenção, salários, orçamento e pedidos.
 - `persistence.ts`, `campaign-files.ts`: validação, migração v1/v2/v3/v4, backups e intercâmbio de campanhas.
-- `world.ts`, `art.ts`, `region-art.ts`: Phaser, profundidade, câmera, culling e pixel art determinística.
+- `world.ts`, `world-input.ts`: seleção de renderizador, carregamento sob demanda, ciclo de vida e entrada compartilhada.
+- `three/world3d.ts`, `three/coordinates.ts`: Three.js, câmera, seleção por raio, rotas e apresentação da simulação.
+- `three/environment.ts`, `three/characters.ts`: cenários e personagens tridimensionais, animações e descarte de recursos.
+- `world2d.ts`, `art.ts`, `region-art.ts`: visual 2D preservado com Phaser e pixel art determinística.
 - `App.tsx`, `Panels.tsx`, `ExpansionPanels.tsx`, `TerritoryPanels.tsx`: interface React responsiva e ações reais.
 - `transport.ts`: intenções serializáveis para a futura integração de servidor.
 
 ## Verificação
 
-As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo desta entrega fica em `docs/verification-alpha05.md`, com fluxos no navegador e limites da verificação. As verificações anteriores permanecem em `docs/verification-alpha04.md` e `docs/verification-alpha03.md`.
+As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo desta entrega fica em `docs/verification-alpha06.md`, com fluxos no navegador e limites da verificação. As verificações anteriores permanecem em `docs/verification-alpha05.md`, `docs/verification-alpha04.md` e `docs/verification-alpha03.md`.
