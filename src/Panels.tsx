@@ -38,6 +38,7 @@ import { store } from "./simulation";
 import { getRendererMode, setRendererMode } from "./world";
 import type { PersistentGameState } from "./simulation";
 import { cropProfile, RECIPES } from "./economy";
+import { marketQuote } from "./market";
 import { findPath, objectApproach } from "./navigation";
 import type { NavigationContext } from "./navigation";
 import { objectsForZone, regionForZone, resourceNode, RESOURCE_NODES, WILDERNESS_ROADS } from "./regions";
@@ -1663,7 +1664,11 @@ function PropertyPanel({ state }: { state: GameState }) {
 
 function Market({ state }: { state: GameState }) {
   const [buying, setBuying] = useState(true);
+  const [inspectedItem, setInspectedItem] = useState<ItemId>("bread");
   const nearby = atTradingPost(state);
+  const inspected = marketQuote(state, inspectedItem, buying);
+  const percent = (factor: number) => `${factor >= 1 ? "+" : "−"}${Math.abs(Math.round((factor - 1) * 100))}%`;
+  const supplyText = { scarce: "Oferta baixa", balanced: "Oferta estável", abundant: "Oferta alta" };
   const ids = buying
     ? ITEM_IDS
     : ITEM_IDS.filter((id) => state.inventory[id] > 0);
@@ -1713,9 +1718,9 @@ function Market({ state }: { state: GameState }) {
         </div>
       </div>
       <p className="panel-hint">
-        Estoque atual da vila. Moinhos consomem trigo; padarias consomem farinha
-        e madeira. A prosperidade está em {state.economy.prosperity}/100 e afeta
-        os preços conforme pedidos são atendidos ou fracassam.
+        A produção usa insumos e paga os trabalhadores com o caixa do mercado.
+        Estações, oferta e pedidos da vila influenciam os preços.
+        Prosperidade: {state.economy.prosperity}/100.
       </p>
       <button
         className="panel-button panel-button-outline panel-button-full"
@@ -1746,6 +1751,7 @@ function Market({ state }: { state: GameState }) {
       <div className="panel-market-list">
         {ids.map((id) => {
           const price = store.price(id, buying);
+          const quote = marketQuote(state, id, buying);
           const stock = buying ? state.market[id] : state.inventory[id];
           const disabled =
             !nearby ||
@@ -1762,6 +1768,7 @@ function Market({ state }: { state: GameState }) {
                   {stock > 0
                     ? `${stock} ${buying ? "em estoque" : "na mochila"}`
                     : "Sem estoque"}
+                  {` · ${supplyText[quote.status]}`}
                 </small>
               </div>
               <span className="panel-market-price">
@@ -1788,6 +1795,28 @@ function Market({ state }: { state: GameState }) {
         </div>
       ) : null}
       {buying ? <ToolsPanel state={state} mode="market" /> : null}
+      <details className="panel-market-analysis">
+        <summary>Como este mercado forma os preços</summary>
+        <label htmlFor="market-quote-item">Examinar mercadoria</label>
+        <select id="market-quote-item" value={inspectedItem} onChange={event => setInspectedItem(event.target.value as ItemId)}>
+          {ITEM_IDS.map(id => <option key={id} value={id}>{ITEMS[id].name}</option>)}
+        </select>
+        <p>{supplyText[inspected.status]} · {inspected.stock} em estoque, referência de {inspected.target}. Cotação de {buying ? "compra" : "venda"}: <strong>{money(inspected.price)}</strong>.</p>
+        <dl className="panel-quote-factors">
+          <div><dt>Disponibilidade</dt><dd>{percent(inspected.scarcityFactor)}</dd></div>
+          <div><dt>Estação</dt><dd>{percent(inspected.seasonFactor)}</dd></div>
+          <div><dt>Pedidos da vila</dt><dd>{percent(inspected.demandFactor)}</dd></div>
+          <div><dt>Seu benefício de negociação</dt><dd>{Math.round((1 - inspected.discountFactor) * 100)}%</dd></div>
+        </dl>
+        <p>Esses fatores se combinam com a prosperidade e a margem do comerciante. A negociação reduz o preço de compra e melhora o valor recebido na venda.</p>
+      </details>
+      {state.economy.ledger.length ? <div className="panel-market-recent">
+        <div className="panel-section-heading"><h3>Últimos movimentos</h3><ScrollText size={16} /></div>
+        <div className="panel-ledger">{state.economy.ledger.slice(-4).reverse().map((entry, index) => <article key={`${entry.day}-${index}`}>
+          <div><span>Dia {entry.day}</span><b className={entry.goldDelta > 0 ? "panel-ledger-credit" : entry.goldDelta < 0 ? "panel-ledger-debit" : undefined}>{entry.goldDelta ? `${entry.goldDelta > 0 ? "+" : ""}${entry.goldDelta} ouro` : "Vila"}</b></div>
+          <p>{entry.text}</p>
+        </article>)}</div>
+      </div> : null}
       <div className="panel-footnote">
         <ArrowDownUp size={16} />
         <span>
@@ -2432,7 +2461,7 @@ function Help({ state }: { state: GameState }) {
         <ScrollText size={17} />
       </div>
       <p className="panel-prose">
-        Kingdom Gods alpha 0.7 amplia a coleta e o horizonte do mundo 3D. Há 15 pontos de madeira, pedra e ervas em Valeverde, 36 nos Ermos e quatro recursos na mina. Cada reserva se esgota e se renova com o calendário. Use o filtro do mapa para encontrar o material desejado. Inclui Valeverde, os Ermos de Alvor e a Mina do
+        Kingdom Gods alpha 0.8 melhora os materiais, os detalhes e os efeitos do visual 3D. Coleta, caminhada e combate têm partículas; o mercado considera oferta, estações e pedidos, e a produção paga seus trabalhadores. Há 15 pontos de madeira, pedra e ervas em Valeverde, 36 nos Ermos e quatro recursos na mina. Cada reserva se esgota e se renova com o calendário. Use o filtro do mapa para encontrar o material desejado. Inclui Valeverde, os Ermos de Alvor e a Mina do
         Ferro Antigo, além da cripta. Há ferramentas com desgaste, extração,
         oportunidades de exploração, educação dos filhos, tutela e herança.
         Nos Ermos, registre terras, construa armazéns ou abrigos e mantenha

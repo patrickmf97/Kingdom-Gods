@@ -429,7 +429,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.7 · {rendererMode.toUpperCase()}</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.8 · {rendererMode.toUpperCase()}</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -944,7 +944,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  ALPHA 0.7 · UM MUNDO MAIS VIVO <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.8 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />

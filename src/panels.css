@@ -983,6 +983,16 @@
   font-size: 8px;
   color: #a39c83;
 }
+.panel-market-analysis { margin: 20px 0; border: 1px solid #d9d1bc; border-radius: 7px; padding: 0 14px; color: #647159; background: #f6f2e6; font-size: 11px; }
+.panel-market-analysis summary { min-height: 44px; padding: 14px 0; cursor: pointer; color: #465e43; }
+.panel-market-analysis label { display: block; margin: 8px 0; }
+.panel-market-analysis select { width: 100%; min-height: 44px; border: 1px solid #cfc6af; border-radius: 4px; background: #fbf8ed; color: #425740; padding: 8px; font: inherit; }
+.panel-market-analysis p { line-height: 1.8; }
+.panel-quote-factors { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.panel-quote-factors > div { padding: 10px; border-radius: 4px; background: #eae7d8; }
+.panel-quote-factors dt { font-size: 10px; }
+.panel-quote-factors dd { margin: 5px 0 0; font-size: 13px; color: #4e6745; }
+.panel-market-recent { margin-top: 22px; }
 .panel-market-price {
   display: flex;
   align-items: center;

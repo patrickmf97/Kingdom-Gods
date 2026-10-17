@@ -1,4 +1,5 @@
 import { ITEMS, OBJECTS } from "./data";
+import { MARKET_TARGETS } from "./market";
 import type {
   EconomyState,
   GameState,
@@ -105,6 +106,11 @@ function record(
   state.economy.ledger.push({ day: state.day, type, text, goldDelta });
   if (state.economy.ledger.length > 30)
     state.economy.ledger.splice(0, state.economy.ledger.length - 30);
+}
+
+/** Successful transfers only; goldDelta always refers to the apostle's purse. */
+export function recordMarketTrade(state: GameState, item: ItemId, buy: boolean, price: number): void {
+  record(state, "trade", `${buy ? "Compra" : "Venda"}: 1 ${ITEMS[item].name} · ${price} coroas.`, buy ? -price : price);
 }
 
 const clamp = (n: number, min: number, max: number) =>
@@ -599,27 +605,77 @@ function orderDay(state: GameState, hooks: EconomicHooks): void {
 function regionalProduction(state: GameState): void {
   const stock = state.market;
   const season = cropProfile(state.day).season;
-  stock.wheat = Math.min(
-    40,
-    stock.wheat + { Primavera: 3, Verão: 4, Outono: 5, Inverno: 1 }[season],
-  );
-  stock.wood = Math.min(36, stock.wood + 3);
-  stock.stone = Math.min(30, stock.stone + 2);
-  stock.seed = Math.min(24, stock.seed + 2);
-  stock.herb = Math.min(20, stock.herb + 1);
-  const milling = Math.max(
-    0,
-    Math.min(3, Math.floor(stock.wheat / 2), 30 - stock.flour),
-  );
-  stock.wheat -= milling * 2;
-  stock.flour += milling;
-  const baking = Math.max(
-    0,
-    Math.min(4, stock.flour, stock.wood, Math.floor((40 - stock.bread) / 2)),
-  );
-  stock.flour -= baking;
-  stock.wood -= baking;
-  stock.bread += baking * 2;
+  const seasonIndex = ["Primavera", "Verão", "Outono", "Inverno"].indexOf(season);
+  const supplies: { item: ItemId; npcId: string; capacity: number[]; unitCost: number }[] = [
+    { item: "wheat", npcId: "farmer", capacity: [3, 4, 5, 1], unitCost: 2 },
+    { item: "wood", npcId: "guard", capacity: [3, 3, 3, 2], unitCost: 1 },
+    { item: "stone", npcId: "guard", capacity: [2, 2, 2, 1], unitCost: 2 },
+    { item: "seed", npcId: "farmer", capacity: [2, 2, 1, 1], unitCost: 1 },
+    { item: "herb", npcId: "mira", capacity: [1, 2, 1, 0], unitCost: 2 },
+  ];
+  const availableWorker = (id: string) => state.npcs.find((npc) =>
+    npc.id === id && id !== state.apostle.id && state.economy.worker?.npcId !== id &&
+    !state.family.some((person) => person.id === id && !person.alive));
+  const pay = (id: string, coins: number) => {
+    state.merchantGold -= coins;
+    state.economy.npcSavings[id] = (state.economy.npcSavings[id] || 0) + coins;
+  };
+  const purchases: string[] = [];
+  const production: string[] = [];
+  const stalls = new Set<string>();
+  for (const supply of supplies) {
+    const gap = Math.max(0, MARKET_TARGETS[supply.item] - stock[supply.item]);
+    if (!gap) continue;
+    const capacity = supply.capacity[seasonIndex];
+    if (!capacity) {
+      stalls.add(`${ITEMS[supply.item].name}: sem coleta nesta estação`);
+      continue;
+    }
+    const worker = availableWorker(supply.npcId);
+    if (!worker) {
+      stalls.add(`${ITEMS[supply.item].name}: trabalhador indisponível`);
+      continue;
+    }
+    const planned = Math.min(capacity, gap);
+    const quantity = Math.min(planned, Math.floor(state.merchantGold / supply.unitCost));
+    if (quantity < planned) stalls.add("caixa do mercador sem moedas para toda a reposição");
+    if (!quantity) continue;
+    const paid = quantity * supply.unitCost;
+    stock[supply.item] += quantity;
+    pay(worker.id, paid);
+    purchases.push(`${worker.name}: ${quantity} ${ITEMS[supply.item].name} por ${paid} coroas`);
+  }
+  if (purchases.length)
+    record(state, "procurement", `Reposição paga · ${season}: ${purchases.join("; ")}.`);
+
+  // The same physical recipes as the apostle's workshops, with one crown of
+  // merchant-paid labor per batch. A private estate contract occupies Lina.
+  for (const workshop of [
+    { recipe: RECIPES[0], npcId: "farmer", capacity: 3 },
+    { recipe: RECIPES[1], npcId: "matron", capacity: 4 },
+  ]) {
+    const { recipe } = workshop;
+    const headroom = Math.min(...amounts(recipe.outputs).map(([item, quantity]) =>
+      Math.floor(Math.max(0, MARKET_TARGETS[item] - stock[item]) / quantity)));
+    if (!headroom) continue;
+    const worker = availableWorker(workshop.npcId);
+    if (!worker) {
+      stalls.add(`${recipe.name}: trabalhador indisponível`);
+      continue;
+    }
+    const inputs = Math.min(...amounts(recipe.inputs).map(([item, quantity]) =>
+      Math.floor(stock[item] / quantity)));
+    const planned = Math.min(workshop.capacity, headroom);
+    const batches = Math.min(planned, inputs, state.merchantGold);
+    if (inputs < planned) stalls.add(`${recipe.name}: insumos insuficientes`);
+    if (state.merchantGold < Math.min(planned, inputs)) stalls.add(`${recipe.name}: caixa sem moedas para salários`);
+    if (!batches) continue;
+    for (const [item, quantity] of amounts(recipe.inputs)) stock[item] -= quantity * batches;
+    for (const [item, quantity] of amounts(recipe.outputs)) stock[item] += quantity * batches;
+    pay(worker.id, batches);
+    production.push(`${recipe.name}: ${amounts(recipe.outputs)
+      .map(([item, quantity]) => `${quantity * batches} ${ITEMS[item].name}`).join(", ")} · ${batches} coroas para ${worker.name}`);
+  }
   const availableFunds = Math.max(
     0,
     state.economy.civicFunds - reservedFunds(state),
@@ -635,7 +691,7 @@ function regionalProduction(state: GameState): void {
   record(
     state,
     "production",
-    `Vila: ${milling} farinha, ${baking * 2} pães produzidos; ${bought} pães consumidos.`,
+    `Vila: ${production.length ? production.join("; ") : "sem produção nas oficinas"}; ${bought} pães consumidos por ${bought * ITEMS.bread.price} coroas da verba livre.${stalls.size ? ` Limites: ${[...stalls].join("; ")}.` : ""}`,
   );
 }
 

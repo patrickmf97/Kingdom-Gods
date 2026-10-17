@@ -38,6 +38,7 @@ function money(store: GameStore): number {
     store.state.gold +
     store.state.merchantGold +
     store.state.economy.civicFunds +
+    store.state.frontier.escrow +
     Object.values(store.state.economy.npcSavings).reduce(
       (sum, value) => sum + value,
       0,
@@ -290,9 +291,13 @@ test("unpaid Lina does no farm work and leaves after three days with remembered 
   assert.equal(economy.worker?.unpaidDays, 1);
   assert.equal(economy.worker?.loyalty, Math.max(0, loyalty - 15));
   assert.equal(store.state.inventory.seed, seeds);
+  assert.equal(economy.npcSavings.farmer || 0, 0, "an active unpaid contract still occupies Lina");
+  const total = money(store);
   store.tick(480);
   assert.equal(economy.worker, null);
-  assert.equal(economy.npcSavings.farmer || 0, 0);
+  assert.ok((economy.npcSavings.farmer || 0) > 0, "after resigning, Lina can earn merchant-paid regional work");
+  assert.ok(economy.ledger.some((entry) => entry.type === "procurement" && /Lina/.test(entry.text)));
+  assert.equal(money(store), total);
   assert.equal(store.state.property.plantedAt, null);
   assert.ok(
     store.state.apostle.memories.some((memory) =>
@@ -306,7 +311,7 @@ test("unpaid Lina does no farm work and leaves after three days with remembered 
   );
 });
 
-test("poor maintenance suspends paid farm work and dismissing the worker stops later wages", () => {
+test("poor maintenance suspends farm work and dismissal ends estate wages while allowing regional work", () => {
   const store = game();
   const economy = estate(store);
   store.act("hire:farmer");
@@ -319,8 +324,11 @@ test("poor maintenance suspends paid farm work and dismissing the worker stops l
   assert.equal(store.state.inventory.seed, seeds);
   store.act("dismiss-worker");
   assert.equal(economy.worker, null);
+  const gold = store.state.gold;
   store.tick(240);
-  assert.equal(economy.npcSavings.farmer, 5);
+  assert.equal(store.state.gold, gold - 2, "only the estate tax remains; the merchant pays regional wages");
+  assert.ok(economy.npcSavings.farmer > 5);
+  assert.ok(economy.ledger.some((entry) => entry.type === "procurement" && /Lina/.test(entry.text)));
 });
 
 test("an estate contract survives succession and ends when Lina herself becomes the apostle", () => {
@@ -387,7 +395,7 @@ test("regional milling and baking consume ingredients while village spending nev
   assert.equal(store.state.market.wheat, 1);
   assert.equal(store.state.market.flour, 0);
   assert.equal(store.state.market.wood, 2);
-  assert.equal(store.state.merchantGold, 450);
+  assert.equal(store.state.merchantGold, 431, "17 procurement coins plus two recipe wages reach NPC savings");
   assert.equal(money(store), total);
   store.state.market.wheat = 0;
   store.state.market.flour = 0;
@@ -469,9 +477,12 @@ test("unfunded civic budgets cannot generate orders or pay an invented reward", 
   const store = game();
   assert.ok(store.state.economy);
   store.state.economy.civicFunds = 0;
+  const total = money(store);
   store.tick(240 * 8);
   assert.equal(store.state.economy.orders.length, 0);
-  assert.equal(store.state.merchantGold, 450);
+  assert.equal(store.state.economy.civicFunds, 0);
+  assert.ok(store.state.merchantGold < 450, "the merchant can still fund regional labor with its own cash");
+  assert.equal(money(store), total);
 });
 
 test("one long interval and daily intervals produce the same estate and finite economy", () => {

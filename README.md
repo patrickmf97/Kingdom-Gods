@@ -1,4 +1,4 @@
-# KINGDOM GODS · alpha 0.7 · 3D
+# KINGDOM GODS · alpha 0.8 · 3D
 
 RPG sandbox medieval **3D, local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
@@ -24,7 +24,16 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-## Novidades da alpha 0.7
+## Novidades da alpha 0.8
+
+- **Materiais:** sete texturas procedurais de 64×64 para madeira, telhas, pedra, reboco, terra, caminhos e tecido, compartilhadas por região. Telhados, estradas, casas, plantações e mina possuem UVs próprios. As cores e o estilo de fantasia foram mantidos.
+- **Assets do cenário:** barris, caixas, bandejas de produtos, bigorna, fornalha, ferramentas e suportes/lamparinas na mina. Os detalhes respeitam as bases já bloqueadas e deixam os acessos existentes livres. Pinheiros coletáveis usam copas próprias.
+- **Partículas reais:** poeira dos passos, lascas de madeira, faíscas da mineração, folhas da coleta e efeitos de ataques/dano. Pólen de dia e vaga-lumes à noite usam a mesma reserva de 192 partículas, com no máximo uma chamada de desenho. A pausa congela os efeitos; troca de região, importação e encerramento descartam os recursos.
+- **Mercado:** preços graduais por estoque, estação, pedidos vigentes e prosperidade. A prática e Fortuna melhoram as condições dentro de uma margem que evita lucro por comprar e revender imediatamente. O painel explica os fatores da cotação e mostra movimentos reais no registro existente.
+- **Produção financiada:** o comerciante paga produtores e mão de obra com seu caixa, transferindo moedas às economias dos moradores. Moinho e padaria consomem insumos reais; falta de caixa, estação ou trabalhador pode suspender a reposição. Mercadorias acima da referência permanecem no estoque. A produção mantém o orçamento reservado para pedidos.
+- **Saves v5 preservados:** a atualização não acrescenta campos obrigatórios, muda o formato nem avança o tempo de campanhas fechadas.
+
+## Base da alpha 0.7 preservada
 
 - **Paredes corrigidas:** faces da madeira e do reboco separadas fisicamente, eliminando a cintilação nas laterais das casas. As construções recuperam materiais opacos ao sair da área de transparência.
 - **Horizonte externo:** céu e montanhas ao redor de Valeverde e dos Ermos, com cores acompanhando o dia e a noite. O cenário distante não altera os limites físicos nem as passagens entre regiões.
@@ -92,12 +101,13 @@ A política inicial limita-se a registro territorial, influência, carta e obrig
 - `frontier.ts`: ferramentas, trabalho, recursos finitos, descobertas, reservas e oportunidades.
 - `territory-data.ts`, `territory.ts`: parcelas, limites de posse, construções, depósitos, influência e obrigações.
 - `life.ts`: necessidades, tutores, educação, regência e registros familiares.
-- `economy.ts`: produção, lavouras, manutenção, salários, orçamento e pedidos.
+- `economy.ts`, `market.ts`: produção financiada, cotações, lavouras, manutenção, salários, orçamento e pedidos.
 - `persistence.ts`, `campaign-files.ts`: validação, migração v1/v2/v3/v4, backups e intercâmbio de campanhas.
 - `world.ts`, `world-input.ts`: seleção de renderizador, carregamento sob demanda, ciclo de vida e entrada compartilhada.
 - `three/world3d.ts`, `three/coordinates.ts`: Three.js, câmera, seleção por raio, rotas e apresentação da simulação.
 - `three/environment.ts`, `three/characters.ts`: cenários e personagens tridimensionais, animações e descarte de recursos.
 - `three/horizon.ts`: céu, serras e transição atmosférica das regiões externas, sem alterar navegação.
+- `three/materials.ts`, `three/effects.ts`: texturas procedurais e partículas reutilizadas, com propriedade e descarte por instância.
 - `world2d.ts`, `art.ts`, `region-art.ts`: visual 2D preservado com Phaser e pixel art determinística.
 - `App.tsx`, `Panels.tsx`, `ExpansionPanels.tsx`, `TerritoryPanels.tsx`: interface React responsiva e ações reais.
 - `transport.ts`: intenções serializáveis para a futura integração de servidor.

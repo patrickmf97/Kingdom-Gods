@@ -1,4 +1,5 @@
 import { ITEMS, OBJECTS } from "./data";
+import { marketQuote } from "./market";
 import { objectsForZone, portalForZone, regionForZone, resourceNode } from "./regions";
 import { cancelWork, createFrontierState, discoverLocation, executeFrontierAction, processFrontierDay, updateFrontierWork } from "./frontier";
 import { applyEducationToSuccessor, availableGuardians, createLifeState, executeLifeAction, npcGoalDestination, processLifeDay, recordLifeEvent, registerChildEducation, updateLifeNeeds } from "./life";
@@ -21,6 +22,7 @@ import {
   plantCrop,
   processEconomicDay,
   reconcileWorker,
+  recordMarketTrade,
   RECIPES,
   type EconomicHooks,
 } from "./economy";
@@ -970,24 +972,7 @@ export class GameStore {
 
   price(item: ItemId, buy: boolean): number {
     if (!ITEMS[item]) return 0;
-    const stock = this.state.market[item];
-    const scarcity = stock < 4 ? 1.2 : stock > 28 ? 0.92 : 1;
-    const skillDiscount = Math.min(
-      0.15,
-      this.state.apostle.skills.trading / 500,
-    );
-    const blessingDiscount =
-      this.state.apostle.blessing === "fortune" ? 0.88 : 1;
-    return Math.max(
-      1,
-      Math.round(
-        ITEMS[item].price *
-          (1 + (55 - this.state.economy.prosperity) / 500) *
-          (buy
-            ? scarcity * (1.15 - skillDiscount) * blessingDiscount
-            : Math.min(1, scarcity) * (0.6 + skillDiscount)),
-      ),
-    );
+    return marketQuote(this.state, item, buy).price;
   }
   getCalendar(): {
     hour: string;
@@ -1503,10 +1488,16 @@ export class GameStore {
         if (this.state.market[item] < 1 || this.state.gold < price) {
           this.message(
             this.state.market[item] < 1
-              ? "O estoque acabou. Novas mercadorias chegam amanhã."
+              ? "O estoque acabou. A reposição depende da estação, de trabalho e de moedas do mercador."
               : "Ouro insuficiente.",
             "warning",
           );
+          this.notify();
+          return;
+        }
+        if (!Number.isSafeInteger(this.state.inventory[item] + 1) ||
+            !Number.isSafeInteger(this.state.merchantGold + price)) {
+          this.message("Esta compra ultrapassaria a capacidade do mercado.", "warning");
           this.notify();
           return;
         }
@@ -1529,6 +1520,12 @@ export class GameStore {
           this.notify();
           return;
         }
+        if (!Number.isSafeInteger(this.state.market[item] + 1) ||
+            !Number.isSafeInteger(this.state.gold + price)) {
+          this.message("Esta venda ultrapassaria a capacidade do mercado.", "warning");
+          this.notify();
+          return;
+        }
         this.state.gold += price;
         this.state.merchantGold -= price;
         this.state.inventory[item]--;
@@ -1543,6 +1540,7 @@ export class GameStore {
           "success",
         );
       }
+      recordMarketTrade(this.state, item, verb === "buy", price);
       this.practice("trading", 0.4);
     } else if (action === "equip:sword") {
       if (this.state.inventory.sword > 0) {

@@ -7,6 +7,7 @@ import { findPath, nearestWalkable, objectApproach, type NavigationContext, type
 import type { Dialog, Zone } from "../types";
 import { createCharacterModel, type ActorAppearance, type CharacterModel } from "./characters";
 import { createRegionEnvironment, type RegionEnvironment } from "./environment";
+import { WorldEffects } from "./effects";
 import { cameraChange, DEFAULT_CAMERA_DISTANCE, DEFAULT_CAMERA_YAW, screenToMap, toMap, toWorld, WORLD_SCALE } from "./coordinates";
 
 type Actor = { model: CharacterModel; label: HTMLDivElement; x: number; y: number; appearance: string };
@@ -17,6 +18,7 @@ class ThreeWorld {
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(42, 1, .1, 230);
   private environment?: RegionEnvironment;
+  private effects = new WorldEffects();
   private actors = new Map<string, Actor>();
   private layer = document.createElement("div");
   private labels = document.createElement("div");
@@ -77,7 +79,7 @@ class ThreeWorld {
     this.renderer.shadowMap.enabled = false;
     this.scene.background = new THREE.Color(0xb7c8b3);
     this.scene.fog = new THREE.Fog(0xb7c8b3, 65, 155);
-    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine);
+    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group);
     this.routeLine.frustumCulled = false;
     this.routeLine.renderOrder = 5;
     this.observer.observe(this.element);
@@ -114,6 +116,7 @@ class ThreeWorld {
     event.preventDefault();
     if (this.disposed) return;
     this.contextAvailable = false;
+    this.effects.dispose();
     this.release();
     window.dispatchEvent(new CustomEvent("kg-renderer-failure", { detail: { message: "O navegador interrompeu o visual 3D. O jogo passou para 2D e sua campanha foi preservada. Você pode tentar o 3D novamente no guia." } }));
   };
@@ -130,6 +133,7 @@ class ThreeWorld {
     this.camera.aspect = width / height;
     this.camera.fov = width < 600 ? 48 : height < 500 ? 48 : 42;
     this.camera.updateProjectionMatrix();
+    this.effects.setProjection(height, this.renderer.getPixelRatio(), this.camera.fov);
   };
 
   private keyDown = (event: KeyboardEvent) => {
@@ -166,8 +170,11 @@ class ThreeWorld {
     this.clearRoute();
     const now = performance.now() / 1000;
     if (now - this.attackLast < .3) return;
-    this.attackLast = now; this.attackUntil = now + .28;
+    this.attackLast = now;
+    const stamina = store.state.apostle.stamina;
     store.attack();
+    this.effects.observePlayerAttack(store.state, stamina, this.actors.get("player")?.model.group.rotation.y ?? 0);
+    if (stamina - store.state.apostle.stamina >= 9.999) this.attackUntil = now + .28;
   };
   private dodge = () => {
     if (!this.canAct()) return;
@@ -264,6 +271,7 @@ class ThreeWorld {
 
   private rebuild(zone: Zone, scenic: boolean): void {
     this.clearRoute();
+    this.effects.reset(store.state);
     if (this.environment) { this.scene.remove(this.environment.group); this.environment.dispose(); }
     for (const actor of this.actors.values()) { this.scene.remove(actor.model.group); actor.model.dispose(); actor.label.remove(); }
     this.actors.clear();
@@ -378,6 +386,7 @@ class ThreeWorld {
     try { this.renderFrame(stamp); }
     catch {
       this.contextAvailable = false;
+      this.effects.dispose();
       this.release();
       window.dispatchEvent(new CustomEvent("kg-renderer-failure", { detail: { message: "O visual 3D encontrou um problema neste navegador. O jogo passou para 2D e preservou sua campanha." } }));
     }
@@ -389,11 +398,13 @@ class ThreeWorld {
     if (this.zone !== zone || this.scenic !== scenic) this.rebuild(zone, scenic);
     const geometry = `${store.state.zone}:${store.state.property.building}:${estateBuildings(store.state).join(",")}`;
     if (geometry !== this.geometrySignature) { this.geometrySignature = geometry; this.clearRoute(); }
-    if (this.canAct()) {
+    const active = this.canAct();
+    if (active) {
       if (this.pressed.has("Space")) this.attack();
       this.move(dt);
       store.tick(dt);
     } else this.release();
+    this.effects.update(store.state, active ? dt : 0);
     const time = stamp / 1000;
     this.syncActors(time);
     this.environment?.update(store.state, time);
@@ -406,6 +417,11 @@ class ThreeWorld {
       canvas.dataset.cameraDistance = String(this.view.distance);
       canvas.dataset.drawCalls = String(this.renderer.info.render.calls);
       canvas.dataset.triangles = String(this.renderer.info.render.triangles);
+      canvas.dataset.particleCount = String(this.effects.count);
+      canvas.dataset.particleCapacity = String(this.effects.capacity);
+      canvas.dataset.particleDrawCalls = String(this.effects.drawCalls);
+      canvas.dataset.particleVersion = String(this.effects.version);
+      canvas.dataset.particleKinds = JSON.stringify(this.effects.counts);
       canvas.dataset.viewProjection = JSON.stringify(new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse).elements);
       canvas.dataset.frame = String(stamp);
       this.lastDebug = stamp;
@@ -432,6 +448,7 @@ class ThreeWorld {
     this.renderer.domElement.removeEventListener("webglcontextrestored", this.contextRestored);
     this.prompt.removeEventListener("click", this.promptClick);
     this.environment?.dispose();
+    this.effects.dispose();
     for (const actor of this.actors.values()) actor.model.dispose();
     this.actors.clear();
     for (const owned of [this.haloGeometry, this.haloMaterial, this.shadowGeometry, this.shadowMaterial, this.routeGeometry, this.routeMaterial]) owned.dispose();

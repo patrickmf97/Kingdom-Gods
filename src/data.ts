@@ -190,7 +190,7 @@ export const BLESSINGS = {
   fortune: {
     name: "Fortuna",
     subtitle: "O destino que sussurra",
-    description: "+3 carisma · preços de compra 12% menores",
+    description: "+3 carisma · benefício nas compras e vendas",
     color: "#d6bc72",
   },
 };

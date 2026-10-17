@@ -3,6 +3,7 @@ import { regionForZone, RESOURCE_NODES, WILDERNESS_ROADS, type Rectangle } from 
 import { ESTATE_DEFS, estateSolid } from "../territory-data";
 import type { GameState, Point, Zone } from "../types";
 import { createHorizon, type RegionHorizon } from "./horizon";
+import { RegionSurfaceTextures, type SurfaceTexture } from "./materials";
 
 /** Presentation only. Navigation and interactions keep their existing logical coordinates. */
 export interface RegionEnvironment {
@@ -40,6 +41,7 @@ class EnvironmentBuilder {
   readonly waters: THREE.MeshStandardMaterial[] = [];
   readonly nodes: NodeVisual[] = [];
   readonly mills: THREE.Group[] = [];
+  readonly surfaces = new RegionSurfaceTextures();
   readonly boxGeometry: THREE.BoxGeometry;
   readonly sphereGeometry: THREE.IcosahedronGeometry;
   readonly cylinderGeometry: THREE.CylinderGeometry;
@@ -66,6 +68,15 @@ class EnvironmentBuilder {
       -.5, 0, -.5, .5, 0, -.5, .5, 0, .5, -.5, 0, -.5, .5, 0, .5, -.5, 0, .5,
     ];
     roof.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    // Each pitched face has its own roof-space UVs. End caps and the underside
+    // also carry valid UVs, so this shared geometry works for canvas and tiles.
+    const roofUvs: number[] = [];
+    for (let vertex = 0; vertex < positions.length / 3; vertex++) {
+      const [x, y, z] = positions.slice(vertex * 3, vertex * 3 + 3);
+      roofUvs.push(vertex < 6 ? (z + .5) * 2 : (x + .5) * 5,
+        vertex < 18 ? y * 3 : (z + .5) * 3);
+    }
+    roof.setAttribute("uv", new THREE.Float32BufferAttribute(roofUvs, 2));
     roof.computeVertexNormals();
     this.roofGeometry = this.geometry(roof);
     this.group.add(this.dynamic);
@@ -77,18 +88,22 @@ class EnvironmentBuilder {
   }
 
   material(color: THREE.ColorRepresentation, options: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
-    const key = `${color}:${JSON.stringify(options)}`;
+    const kind = color === PALETTE.timber || color === PALETTE.wood || color === PALETTE.woodLight ? "wood"
+      : color === PALETTE.stone || color === PALETTE.stoneLight || color === PALETTE.stoneDark ? "stone"
+      : color === PALETTE.roof || color === PALETTE.slate ? "shingles" : undefined;
+    const { map = kind ? this.surfaces.get(kind) : null, ...parameters } = options;
+    const key = `${color}:${map?.uuid ?? "flat"}:${JSON.stringify(parameters)}`;
     let material = this.cache.get(key);
     if (!material) {
-      material = new THREE.MeshStandardMaterial({ color, roughness: .93, metalness: 0, flatShading: true, ...options });
+      material = new THREE.MeshStandardMaterial({ color, roughness: .93, metalness: 0, flatShading: true, ...parameters, map });
       this.cache.set(key, material);
       this.materials.add(material);
     }
     return material;
   }
 
-  private fadingMaterial(color: THREE.ColorRepresentation): THREE.MeshStandardMaterial {
-    const material = new THREE.MeshStandardMaterial({ color, roughness: .9, flatShading: true });
+  private fadingMaterial(color: THREE.ColorRepresentation, surface: SurfaceTexture): THREE.MeshStandardMaterial {
+    const material = new THREE.MeshStandardMaterial({ color, roughness: .9, flatShading: true, map: this.surfaces.get(surface) });
     this.materials.add(material);
     return material;
   }
@@ -119,13 +134,30 @@ class EnvironmentBuilder {
     return mesh;
   }
 
-  floorRect(area: Rectangle, color: THREE.ColorRepresentation, y = -.015): void {
-    this.box((area.left + area.right) / 2, (area.top + area.bottom) / 2,
+  floorRect(area: Rectangle, color: THREE.ColorRepresentation | THREE.Material, y = -.015): void {
+    const floor = this.box((area.left + area.right) / 2, (area.top + area.bottom) / 2,
       area.right - area.left, area.bottom - area.top, .03, color, y - .03);
+    if ((floor.material as THREE.MeshStandardMaterial).map) {
+      const geometry = this.geometry(this.boxGeometry.clone());
+      const position = geometry.getAttribute("position");
+      const normal = geometry.getAttribute("normal");
+      const uv: number[] = [];
+      for (let i = 0; i < position.count; i++) {
+        const x = position.getX(i) * floor.scale.x + floor.position.x;
+        const y = position.getY(i) * floor.scale.y + floor.position.y;
+        const z = position.getZ(i) * floor.scale.z + floor.position.z;
+        // World-scale projection on each face keeps even thin edge triangles
+        // valid instead of collapsing their UVs onto the top-down plane.
+        uv.push((Math.abs(normal.getX(i)) > .5 ? z : x) * .6,
+          (Math.abs(normal.getY(i)) > .5 ? z : y) * .6);
+      }
+      geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+      floor.geometry = geometry;
+    }
   }
 
   /** One merged mesh for an entire path network, with rounded joins. */
-  ribbon(paths: Point[][], width: number, color: THREE.ColorRepresentation, height = .005): THREE.Mesh {
+  ribbon(paths: Point[][], width: number, color: THREE.ColorRepresentation, height = .005, surface?: SurfaceTexture): THREE.Mesh {
     const vertices: number[] = [];
     const tri = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number) => {
       vertices.push(ax * SCALE, height, az * SCALE, bx * SCALE, height, bz * SCALE, cx * SCALE, height, cz * SCALE);
@@ -148,8 +180,11 @@ class EnvironmentBuilder {
     }
     const geometry = this.geometry(new THREE.BufferGeometry());
     geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute(vertices.flatMap((coordinate, index) =>
+      index % 3 === 1 ? [] : [coordinate * .6]), 2));
     geometry.computeVertexNormals();
-    const mesh = this.mesh(geometry, this.material(color, { side: THREE.DoubleSide }));
+    const mesh = this.mesh(geometry, this.material(color, { side: THREE.DoubleSide,
+      ...(surface ? { map: this.surfaces.get(surface) } : {}) }));
     mesh.castShadow = false;
     return mesh;
   }
@@ -197,11 +232,17 @@ class EnvironmentBuilder {
     parent.add(group);
     const x = (area.left + area.right) / 2, y = (area.top + area.bottom) / 2;
     const width = area.right - area.left, depth = area.bottom - area.top;
-    const walls = this.fadingMaterial(kind === "forge" ? PALETTE.stone : PALETTE.cream);
-    const roof = this.fadingMaterial(roofColor);
-    const timber = this.fadingMaterial(PALETTE.timber);
+    const walls = this.fadingMaterial(kind === "forge" ? PALETTE.stone : PALETTE.cream, kind === "forge" ? "stone" : "plaster");
+    const roof = this.fadingMaterial(roofColor, "shingles");
+    const timber = this.fadingMaterial(PALETTE.timber, "wood");
     this.box(x, y, width, depth, .3, PALETTE.stoneDark, 0, group);
-    this.box(x, y, width, depth, height - .3, walls, .3, group);
+    if (kind === "forge") {
+      // The forge is an open workshop within the same impassable rectangle.
+      // A recessed hearth and anvil are visible beneath its original roof.
+      this.box(x, area.top + 5, width, 10, height - .3, walls, .3, group);
+      for (const sideX of [area.left + 5, area.right - 5]) this.box(sideX, y, 10, depth, height - .3, walls, .3, group);
+      this.box(x, area.bottom - 3, width, 6, .26, timber, height - .26, group);
+    } else this.box(x, y, width, depth, height - .3, walls, .3, group);
     // A one-unit reveal puts timber outside the plaster. The old +2/-2
     // centres made their entire outward faces coplanar and flicker together.
     for (const sideX of [area.left + 1, area.right - 1]) {
@@ -213,10 +254,12 @@ class EnvironmentBuilder {
     roofMesh.position.set(x * SCALE, height - .03, y * SCALE);
     roofMesh.scale.set((width + 18) * SCALE, 1.55, (depth + 20) * SCALE);
     // Door and windows are attached to the actual solid face; the approach stays dry and clear.
-    this.box(x + width * .12, area.bottom + .8, Math.min(23, width * .22), 1.5, 1.85,
-      0x6e5034, .03, group);
-    this.box(x + width * .12 + 7, area.bottom + 2, 2, 2, .08, 0xd9bc73, .95, group);
-    for (const offset of [-.29, .32]) {
+    if (kind !== "forge") {
+      this.box(x + width * .12, area.bottom + .8, Math.min(23, width * .22), 1.5, 1.85,
+        this.material(0x6e5034, { map: this.surfaces.get("wood") }), .03, group);
+      this.box(x + width * .12 + 7, area.bottom + 2, 2, 2, .08, 0xd9bc73, .95, group);
+    }
+    for (const offset of kind === "forge" ? [] : [-.29, .32]) {
       const windowX = x + width * offset;
       if (Math.abs(windowX - (x + width * .12)) < 18) continue;
       this.box(windowX, area.bottom + 1, Math.min(18, width * .18), 2, 1.0, timber, 1.2, group);
@@ -307,10 +350,13 @@ class EnvironmentBuilder {
         this.cylinder(x, y, 7, .35, PALETTE.wood, 0, depleted);
         this.cylinder(x, y, 7.6, .06, PALETTE.woodLight, .35, depleted);
         this.cylinder(x, y, 7, 2.25, PALETTE.timber, 0, live);
+        const pine = node.id.includes("pine"), willow = node.id.includes("willow");
         for (let i = 0; i < 3; i++) {
-          const crown = this.mesh(this.sphereGeometry, this.material(i === 1 ? PALETTE.leafLight : PALETTE.leaf), live);
-          crown.position.set(x * SCALE + (i - 1) * .6, 3 + (i % 2) * .8, y * SCALE);
-          crown.scale.set(1.7, 1.5, 1.6);
+          const crown = this.mesh(pine ? this.coneGeometry : this.sphereGeometry,
+            this.material(pine ? [0x45694e, 0x527a56, 0x64875e][i] : i === 1 ? PALETTE.leafLight : PALETTE.leaf), live);
+          crown.position.set(x * SCALE + (pine ? 0 : (i - 1) * .6), pine ? 2.7 + i * .95 : 3 + (i % 2) * .8, y * SCALE);
+          if (pine) crown.scale.set(1.65 - i * .34, 2.55 - i * .25, 1.65 - i * .34);
+          else crown.scale.set(willow ? 1.9 : 1.7, willow ? 1.9 : 1.5, willow ? 1.75 : 1.6);
         }
         // Fallen branches at the base make the starter resource readable too.
         for (let i = 0; i < 2; i++) {
@@ -335,7 +381,8 @@ class EnvironmentBuilder {
         this.cylinder(x, y, 12, .035, 0x5c784d, .01, depleted);
       } else {
         for (let i = 0; i < 3; i++) {
-          const rock = this.mesh(this.sphereGeometry, this.material(i % 2 ? 0x8d9287 : 0x737f75), live);
+          const rock = this.mesh(this.sphereGeometry, this.material(i % 2 ? 0x8d9287 : 0x737f75,
+            { map: this.surfaces.get("stone") }), live);
           rock.position.set((x + (i - 1) * 8) * SCALE, .32 + (i % 2) * .14, (y + (i % 2) * 4) * SCALE);
           rock.scale.set(.48, .48 + (i % 2) * .2, .4);
           rock.rotation.set(i * .3, i * 2, i * .2);
@@ -369,7 +416,7 @@ class EnvironmentBuilder {
       [[1900, 900], [1980, 840], [2090, 815]],
     ].map(path => path.map(([x, y]) => ({ x, y })));
     this.ribbon(paths, 54, PALETTE.roadEdge, .003);
-    this.ribbon(paths, 44, PALETTE.road, .012);
+    this.ribbon(paths, 44, PALETTE.road, .012, "path");
     // The village plaza is traversable paving, not a raised obstacle.
     const plaza = this.cylinder(1156, 812, 215, .025, 0xbdb498, .005);
     plaza.scale.z *= .4;
@@ -390,7 +437,7 @@ class EnvironmentBuilder {
     this.box(1293.5, 1368, 38, 60, 1.8, PALETTE.stone, 0);
     this.box(1293.5, 1398.6, 22, 1.5, 1.1, 0x3e3c32, .05);
     this.flame(1293.5, 1400, .2);
-    this.flame(1526, 650, .9);
+    this.forge();
     this.mill(solids[4]);
     this.market();
     this.well();
@@ -406,7 +453,8 @@ class EnvironmentBuilder {
     // Fences use their actual thin wall rectangles. Farm gate stays open.
     for (const index of [16, 17, 19, 20, 21, 22, 23]) this.fenceRect(solids[index]);
     this.house(solids[18], PALETTE.slate, { height: 1.7, kind: "farm-shed" });
-    this.floorRect({ left: 1802, right: 2002, top: 748, bottom: 856 }, 0x866847, .016);
+    this.floorRect({ left: 1802, right: 2002, top: 748, bottom: 856 },
+      this.material(0x866847, { map: this.surfaces.get("soil") }), .016);
     for (let row = 0; row < 6; row++) this.box(1900, 756 + row * 17, 184, 5, .028, 0x6d573d, .026);
     this.portal(2170, 1660);
   }
@@ -473,7 +521,8 @@ class EnvironmentBuilder {
       (area.top + area.bottom) / 2, area.right - area.left, area.bottom - area.top, 2.9, PALETTE.timber);
     // Alternating canvas strips form a real shallow gable over the stall.
     for (let i = 0; i < 10; i++) {
-      const mesh = this.mesh(this.roofGeometry, this.material(i % 2 ? 0xe6d5ac : 0xa35943));
+      const mesh = this.mesh(this.roofGeometry, this.material(i % 2 ? 0xe6d5ac : 0xa35943,
+        { map: this.surfaces.get("canvas") }));
       mesh.position.set((1206 + i * 14) * SCALE, 2.7, 777 * SCALE);
       mesh.scale.set(14.1 * SCALE, .65, 82 * SCALE);
     }
@@ -481,10 +530,49 @@ class EnvironmentBuilder {
       const produce = this.mesh(this.sphereGeometry, this.material(i % 2 ? 0xc8a466 : 0x94a45a));
       produce.position.set((1231 + i * 21) * SCALE, 1.28, 797 * SCALE); produce.scale.set(.3, .18, .23);
     }
-    // The two small crates have corresponding authored solids.
-    for (const index of [11, 12]) {
-      const area = solids[index]; this.box((area.left + area.right) / 2, (area.top + area.bottom) / 2,
-        area.right - area.left, area.bottom - area.top, .7, PALETTE.woodLight);
+    // Every prop sits on the stall or one of the two original crate bases.
+    const dressing = new THREE.Group(); dressing.name = "market-dressing"; this.group.add(dressing);
+    const crate = solids[11], crateX = (crate.left + crate.right) / 2, crateY = (crate.top + crate.bottom) / 2;
+    this.box(crateX, crateY, 15.2, 17.2, .7, PALETTE.woodLight, 0, dressing);
+    for (const y of [crate.top + 1, crate.bottom - 1]) {
+      this.box(crateX, y, 16, 2, .08, PALETTE.timber, .12, dressing);
+      this.box(crateX, y, 16, 2, .08, PALETTE.timber, .55, dressing);
+    }
+    for (const x of [crate.left + 1, crate.right - 1]) this.box(x, crateY, 2, 14, .08, PALETTE.timber, .55, dressing);
+    // A coopered barrel replaces the second box without enlarging its base.
+    const barrel = solids[12], bx = (barrel.left + barrel.right) / 2, by = (barrel.top + barrel.bottom) / 2;
+    this.cylinder(bx, by, 6.6, .85, PALETTE.wood, 0, dressing);
+    const iron = this.material(0x555c52, { roughness: .72, metalness: .3 });
+    for (const base of [.14, .62]) this.cylinder(bx, by, 7, .075, iron, base, dressing);
+    this.cylinder(bx, by, 6.5, .04, PALETTE.woodLight, .85, dressing);
+    // Raised produce trays add silhouette while sharing box/fruit geometry.
+    for (let i = 0; i < 3; i++) {
+      const x = 1235 + i * 35;
+      this.box(x, 790, 29, 25, .1, PALETTE.woodLight, 1.13, dressing);
+      this.box(x, 803, 29, 1, .15, PALETTE.wood, 1.13, dressing);
+    }
+  }
+
+  forge(): void {
+    const dressing = new THREE.Group(); dressing.name = "forge-dressing"; this.group.add(dressing);
+    const iron = this.material(0x566166, { metalness: .68, roughness: .48 });
+    // A charcoal hearth, anvil and tool rack occupy the existing workshop solid.
+    this.box(1508, 624, 30, 32, 1.1, PALETTE.stoneDark, 0, dressing);
+    this.box(1508, 640.5, 24, 1, .7, 0x302f28, .12, dressing);
+    this.box(1508, 634, 21, 11, .06, this.material(0xd28d45,
+      { emissive: 0xc95f24, emissiveIntensity: .65 }), 1.1, dressing);
+    this.flame(1508, 633, 1.12, dressing);
+    this.cylinder(1555, 631, 10, .42, PALETTE.wood, .3, dressing);
+    this.box(1555, 631, 20, 14, .13, iron, .72, dressing);
+    this.box(1555, 631, 8, 8, .24, iron, .85, dressing);
+    this.box(1555, 631, 25, 13, .16, iron, 1.09, dressing);
+    const horn = this.mesh(this.coneGeometry, iron, dressing);
+    horn.position.set(1538 * SCALE, 1.16, 631 * SCALE);
+    horn.scale.set(.12, .56, .12); horn.rotation.z = Math.PI / 2;
+    this.box(1610, 614, 28, 5, .12, PALETTE.wood, 1.3, dressing);
+    for (let i = 0; i < 3; i++) {
+      this.box(1601 + i * 9, 614, 2, 3, .55, PALETTE.woodLight, .76, dressing);
+      this.box(1601 + i * 9, 614, 7, 4, .13, iron, 1.29, dressing);
     }
   }
 
@@ -523,7 +611,7 @@ class EnvironmentBuilder {
 
   wilderness(): void {
     this.ribbon(WILDERNESS_ROADS, 78, 0xa79c77, .005);
-    this.ribbon(WILDERNESS_ROADS, 62, 0xc2b28b, .015);
+    this.ribbon(WILDERNESS_ROADS, 62, 0xc2b28b, .015, "path");
     this.floorRect({ left: 2268, right: 2652, top: 1418, bottom: 1642 }, 0xbeb38b, .019);
     const lake = this.box(2460, 1530, 360, 200, .025,
       this.material(PALETTE.water, { roughness: .3, metalness: .15 }), .025);
@@ -539,7 +627,7 @@ class EnvironmentBuilder {
     this.box(2250, cave.bottom + 3, 112, 8, .18, PALETTE.woodLight, 2.6);
     this.torch(2186, 437, 1.4); this.torch(2314, 437, 1.4);
     // A-frame canvas tent fits entirely inside its existing impassable base.
-    const tent = this.mesh(this.roofGeometry, this.material(0xcebc8e));
+    const tent = this.mesh(this.roofGeometry, this.material(0xcebc8e, { map: this.surfaces.get("canvas") }));
     tent.position.set(1075 * SCALE, 0, 1395 * SCALE); tent.scale.set(80 * SCALE, 2.05, 46 * SCALE);
     this.box(1075, 1418, 27, 1, 1.2, 0x4a5542);
     this.cylinder(1147, 1454, 16, .08, PALETTE.stoneDark);
@@ -569,8 +657,13 @@ class EnvironmentBuilder {
         left * SCALE, 0, top * SCALE, right * SCALE, 0, bottom * SCALE, right * SCALE, 0, top * SCALE);
     }
     const floor = this.geometry(new THREE.BufferGeometry());
-    floor.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3)); floor.computeVertexNormals();
-    this.mesh(floor, this.material(0x8b8469));
+    floor.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    floor.setAttribute("uv", new THREE.Float32BufferAttribute(positions.flatMap((coordinate, index) =>
+      index % 3 === 1 ? [] : [coordinate * .6]), 2));
+    floor.computeVertexNormals();
+    this.mesh(floor, this.material(0x8b8469, { map: this.surfaces.get("soil") }));
+    const dressing = new THREE.Group(); dressing.name = "mine-dressing"; this.group.add(dressing);
+    let supports = 0;
     for (const area of areas) for (const side of ["top", "bottom", "left", "right"] as const) {
       const horizontal = side === "top" || side === "bottom", coordinate = area[side];
       let intervals = [[horizontal ? area.left : area.top, horizontal ? area.right : area.bottom]];
@@ -586,14 +679,32 @@ class EnvironmentBuilder {
           [...(low > start ? [[start, low]] : []), ...(high < end ? [[high, end]] : [])]);
       }
       for (const [start, end] of intervals) {
-        const outward = side === "top" || side === "left" ? -6 : 6;
+        const outward = side === "top" || side === "left" ? -7 : 7;
         const center = (start + end) / 2;
         const height = side === "bottom" ? 1.0 : 2.6;
         // All wall volume is outside the union; chamber joins remain open.
         this.box(horizontal ? center : coordinate + outward, horizontal ? coordinate + outward : center,
-          horizontal ? end - start : 12, horizontal ? 12 : end - start, height, 0x627064);
+          horizontal ? end - start : 12, horizontal ? 12 : end - start, height,
+          this.material(0x627064, { map: this.surfaces.get("stone") }));
         this.box(horizontal ? center : coordinate + outward, horizontal ? coordinate + outward : center,
           horizontal ? end - start : 13, horizontal ? 13 : end - start, .16, 0x84907a, height);
+        if (height > 1 && end - start > 110 && supports < 10) {
+          // Supports are embedded in the impassable wall volume; none crosses
+          // a chamber join or narrows a resource approach.
+          const inset = Math.sign(outward) * 6;
+          const x = horizontal ? center : coordinate + inset;
+          const y = horizontal ? coordinate + inset : center;
+          this.box(x, y, horizontal ? 8 : 11, horizontal ? 11 : 8, 2.3, PALETTE.timber, 0, dressing);
+          this.box(x, y, horizontal ? Math.min(90, end - start - 12) : 12,
+            horizontal ? 12 : Math.min(90, end - start - 12), .16, PALETTE.wood, 2.15, dressing);
+          if (supports % 3 === 0) {
+            const lampX = horizontal ? x + 15 : coordinate + Math.sign(outward) * 2;
+            const lampY = horizontal ? coordinate + Math.sign(outward) * 2 : y + 15;
+            this.box(lampX, lampY, horizontal ? 7 : 3, horizontal ? 3 : 7, .23, this.material(0xf0bd72,
+              { emissive: 0xe29242, emissiveIntensity: .85 }), 1.65, dressing);
+          }
+          supports++;
+        }
       }
     }
     // Embedded, traversable mine rails follow the entrance corridor.
@@ -772,6 +883,7 @@ class EnvironmentBuilder {
     });
     this.geometries.forEach(geometry => geometry.dispose());
     this.materials.forEach(material => material.dispose());
+    this.surfaces.dispose();
     this.group.clear(); this.dynamic.clear();
     this.mills.length = 0;
     this.cache.clear(); this.geometries.clear(); this.materials.clear();
