@@ -247,7 +247,7 @@ export function initialState(): PersistentGameState {
   const npcs = newNpcs();
   const apostle = newApostle();
   return {
-    version: 4,
+    version: 5,
     started: false,
     intro: true,
     phase: "title",

@@ -1,4 +1,4 @@
-# KINGDOM GODS · alpha 0.6 · 3D
+# KINGDOM GODS · alpha 0.7 · 3D
 
 RPG sandbox medieval **3D, local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
@@ -24,12 +24,20 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-## Novidades da alpha 0.6
+## Novidades da alpha 0.7
+
+- **Paredes corrigidas:** faces da madeira e do reboco separadas fisicamente, eliminando a cintilação nas laterais das casas. As construções recuperam materiais opacos ao sair da área de transparência.
+- **Horizonte externo:** céu e montanhas ao redor de Valeverde e dos Ermos, com cores acompanhando o dia e a noite. O cenário distante não altera os limites físicos nem as passagens entre regiões.
+- **Coleta distribuída:** 15 pontos na vila e 36 nos Ermos, além dos quatro recursos da mina. Madeira, pedra e ervas possuem reservas independentes, ferramentas, tempo de trabalho, desgaste e regeneração. Árvores decorativas continuam compondo a floresta; os pontos de trabalho aparecem no mapa.
+- **Mapa de recursos:** filtre os destinos por material ou veja apenas locais e passagens. A lista mostra o estoque restante e o dia de retorno dos pontos esgotados.
+- **Campanhas v5:** migração dos formatos v1–v4 acrescenta somente as novas reservas. Materiais já coletados, ferramentas, trabalho parcial, datas de regeneração, família e propriedades permanecem salvos. A atualização não avança o relógio.
+
+## Base da alpha 0.6 preservada
 
 - **Mundo tridimensional:** vila, Ermos, mina, cripta e orfanato usam geometria 3D real. Há casas de madeira e pedra, telhados, árvores instanciadas, estradas, ponte, água, plantações e recursos. As coordenadas e colisões autorais foram mantidas.
 - **Personagens:** apóstolo e moradores com volume, rosto e cores salvas; esqueletos distintos, espada visível conforme equipamento e animações simples de caminhada, trabalho e ataque.
 - **Câmera:** acompanha o apóstolo. Abra o botão de câmera para girar, aproximar, afastar ou restaurar; Z/X giram e a roda do mouse controla a distância. WASD e joystick seguem as direções da tela após a rotação. Clique/toque no cenário seleciona personagens, objetos ou um destino no chão; o mapa continua oferecendo rotas seguras.
-- **Sistemas preservados:** comércio, trabalho, combate, terrenos, depósitos, família, memórias e sucessão continuam na mesma simulação. Trocar a aparência não reinicia a campanha nem altera o formato v4 de salvamento.
+- **Sistemas preservados:** comércio, trabalho, combate, terrenos, depósitos, família, memórias e sucessão continuam na mesma simulação. Trocar a aparência não reinicia a campanha.
 - **Escolha visual:** em Controles e informações, selecione Visual 3D ou Visual 2D. Só o renderizador escolhido é carregado. Navegadores sem suporte ao 3D recebem a versão 2D com aviso. A perda de contexto gráfico durante a partida também troca o visual preservando o estado.
 - **Celular:** resolução de renderização limitada, florestas instanciadas e sombras simples para conter o custo gráfico. O desempenho depende do aparelho; os testes automatizados de navegador não equivalem a medir 60 FPS em um telefone real.
 
@@ -89,6 +97,7 @@ A política inicial limita-se a registro territorial, influência, carta e obrig
 - `world.ts`, `world-input.ts`: seleção de renderizador, carregamento sob demanda, ciclo de vida e entrada compartilhada.
 - `three/world3d.ts`, `three/coordinates.ts`: Three.js, câmera, seleção por raio, rotas e apresentação da simulação.
 - `three/environment.ts`, `three/characters.ts`: cenários e personagens tridimensionais, animações e descarte de recursos.
+- `three/horizon.ts`: céu, serras e transição atmosférica das regiões externas, sem alterar navegação.
 - `world2d.ts`, `art.ts`, `region-art.ts`: visual 2D preservado com Phaser e pixel art determinística.
 - `App.tsx`, `Panels.tsx`, `ExpansionPanels.tsx`, `TerritoryPanels.tsx`: interface React responsiva e ações reais.
 - `transport.ts`: intenções serializáveis para a futura integração de servidor.

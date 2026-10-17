@@ -20,7 +20,7 @@ export interface RegionDefinition {
 const rect = (left: number, top: number, right: number, bottom: number): Rectangle =>
   ({ left, top, right, bottom });
 
-export const RESOURCE_NODES: ResourceNodeDefinition[] = [
+const legacyResourceNodes: ResourceNodeDefinition[] = [
   { id: "tree1", zone: "village", kind: "resource", x: 590, y: 1080, label: "Ramos caídos do carvalho", resource: "wood", tool: null, duration: 2, stamina: 4, yield: 2, capacity: 4, respawnDays: 2, skill: "woodcutting" },
   { id: "herb1", zone: "village", kind: "herb", x: 1800, y: 440, label: "Ervas medicinais", resource: "herb", tool: null, duration: 2, stamina: 4, yield: 2, capacity: 5, respawnDays: 2, skill: "herbalism" },
   { id: "stone1", zone: "village", kind: "stone", x: 1780, y: 1320, label: "Pedras soltas do caminho", resource: "stone", tool: null, duration: 2, stamina: 4, yield: 2, capacity: 5, respawnDays: 2, skill: "mining" },
@@ -32,6 +32,80 @@ export const RESOURCE_NODES: ResourceNodeDefinition[] = [
   { id: "mine-iron-deep", zone: "mine", kind: "ore", x: 1020, y: 225, label: "Veio de ferro · galeria profunda", resource: "ore", tool: "pickaxe", duration: 4, stamina: 8, yield: 2, capacity: 4, respawnDays: 3, skill: "mining" },
   { id: "mine-stone", zone: "mine", kind: "stone", x: 960, y: 930, label: "Pedra da galeria inferior", resource: "stone", tool: "pickaxe", duration: 3, stamina: 6, yield: 3, capacity: 5, respawnDays: 2, skill: "mining" },
 ];
+
+/** Historical save schemas describe exactly these ten deposits and their caps. */
+export const LEGACY_RESOURCE_NODES: readonly ResourceNodeDefinition[] = Object.freeze(
+  legacyResourceNodes.map(node => Object.freeze(node)),
+);
+
+function outdoorNode(id: string, zone: "village" | "wilderness", resource: "wood" | "stone" | "herb", x: number, y: number, label: string): ResourceNodeDefinition {
+  return { id, zone, x, y, label, resource,
+    kind: resource === "wood" ? "resource" : resource === "stone" ? "stone" : "herb",
+    tool: resource === "wood" ? "axe" : resource === "stone" ? "pickaxe" : null,
+    duration: resource === "herb" ? 2 : 3, stamina: resource === "herb" ? 4 : 6,
+    yield: resource === "herb" ? 2 : 3, capacity: resource === "wood" ? 4 : 5, respawnDays: 2,
+    skill: resource === "wood" ? "woodcutting" : resource === "stone" ? "mining" : "herbalism",
+  };
+}
+
+// Stable authored places spread gathering around the village and the open world.
+// New trees and outcrops use the same finite work balance as their wild peers.
+const additionalResourceNodes: ResourceNodeDefinition[] = [
+  outdoorNode("village-oak-south-meadow", "village", "wood", 660, 1700, "Carvalho do prado sul"),
+  outdoorNode("village-pine-north-grove", "village", "wood", 930, 350, "Pinheiro do bosque norte"),
+  outdoorNode("village-oak-east-orchard", "village", "wood", 2180, 1100, "Carvalho do pomar leste"),
+  outdoorNode("village-willow-south-field", "village", "wood", 1520, 1760, "Salgueiro do campo sul"),
+  outdoorNode("village-stone-west-meadow", "village", "stone", 740, 1290, "Pedreira do prado oeste"),
+  outdoorNode("village-stone-north-ridge", "village", "stone", 1630, 290, "Afloramento da encosta norte"),
+  outdoorNode("village-stone-east-ridge", "village", "stone", 2300, 700, "Pedras da colina leste"),
+  outdoorNode("village-stone-south-pasture", "village", "stone", 2060, 1510, "Afloramento do pasto sul"),
+  outdoorNode("village-herbs-orphanage", "village", "herb", 570, 460, "Ervas do jardim de Santa Elara"),
+  outdoorNode("village-herbs-west-bank", "village", "herb", 520, 1210, "Ervas da margem oeste"),
+  outdoorNode("village-herbs-east-orchard", "village", "herb", 2210, 1360, "Ervas do pomar leste"),
+  outdoorNode("village-herbs-south-meadow", "village", "herb", 1710, 1640, "Ervas do prado sul"),
+
+  outdoorNode("wild-oak-west-hollow", "wilderness", "wood", 360, 1220, "Carvalho da baixada oeste"),
+  outdoorNode("wild-pine-west-slope", "wilderness", "wood", 470, 650, "Pinheiro da encosta oeste"),
+  outdoorNode("wild-oak-north-grove", "wilderness", "wood", 1030, 400, "Carvalho do bosque norte"),
+  outdoorNode("wild-pine-north-ridge", "wilderness", "wood", 1740, 350, "Pinheiro da serra norte"),
+  outdoorNode("wild-oak-east-ridge", "wilderness", "wood", 2730, 660, "Carvalho da serra leste"),
+  outdoorNode("wild-pine-east-grove", "wilderness", "wood", 2830, 1120, "Pinheiro do bosque leste"),
+  outdoorNode("wild-oak-lakeside", "wilderness", "wood", 2780, 1760, "Carvalho além do lago"),
+  outdoorNode("wild-oak-south-grove", "wilderness", "wood", 2510, 2070, "Carvalho do bosque sul"),
+  outdoorNode("wild-pine-south-ridge", "wilderness", "wood", 1690, 2060, "Pinheiro da serra sul"),
+  outdoorNode("wild-oak-southwest", "wilderness", "wood", 600, 2060, "Carvalho da fronteira sudoeste"),
+  outdoorNode("wild-pine-central-grove", "wilderness", "wood", 1470, 1630, "Pinheiro entre as clareiras"),
+  outdoorNode("wild-stone-west-bluff", "wilderness", "stone", 230, 940, "Pedra do penhasco oeste"),
+  outdoorNode("wild-stone-west-ridge", "wilderness", "stone", 760, 500, "Afloramento da serra oeste"),
+  outdoorNode("wild-stone-north-ridge", "wilderness", "stone", 1310, 280, "Pedra da crista norte"),
+  outdoorNode("wild-stone-mine-ridge", "wilderness", "stone", 2160, 200, "Afloramento acima da mina"),
+  outdoorNode("wild-stone-east-bluff", "wilderness", "stone", 2860, 390, "Pedra do penhasco leste"),
+  outdoorNode("wild-stone-east-slope", "wilderness", "stone", 2590, 1020, "Afloramento da encosta leste"),
+  outdoorNode("wild-stone-lakeshore", "wilderness", "stone", 2740, 1460, "Pedra da margem do espelho"),
+  outdoorNode("wild-stone-south-ridge", "wilderness", "stone", 2190, 2070, "Afloramento da serra sul"),
+  outdoorNode("wild-stone-southwest", "wilderness", "stone", 990, 2090, "Pedra da fronteira sudoeste"),
+  outdoorNode("wild-stone-west-meadow", "wilderness", "stone", 380, 1500, "Afloramento do prado oeste"),
+  outdoorNode("wild-stone-central-rise", "wilderness", "stone", 1370, 1060, "Pedra do alto central"),
+  outdoorNode("wild-herbs-west-hollow", "wilderness", "herb", 260, 420, "Ervas da baixada oeste"),
+  outdoorNode("wild-herbs-west-grove", "wilderness", "herb", 840, 850, "Ervas do bosque oeste"),
+  outdoorNode("wild-herbs-north-grove", "wilderness", "herb", 1450, 480, "Ervas do bosque norte"),
+  outdoorNode("wild-herbs-cave-heath", "wilderness", "herb", 2390, 230, "Ervas do urzal da mina"),
+  outdoorNode("wild-herbs-east-heath", "wilderness", "herb", 2850, 850, "Ervas do urzal leste"),
+  outdoorNode("wild-herbs-lake-meadow", "wilderness", "herb", 2860, 1950, "Ervas do prado do lago"),
+  outdoorNode("wild-herbs-south-valley", "wilderness", "herb", 1900, 2210, "Ervas do vale sul"),
+  outdoorNode("wild-herbs-southwest", "wilderness", "herb", 1350, 2040, "Ervas da campina sudoeste"),
+  outdoorNode("wild-herbs-return-path", "wilderness", "herb", 590, 1840, "Ervas do regresso a Valeverde"),
+  outdoorNode("wild-herbs-central-meadow", "wilderness", "herb", 1510, 1830, "Ervas da campina central"),
+  outdoorNode("wild-herbs-eastern-ruins", "wilderness", "herb", 2350, 1210, "Ervas a leste das ruínas"),
+];
+export const RESOURCE_NODES: ResourceNodeDefinition[] = [...LEGACY_RESOURCE_NODES, ...additionalResourceNodes];
+
+/** Clear a visible work space, including canopy overhangs from trees south of it. */
+function hidesResource(item: VillageDecoration, node: ResourceNodeDefinition): boolean {
+  return Math.abs(item.x - node.x) < 100 && item.y > node.y - 60 && item.y < node.y + 150;
+}
+const gatheringVillageDecor = villageDecor.filter(item => !additionalResourceNodes.some(node =>
+  node.zone === "village" && hidesResource(item, node)));
 
 const villagePortals: Portal[] = [
   { id: "wild-gate", kind: "portal", x: 2170, y: 1660, label: "Trilha para os Ermos de Alvor", to: "wilderness", spawn: { x: 400, y: 1780 } },
@@ -71,6 +145,12 @@ const wildernessObjects: WorldObject[] = [
   ...wildernessPortals, ...wildernessLandmarks,
   ...RESOURCE_NODES.filter((node) => node.zone === "wilderness"),
 ];
+// The original exclusion list also controls whether a scale PRNG draw occurs.
+// Expanding it before generation would move every later decorative tree.
+const originalWildernessObjects: WorldObject[] = [
+  ...wildernessPortals, ...wildernessLandmarks,
+  ...LEGACY_RESOURCE_NODES.filter(node => node.zone === "wilderness"),
+];
 const wildernessDecor: VillageDecoration[] = [];
 let forestSeed = 829173;
 function forestRandom(): number {
@@ -82,15 +162,15 @@ for (let row = 0; row < 17; row++) {
     const x = 120 + column * 115 + (forestRandom() - 0.5) * 72;
     const y = 190 + row * 117 + (forestRandom() - 0.5) * 66;
     const clearRoad = WILDERNESS_ROADS.some((road) => road.some((a, index) => index > 0 && segmentDistance({ x, y }, road[index - 1], a) < 90));
-    const clearLandmark = wildernessObjects.some((object) => Math.abs(x - object.x) < (object.w ?? 100) / 2 + 110 && Math.abs(y - object.y + (object.h ?? 100) / 2) < (object.h ?? 100) / 2 + 100);
+    const clearLandmark = originalWildernessObjects.some((object) => Math.abs(x - object.x) < (object.w ?? 100) / 2 + 110 && Math.abs(y - object.y + (object.h ?? 100) / 2) < (object.h ?? 100) / 2 + 100);
     if (clearRoad || clearLandmark || (x > 2150 && x < 2740 && y > 1320 && y < 1760)) continue;
     wildernessDecor.push({ x: Math.round(x), y: Math.round(y), key: (row + column) % 4 === 0 ? "pine" : (row + column) % 3 === 0 ? "tree2" : "tree1", scale: 0.85 + forestRandom() * 0.35 });
   }
 }
 // Generate the original forest first. Its scale draws share the coordinate
 // generator, so inserting parcel exclusions inside the loop would move every
-// later tree in existing campaigns. Only clear the two plots and their south
-// approaches, including nearby canopy overhangs that would hide the signs.
+// later tree in existing campaigns. Clear the two plots, their approaches and
+// the new gathering places only afterward, including canopy overhangs.
 for (let index = wildernessDecor.length - 1; index >= 0; index--) {
   const item = wildernessDecor[index];
   const reserved = ESTATE_DEFS.some((estate) =>
@@ -98,7 +178,8 @@ for (let index = wildernessDecor.length - 1; index >= 0; index--) {
     item.x <= estate.x + estate.width / 2 + 75 &&
     item.y >= estate.y - estate.height - 40 &&
     item.y <= estate.y + 180);
-  if (reserved) wildernessDecor.splice(index, 1);
+  const workClearing = additionalResourceNodes.some(node => node.zone === "wilderness" && hidesResource(item, node));
+  if (reserved || workClearing) wildernessDecor.splice(index, 1);
 }
 wildernessObjects.push(...ESTATE_DEFS.map((estate) => estateObject(estate.id)));
 
@@ -118,7 +199,10 @@ const nodeFootprint = (node: ResourceNodeDefinition): Rectangle =>
 
 export const REGIONS: Record<Zone, RegionDefinition> = {
   village: { id: "village", name: "Valeverde", width: WORLD_W, height: WORLD_H,
-    objects: [...OBJECTS, ...villagePortals], portals: villagePortals, decor: villageDecor, solids: villageWalls },
+    objects: [...OBJECTS, ...villagePortals, ...additionalResourceNodes.filter(node => node.zone === "village")],
+    portals: villagePortals, decor: gatheringVillageDecor,
+    // Environment surfaces address the first 24 authored wall bases by index.
+    solids: [...villageWalls, ...additionalResourceNodes.filter(node => node.zone === "village" && node.kind !== "herb").map(nodeFootprint)] },
   orphanage: { id: "orphanage", name: "Orfanato de Santa Elara", width: 900, height: 900,
     objects: orphanagePortals, portals: orphanagePortals, decor: [], solids: [] },
   dungeon: { id: "dungeon", name: "Cripta das Raízes", width: 900, height: 900,

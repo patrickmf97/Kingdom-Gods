@@ -40,7 +40,7 @@ import type { PersistentGameState } from "./simulation";
 import { cropProfile, RECIPES } from "./economy";
 import { findPath, objectApproach } from "./navigation";
 import type { NavigationContext } from "./navigation";
-import { objectsForZone, regionForZone, RESOURCE_NODES, WILDERNESS_ROADS } from "./regions";
+import { objectsForZone, regionForZone, resourceNode, RESOURCE_NODES, WILDERNESS_ROADS } from "./regions";
 import { ToolsPanel, FrontierJobs, FamilyEducation, FamilyHistory, NpcNeeds, CampaignTransfer } from "./ExpansionPanels";
 import { TerritoryPanels } from "./TerritoryPanels";
 import { estateBuildings, estateSolid } from "./territory-data";
@@ -1838,9 +1838,14 @@ function WorldMap({
   onClose: () => void;
 }) {
   const [selectedId, setSelectedId] = useState("market");
+  const [mapFilter, setMapFilter] = useState("all");
   const mapZone = state.zone === "orphanage" ? "village" : state.zone;
   const region = regionForZone(mapZone);
-  const locations = region.objects;
+  const regionalResources = RESOURCE_NODES.filter(node => node.zone === mapZone);
+  const locations = region.objects.filter(object => {
+    const node = resourceNode(object.id);
+    return mapFilter === "all" || (mapFilter === "places" ? !node : node?.resource === mapFilter);
+  });
   const selected =
     locations.find((object) => object.id === selectedId) || locations[0];
   const selectedResource = RESOURCE_NODES.find((node) => node.id === selected.id);
@@ -1972,6 +1977,19 @@ function WorldMap({
     );
   return (
     <>
+      <div className="panel-map-filter">
+        <label htmlFor="map-resource-filter">Mostrar no mapa</label>
+        <select id="map-resource-filter" value={mapFilter} onChange={event => {
+          setMapFilter(event.target.value);
+          setSelectedId("");
+        }}>
+          <option value="all">Tudo</option>
+          <option value="places">Locais e passagens</option>
+          {(["wood", "stone", "herb", "ore"] as const).filter(item => regionalResources.some(node => node.resource === item)).map(item =>
+            <option key={item} value={item}>{ITEMS[item].name}</option>)}
+        </select>
+        <small>{regionalResources.length} pontos de coleta nesta região</small>
+      </div>
       <div className="panel-map-art">
         <svg
           viewBox={`0 0 ${region.width} ${region.height}`}
@@ -2072,9 +2090,9 @@ function WorldMap({
               transform={`translate(${object.x} ${object.y})`}
             >
               <circle
-                r="85"
-                fill={selectedId === object.id ? "#253d32" : "#faf7ee"}
-                stroke={selectedId === object.id ? "#b8985d" : "#b7ac8f"}
+                r={resourceNode(object.id) ? "56" : "85"}
+                fill={selected.id === object.id ? "#253d32" : "#faf7ee"}
+                stroke={selected.id === object.id ? "#b8985d" : "#b7ac8f"}
                 strokeWidth="8"
               />
               <path
@@ -2083,7 +2101,9 @@ function WorldMap({
                   "M-42-7 0-40 42-7M-32-13V35h64v-48M-10 35V10h20v25"
                 }
                 fill="none"
-                stroke={selectedId === object.id ? "#f3ebd7" : "#56664d"}
+                transform={resourceNode(object.id) ? "scale(.7)" : undefined}
+                opacity={resourceNode(object.id) && state.frontier.resources[object.id]?.remaining === 0 ? .35 : 1}
+                stroke={selected.id === object.id ? "#f3ebd7" : "#56664d"}
                 strokeWidth="8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -2224,12 +2244,15 @@ function WorldMap({
           <button
             key={object.id}
             className={
-              selectedId === object.id ? "panel-location-selected" : ""
+              selected.id === object.id ? "panel-location-selected" : ""
             }
             onClick={() => setSelectedId(object.id)}
           >
             <MapPin size={14} />
             <span>{object.label}</span>
+            {resourceNode(object.id) ? <small>{state.frontier.resources[object.id]?.remaining === 0
+              ? `Retorna no dia ${state.frontier.resources[object.id].readyDay}`
+              : `${state.frontier.resources[object.id]?.remaining ?? resourceNode(object.id)!.capacity} coletas`}</small> : null}
             <ChevronRight size={14} />
           </button>
         ))}
@@ -2409,7 +2432,7 @@ function Help({ state }: { state: GameState }) {
         <ScrollText size={17} />
       </div>
       <p className="panel-prose">
-        Kingdom Gods alpha 0.6 traz o mundo jogável em 3D. Inclui Valeverde, os Ermos de Alvor e a Mina do
+        Kingdom Gods alpha 0.7 amplia a coleta e o horizonte do mundo 3D. Há 15 pontos de madeira, pedra e ervas em Valeverde, 36 nos Ermos e quatro recursos na mina. Cada reserva se esgota e se renova com o calendário. Use o filtro do mapa para encontrar o material desejado. Inclui Valeverde, os Ermos de Alvor e a Mina do
         Ferro Antigo, além da cripta. Há ferramentas com desgaste, extração,
         oportunidades de exploração, educação dos filhos, tutela e herança.
         Nos Ermos, registre terras, construa armazéns ou abrigos e mantenha

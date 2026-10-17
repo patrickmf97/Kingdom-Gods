@@ -4,6 +4,7 @@ import * as persistence from "../src/persistence";
 import type { GameState } from "../src/types";
 import { createFrontierState } from "../src/frontier";
 import { createLifeState } from "../src/life";
+import { LEGACY_RESOURCE_NODES } from "../src/regions";
 
 // The original eight-item/six-skill format from commit 0bb2e8f, advanced to a
 // lived-in campaign so migration has actual family, crops and memories to retain.
@@ -169,7 +170,11 @@ function currentSnapshot(): GameState {
       ...legacy.apostle,
       skills: { ...legacy.apostle.skills, cooking: 0, smithing: 0, woodcutting: 0, herbalism: 0 },
     },
-    frontier: createFrontierState(legacy.day),
+    frontier: {
+      ...createFrontierState(legacy.day),
+      resources: Object.fromEntries(LEGACY_RESOURCE_NODES.map((node) =>
+        [node.id, { remaining: node.capacity, readyDay: null }])),
+    },
     life: createLifeState(legacy.npcs, legacy.family, legacy.apostle as GameState["apostle"]),
     inventory: { ...legacy.inventory, flour: 0 },
     market: { ...legacy.market, flour: 8 },
@@ -201,7 +206,7 @@ test("migrates a populated original v1 campaign without mutating or losing saved
   const migrated = persistence.migrateState(legacy);
   assert.ok(migrated);
   assert.equal(persistence.validateState(migrated), true);
-  assert.equal(migrated.version, 4);
+  assert.equal(migrated.version, 5);
   assert.equal(migrated.inventory.flour, 0);
   assert.equal(migrated.market.flour, 8);
   assert.equal(migrated.apostle.skills.cooking, 0);
@@ -482,7 +487,7 @@ test("requires every current economy field and accepts only supported snapshot v
     assert.equal(persistence.migrateState(invalid), null, `missing ${key}`);
   }
   assert.equal(persistence.validateState(legacySnapshot()), false);
-  for (const version of [0, 5, "4", undefined]) {
+  for (const version of [0, 6, "5", undefined]) {
     assert.equal(persistence.migrateState({ ...valid, version }), null);
   }
   assert.equal(persistence.migrateState(null), null);
@@ -722,7 +727,7 @@ test("loads the newest valid migrated backup and leaves offline time paused", as
     assert.equal(await persistence.hasSavedGame(), true);
     const loaded = await persistence.loadGame();
     assert.ok(loaded);
-    assert.equal(loaded.version, 4);
+    assert.equal(loaded.version, 5);
     assert.equal(loaded.day, old.day);
     assert.equal(loaded.minutes, old.minutes);
     assert.equal(loaded.savedAt, old.savedAt);
@@ -751,13 +756,13 @@ test("selects a newer valid legacy backup over an older current save", async () 
     storage.values.set("kingdom-gods:backup", JSON.stringify(backup));
     const loaded = await persistence.loadGame();
     assert.equal(loaded?.gold, 321);
-    assert.equal(loaded?.version, 4);
+    assert.equal(loaded?.version, 5);
   } finally {
     storage.restore();
   }
 });
 
-test("saving legacy input writes v4 and preserves a recoverable migrated prior snapshot", async () => {
+test("saving legacy input writes v5 and preserves a recoverable migrated prior snapshot", async () => {
   const storage = withStorage();
   try {
     const previous = legacySnapshot();
@@ -775,7 +780,7 @@ test("saving legacy input writes v4 and preserves a recoverable migrated prior s
     ) as GameState;
     assert.equal(persistence.validateState(stored), true);
     assert.equal(persistence.validateState(backup), true);
-    assert.equal(stored.version, 4);
+    assert.equal(stored.version, 5);
     assert.equal(stored.gold, 307);
     assert.ok(stored.savedAt! > previous.savedAt);
     assert.equal(backup.gold, previous.gold);
@@ -802,7 +807,7 @@ test("invalid current save leaves the previous campaign intact", async () => {
   }
 });
 
-test("v4 round trip through the nonbrowser fallback preserves economic commitments", async () => {
+test("v5 round trip through the nonbrowser fallback preserves economic commitments", async () => {
   await persistence.clearSavedGame();
   const state = currentSnapshot();
   state.economy.worker = {
@@ -828,7 +833,7 @@ test("v4 round trip through the nonbrowser fallback preserves economic commitmen
   await persistence.saveGame(state);
   const loaded = await persistence.loadGame();
   assert.ok(loaded);
-  assert.equal(loaded.version, 4);
+  assert.equal(loaded.version, 5);
   assert.equal(loaded.day, state.day);
   assert.equal(loaded.minutes, state.minutes);
   assert.deepEqual(loaded.economy, state.economy);

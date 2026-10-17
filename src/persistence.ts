@@ -1,8 +1,8 @@
-import type { GameState, Apostle, Npc, Person } from "./types";
+import type { GameState, Apostle, Npc, Person, ResourceNodeDefinition } from "./types";
 import { createEconomyState } from "./economy";
 import { createFrontierState, FRONTIER_JOB_DEFS } from "./frontier";
 import { createLifeState } from "./life";
-import { REGIONS, RESOURCE_NODES, resourceNode } from "./regions";
+import { LEGACY_RESOURCE_NODES, REGIONS, RESOURCE_NODES } from "./regions";
 import { ITEMS as ITEM_DEFINITIONS } from "./data";
 import { createTerritoryState, syncTerritoryDeeds } from "./territory";
 import { territoryDeedValue, territoryInfluence } from "./territory-data";
@@ -324,12 +324,24 @@ function economy(value: unknown): boolean {
 const DISCOVERABLE_IDS = new Set(
   Object.values(REGIONS).flatMap((region) => region.objects.map((entry) => entry.id)),
 );
+// Keep historical validation independent of additions to the live world catalog.
+const LEGACY_DISCOVERABLE_IDS = new Set([
+  "mill", "bakery", "orphanage", "market", "forge", "inn", "house1",
+  "property", "well", "dungeon", "sign", "wild-gate", "exit",
+  "wild-village", "wild-mine", "mine-exit", "wild-camp", "wild-ruins",
+  "wild-lake", "oak-hollow", "stone-rise",
+  ...LEGACY_RESOURCE_NODES.map((node) => node.id),
+]);
 
-function frontier(state: GameState): boolean {
+function frontier(
+  state: GameState,
+  nodes: readonly ResourceNodeDefinition[] = RESOURCE_NODES,
+  discoverableIds: ReadonlySet<string> = DISCOVERABLE_IDS,
+): boolean {
   const value: unknown = state.frontier;
   if (!object(value) || !object(value.tools) || !object(value.toolStock) ||
     !object(value.resources) || !count(value.escrow) ||
-    !array(value.discovered, (id) => string(id) && DISCOVERABLE_IDS.has(id)) ||
+    !array(value.discovered, (id) => string(id) && discoverableIds.has(id)) ||
     !Array.isArray(value.discovered) ||
     new Set(value.discovered).size !== value.discovered.length) return false;
   const discovered = value.discovered as string[];
@@ -340,8 +352,9 @@ function frontier(state: GameState): boolean {
     if (!object(tool) || !boolean(tool.owned) || !percentage(tool.durability) ||
       (!tool.owned && tool.durability !== 0) || !count(stock) || stock > 3) return false;
   }
-  if (Object.keys(value.resources).length !== RESOURCE_NODES.length) return false;
-  for (const node of RESOURCE_NODES) {
+  if (Object.keys(value.resources).length !== nodes.length) return false;
+  for (const node of nodes) {
+    if (!Object.hasOwn(value.resources, node.id)) return false;
     const reserve = value.resources[node.id];
     if (!object(reserve) || !count(reserve.remaining) || reserve.remaining > node.capacity ||
       (reserve.remaining > 0 ? reserve.readyDay !== null : !day(reserve.readyDay))) return false;
@@ -351,7 +364,7 @@ function frontier(state: GameState): boolean {
     const work = value.work;
     if (!object(work) || !string(work.nodeId) || !nonnegative(work.elapsed) ||
       !number(work.duration) || !choice(work.zone, ZONES)) return false;
-    const node = resourceNode(work.nodeId);
+    const node = nodes.find((entry) => entry.id === work.nodeId);
     if (!node || node.zone !== work.zone || state.zone !== work.zone ||
       work.duration !== node.duration || work.elapsed > node.duration + 1e-7 ||
       state.phase !== "playing" || !state.apostle.alive ||
@@ -505,12 +518,12 @@ function territory(state: GameState): boolean {
     (!value.charter || state.property.owned || owned > 0);
 }
 
-/** Current snapshots are complete v4 states; missing fields are never repaired. */
+/** Current snapshots are complete v5 states; missing fields are never repaired. */
 export function validateState(value: unknown): value is GameState {
   try {
     return (
       baseState(value, ITEMS, SKILLS, ZONES) &&
-      value.version === 4 &&
+      value.version === 5 &&
       economy(value.economy) &&
       frontier(value as unknown as GameState) &&
       life(value as unknown as GameState) &&
@@ -535,17 +548,38 @@ function validateV2State(value: unknown): value is ObjectValue {
 
 function validateV3State(value: unknown): value is ObjectValue {
   return baseState(value, ITEMS, SKILLS, ZONES) && value.version === 3 &&
-    economy(value.economy) && frontier(value as unknown as GameState) &&
+    economy(value.economy) &&
+    frontier(value as unknown as GameState, LEGACY_RESOURCE_NODES, LEGACY_DISCOVERABLE_IDS) &&
     life(value as unknown as GameState) && economicRelations(value as unknown as GameState);
+}
+
+function validateV4State(value: unknown): value is ObjectValue {
+  return baseState(value, ITEMS, SKILLS, ZONES) && value.version === 4 &&
+    economy(value.economy) &&
+    frontier(value as unknown as GameState, LEGACY_RESOURCE_NODES, LEGACY_DISCOVERABLE_IDS) &&
+    life(value as unknown as GameState) && territory(value as unknown as GameState) &&
+    economicRelations(value as unknown as GameState);
 }
 
 /** Upgrade an independent copy, keeping saved time and all existing extensions. */
 export function migrateState(value: unknown): GameState | null {
   try {
     if (!object(value)) return null;
-    if (value.version === 4) {
+    if (value.version === 5) {
       if (!validateState(value)) return null;
       const snapshot: unknown = structuredClone(value);
+      return validateState(snapshot) ? snapshot : null;
+    }
+    if (value.version === 4) {
+      if (!validateV4State(value)) return null;
+      const snapshot = structuredClone(value) as unknown as GameState;
+      snapshot.version = 5;
+      const legacyIds = new Set(LEGACY_RESOURCE_NODES.map((node) => node.id));
+      for (const node of RESOURCE_NODES) {
+        if (!legacyIds.has(node.id)) {
+          snapshot.frontier.resources[node.id] = { remaining: node.capacity, readyDay: null };
+        }
+      }
       return validateState(snapshot) ? snapshot : null;
     }
     if (value.version === 3) {
@@ -555,7 +589,7 @@ export function migrateState(value: unknown): GameState | null {
         territory: createTerritoryState(value.day as number),
       } as unknown as GameState;
       syncTerritoryDeeds(snapshot);
-      return validateState(snapshot) ? snapshot : null;
+      return migrateState(snapshot);
     }
     if (!validateV2State(value) && !validateLegacyState(value)) return null;
     const legacy = structuredClone(value);
@@ -576,6 +610,9 @@ export function migrateState(value: unknown): GameState | null {
       ),
     };
     const v2Apostle = v2.apostle as Apostle;
+    const legacyFrontier = createFrontierState(v2.day as number);
+    legacyFrontier.resources = Object.fromEntries(LEGACY_RESOURCE_NODES.map((node) =>
+      [node.id, { remaining: node.capacity, readyDay: null }]));
     const v3 = {
       ...v2,
       version: 3,
@@ -583,7 +620,7 @@ export function migrateState(value: unknown): GameState | null {
         ...v2Apostle,
         skills: { woodcutting: 0, herbalism: 0, ...v2Apostle.skills },
       },
-      frontier: createFrontierState(v2.day as number),
+      frontier: legacyFrontier,
       life: createLifeState(v2.npcs as Npc[], v2.family as Person[], v2Apostle),
     };
     if (!validateV3State(v3)) return null;

@@ -13,7 +13,7 @@ function game() {
 
 test("new campaigns include persistent tools, resources, family education and needs",()=>{
   const g=game();
-  assert.equal(g.state.version,4);
+  assert.equal(g.state.version,5);
   assert.equal(g.state.frontier.tools.pickaxe.owned,false);
   assert.ok(g.state.life.needs.farmer);
   assert.equal(g.state.apostle.skills.woodcutting,0);

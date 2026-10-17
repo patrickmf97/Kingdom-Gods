@@ -1129,6 +1129,27 @@
 .panel-location-list {
   border-top: 1px solid #dfd9c7;
 }
+.panel-map-filter {
+  display: grid;
+  grid-template-columns: 1fr minmax(135px, 1fr);
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+  color: #57694e;
+  font-size: 11px;
+}
+.panel-map-filter select {
+  min-height: 44px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cfc6af;
+  border-radius: 5px;
+  background: #f8f4e8;
+  color: #425740;
+  font: inherit;
+}
+.panel-map-filter small { grid-column: 1 / -1; color: #797c65; }
+.panel-location-list button > small { max-width: 110px; text-align: right; color: #7c8068; font-size: 9px; }
 .panel-location-list button {
   display: flex;
   align-items: center;

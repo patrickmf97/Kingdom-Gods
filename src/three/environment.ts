@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { regionForZone, RESOURCE_NODES, WILDERNESS_ROADS, type Rectangle } from "../regions";
 import { ESTATE_DEFS, estateSolid } from "../territory-data";
 import type { GameState, Point, Zone } from "../types";
+import { createHorizon, type RegionHorizon } from "./horizon";
 
 /** Presentation only. Navigation and interactions keep their existing logical coordinates. */
 export interface RegionEnvironment {
@@ -45,6 +46,7 @@ class EnvironmentBuilder {
   readonly coneGeometry: THREE.ConeGeometry;
   readonly roofGeometry: THREE.BufferGeometry;
   readonly dynamic = new THREE.Group();
+  private horizon?: RegionHorizon;
   private dynamicSignature = "";
   private disposed = false;
 
@@ -86,7 +88,7 @@ class EnvironmentBuilder {
   }
 
   private fadingMaterial(color: THREE.ColorRepresentation): THREE.MeshStandardMaterial {
-    const material = new THREE.MeshStandardMaterial({ color, roughness: .9, flatShading: true, transparent: true, opacity: 1 });
+    const material = new THREE.MeshStandardMaterial({ color, roughness: .9, flatShading: true });
     this.materials.add(material);
     return material;
   }
@@ -158,19 +160,31 @@ class EnvironmentBuilder {
     this.floorRect({ left: 0, right: region.width, top: 0, bottom: region.height },
       outside ? PALETTE.grass : this.zone === "mine" ? 0x303c37 : 0x4d594c);
     if (!outside) return;
+    this.horizon = createHorizon(this.zone);
+    if (this.horizon) this.group.add(this.horizon.group);
     // Instanced low flat patches break up the ground without texture downloads.
     const random = seeded(this.zone === "village" ? 87321 : 100153);
     const count = this.zone === "village" ? 165 : 250;
     const patches = new THREE.InstancedMesh(this.cylinderGeometry, this.material(PALETTE.grassLight), count);
     const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), scale = new THREE.Vector3();
     const rotation = new THREE.Quaternion();
-    for (let i = 0; i < count; i++) {
-      position.set(random() * region.width * SCALE, -.005, random() * region.height * SCALE);
+    const placed: { x: number; z: number; rx: number; rz: number }[] = [];
+    // Their tops share one height. Reject intersecting bounding rectangles so
+    // differently coloured cylinders can never fight for the same pixels.
+    // Keep a bounded attempt count; no saved or navigation positions change.
+    for (let attempt = 0; placed.length < count && attempt < count * 60; attempt++) {
       scale.set(1 + random() * 2.4, .008, .6 + random() * 1.5);
+      position.set(scale.x + random() * (region.width * SCALE - scale.x * 2), -.005,
+        scale.z + random() * (region.height * SCALE - scale.z * 2));
+      if (placed.some(other => Math.abs(position.x - other.x) < scale.x + other.rx + .08 &&
+        Math.abs(position.z - other.z) < scale.z + other.rz + .08)) continue;
+      const i = placed.length;
+      placed.push({ x: position.x, z: position.z, rx: scale.x, rz: scale.z });
       matrix.compose(position, rotation, scale);
       patches.setMatrixAt(i, matrix);
       patches.setColorAt(i, new THREE.Color(i % 3 ? PALETTE.grassLight : PALETTE.grassDark));
     }
+    patches.count = placed.length;
     patches.receiveShadow = true;
     patches.computeBoundingSphere();
     this.group.add(patches);
@@ -188,7 +202,9 @@ class EnvironmentBuilder {
     const timber = this.fadingMaterial(PALETTE.timber);
     this.box(x, y, width, depth, .3, PALETTE.stoneDark, 0, group);
     this.box(x, y, width, depth, height - .3, walls, .3, group);
-    for (const sideX of [area.left + 2, area.right - 2]) {
+    // A one-unit reveal puts timber outside the plaster. The old +2/-2
+    // centres made their entire outward faces coplanar and flicker together.
+    for (const sideX of [area.left + 1, area.right - 1]) {
       this.box(sideX, y, 4, depth + 1, height, timber, 0, group);
     }
     this.box(x, area.bottom + .2, width, 2.5, .16, timber, height * .56, group);
@@ -302,13 +318,19 @@ class EnvironmentBuilder {
           log.rotation.y = .4 + i * .5;
         }
       } else if (node.kind === "herb") {
+        const plants = new THREE.InstancedMesh(this.coneGeometry, this.material(0xffffff), 6);
+        const flowers = new THREE.InstancedMesh(this.sphereGeometry, this.material(0xd7c0bd), 6);
+        const matrix = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion();
         for (let i = 0; i < 6; i++) {
           const angle = i * Math.PI / 3;
-          const plant = this.mesh(this.coneGeometry, this.material(i % 2 ? 0x719b5d : 0x486f48), live);
-          plant.position.set((x + Math.cos(angle) * 10) * SCALE, .3, (y + Math.sin(angle) * 8) * SCALE);
-          plant.scale.set(.14, .6, .18);
-          const flower = this.mesh(this.sphereGeometry, this.material(0xd7c0bd), live);
-          flower.position.copy(plant.position); flower.position.y += .25; flower.scale.setScalar(.095);
+          p.set((x + Math.cos(angle) * 10) * SCALE, .3, (y + Math.sin(angle) * 8) * SCALE);
+          s.set(.14, .6, .18); matrix.compose(p, q, s); plants.setMatrixAt(i, matrix);
+          plants.setColorAt(i, new THREE.Color(i % 2 ? 0x719b5d : 0x486f48));
+          p.y += .25; s.setScalar(.095); matrix.compose(p, q, s); flowers.setMatrixAt(i, matrix);
+        }
+        for (const batch of [plants, flowers]) {
+          batch.castShadow = true; batch.receiveShadow = true;
+          batch.computeBoundingSphere(); live.add(batch);
         }
         this.cylinder(x, y, 12, .035, 0x5c784d, .01, depleted);
       } else {
@@ -708,6 +730,7 @@ class EnvironmentBuilder {
 
   update(state: GameState, timeSeconds: number): void {
     if (this.disposed) return;
+    this.horizon?.update(state.minutes);
     this.updateDynamic(state);
     for (const node of this.nodes) {
       const available = (state.frontier.resources[node.id]?.remaining ?? 1) > 0;
@@ -728,7 +751,13 @@ class EnvironmentBuilder {
       for (const material of entry.materials) {
         const target = near ? .36 : 1;
         material.opacity += (target - material.opacity) * .15;
-        material.depthWrite = material.opacity > .9;
+        if (Math.abs(target - material.opacity) < .002) material.opacity = target;
+        const transparent = material.opacity < 1;
+        if (material.transparent !== transparent) {
+          material.transparent = transparent;
+          material.needsUpdate = true;
+        }
+        material.depthWrite = !material.transparent;
       }
     }
   }
@@ -736,6 +765,7 @@ class EnvironmentBuilder {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.horizon?.dispose();
     this.group.traverse(object => {
       // InstancedMesh owns a GPU instance buffer in addition to the geometry.
       if (object instanceof THREE.InstancedMesh) object.dispose();

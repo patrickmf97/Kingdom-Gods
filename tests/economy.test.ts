@@ -66,7 +66,7 @@ function spouse(store: GameStore, id = "mira"): Person {
 
 test("new campaigns define current economy, flour and the new practiced skills", () => {
   const state = initialState();
-  assert.equal(state.version, 4);
+  assert.equal(state.version, 5);
   assert.equal(state.inventory.flour, 0);
   assert.equal(state.market.flour, 8);
   assert.equal(state.apostle.skills.cooking, 0);

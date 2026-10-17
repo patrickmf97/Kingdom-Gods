@@ -19,6 +19,7 @@ function bodyVolumesAt(root: THREE.Object3D, x: number, y: number): THREE.Mesh[]
   const point = new THREE.Vector3(x * scale, .6, y * scale);
   root.updateMatrixWorld(true);
   return meshes(root).filter(mesh => mesh.visible && !(mesh instanceof THREE.InstancedMesh) &&
+    !mesh.name.startsWith("horizon-") &&
     new THREE.Box3().setFromObject(mesh).containsPoint(point));
 }
 function floorHeight(root: THREE.Object3D, x: number, y: number): number | undefined {
@@ -62,6 +63,89 @@ test("village landmark bodies cover their existing logical walls and leave the f
     assert.equal(bodyVolumesAt(environment.group, x, y).length, 0, `approach ${x},${y} must remain clear`);
   }
   environment.dispose();
+});
+
+test("house side timbers have a physical reveal beyond the plaster instead of coplanar visible faces", () => {
+  const state = initialState();
+  const environment = createRegionEnvironment("village", state);
+  const house = environment.group.getObjectByName("orphanage")!;
+  const wall = meshes(house).find(mesh => (mesh.material as THREE.MeshStandardMaterial).color.getHex() === 0xdfcfaa)!;
+  const wallBounds = new THREE.Box3().setFromObject(wall);
+  const sideTimbers = meshes(house).filter(mesh =>
+    (mesh.material as THREE.MeshStandardMaterial).color.getHex() === 0x57402e &&
+    mesh.scale.y > 3.7 && Math.abs(mesh.position.x - wall.position.x) > 1);
+  assert.equal(sideTimbers.length, 2);
+  for (const timber of sideTimbers) {
+    const bounds = new THREE.Box3().setFromObject(timber);
+    const reveal = timber.position.x < wall.position.x ? wallBounds.min.x - bounds.min.x : bounds.max.x - wallBounds.max.x;
+    assert.ok(reveal >= .025 && reveal <= .1, `side timber needs a real visible reveal, got ${reveal}`);
+  }
+  environment.dispose();
+});
+
+test("house fading preserves nearby hero visibility then restores opaque depth-tested walls", () => {
+  const state = initialState();
+  const area = regionForZone("village").solids[0];
+  state.apostle.x = 99999; state.apostle.y = 99999;
+  const environment = createRegionEnvironment("village", state);
+  const wall = meshes(environment.group.getObjectByName("orphanage")!).find(mesh =>
+    (mesh.material as THREE.MeshStandardMaterial).color.getHex() === 0xdfcfaa)!.material as THREE.MeshStandardMaterial;
+  const opaqueVersion = wall.version;
+  state.apostle.x = (area.left + area.right) / 2;
+  state.apostle.y = (area.top + area.bottom) / 2;
+  environment.update(state, 0);
+  assert.equal(wall.version, opaqueVersion + 1, "entering transparency must invalidate the OPAQUE shader define");
+  for (let i = 0; i < 50; i++) environment.update(state, i);
+  assert.ok(wall.opacity > .34 && wall.opacity < .4);
+  assert.equal(wall.depthWrite, false);
+  assert.equal(wall.transparent, true);
+  assert.equal(wall.version, opaqueVersion + 1, "opacity animation must not recompile every frame");
+  state.apostle.x = 99999; state.apostle.y = 99999;
+  for (let i = 0; i < 50; i++) environment.update(state, i);
+  assert.equal(wall.opacity, 1);
+  assert.equal(wall.transparent, false);
+  assert.equal(wall.depthWrite, true);
+  assert.equal(wall.version, opaqueVersion + 2, "restoring opacity must invalidate the shader exactly once");
+  environment.dispose();
+});
+
+test("grass accents retain full coverage without overlapping coplanar patches", () => {
+  for (const zone of ["village", "wilderness"] as const) {
+    const environment = createRegionEnvironment(zone, initialState());
+    const patches = meshes(environment.group).find(mesh => mesh instanceof THREE.InstancedMesh &&
+      (mesh.material as THREE.MeshStandardMaterial).color.getHex() === 0x8ba574) as THREE.InstancedMesh;
+    assert.equal(patches.count, zone === "village" ? 165 : 250);
+    const bounds: THREE.Box3[] = [];
+    const matrix = new THREE.Matrix4();
+    patches.geometry.computeBoundingBox();
+    for (let i = 0; i < patches.count; i++) {
+      patches.getMatrixAt(i, matrix);
+      const box = patches.geometry.boundingBox!.clone().applyMatrix4(matrix);
+      assert.ok(box.max.y < .003, "patches must stay below every authored road");
+      for (const previous of bounds) {
+        const overlapX = Math.min(box.max.x, previous.max.x) - Math.max(box.min.x, previous.min.x);
+        const overlapZ = Math.min(box.max.z, previous.max.z) - Math.max(box.min.z, previous.min.z);
+        assert.ok(overlapX <= 0 || overlapZ <= 0, `${zone} patch ${i} overlaps another coplanar grass face`);
+      }
+      bounds.push(box);
+    }
+    environment.dispose();
+  }
+});
+
+test("harvestable herb patches keep their flowers in at most two draw calls per reserve", () => {
+  for (const zone of ["village", "wilderness"] as const) {
+    const environment = createRegionEnvironment(zone, initialState());
+    for (const node of RESOURCE_NODES.filter(node => node.zone === zone && node.kind === "herb")) {
+      const patch = environment.group.getObjectByName(`${node.id}-available`)!;
+      const drawables = meshes(patch);
+      assert.ok(drawables.length <= 2, `${node.id} should batch its repeating foliage`);
+      const flowerCount = drawables.filter(mesh => (mesh.material as THREE.MeshStandardMaterial).color.getHex() === 0xd7c0bd)
+        .reduce((total, mesh) => total + (mesh instanceof THREE.InstancedMesh ? mesh.count : 1), 0);
+      assert.equal(flowerCount, 6, "batching preserves the six readable flowers");
+    }
+    environment.dispose();
+  }
 });
 
 test("the orphanage and dungeon allow the original arrival, conversations and exit without new furniture obstacles", () => {
@@ -125,7 +209,8 @@ test("owned buildings use the same footprints as navigation and visual updates r
   assert.ok(bodyVolumesAt(environment.group, x, y).length > 0);
   const building = environment.group.getObjectByName("estate-warehouse")!;
   const temporaryMaterials = new Set(meshes(building).flatMap(mesh => Array.isArray(mesh.material) ? mesh.material : [mesh.material])
-    .filter(material => material.transparent));
+    .filter(material => material instanceof THREE.MeshStandardMaterial && material.roughness === .9));
+  assert.ok(temporaryMaterials.size > 0, "per-building fade materials need independent lifecycles even while opaque");
   let released = 0;
   for (const material of temporaryMaterials) material.addEventListener("dispose", () => released++);
   holding.condition = 10;

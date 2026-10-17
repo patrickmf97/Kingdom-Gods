@@ -4,6 +4,7 @@ import { initialState } from "../src/simulation";
 import { migrateState, validateState, saveGame, loadGame, getPersistenceError } from "../src/persistence";
 import { exportCampaign, parseCampaign, importCampaign } from "../src/campaign-files";
 import type { GameState, TerritoryState } from "../src/types";
+import { LEGACY_RESOURCE_NODES } from "../src/regions";
 
 const emptyStorage = () => ({ bread: 0, wood: 0, stone: 0, wheat: 0, flour: 0,
   seed: 0, sword: 0, herb: 0, ore: 0 });
@@ -18,12 +19,14 @@ const emptyTerritory = (day = 1): TerritoryState => ({
 function historicalV3(): Record<string, any> {
   const state = structuredClone(initialState()) as unknown as Record<string, any>;
   state.version = 3;
+  state.frontier.resources = Object.fromEntries(LEGACY_RESOURCE_NODES.map((node) =>
+    [node.id, structuredClone(state.frontier.resources[node.id])]));
   delete state.territory;
   return state;
 }
 
 function currentCampaign(): GameState {
-  return { ...initialState(), version: 4, territory: emptyTerritory() };
+  return { ...initialState(), territory: emptyTerritory() };
 }
 
 function estateCampaign(): GameState {
@@ -57,11 +60,14 @@ test("upgrades a strict v3 snapshot without moving time, resources, memories or 
   const before = structuredClone(old);
   const result = migrateState(old);
   assert.ok(result);
-  assert.equal(result.version, 4);
+  assert.equal(result.version, 5);
   assert.equal(validateState(result), true);
   assert.deepEqual(result.territory, emptyTerritory(old.day));
   const { territory, ...restored } = result;
-  assert.deepEqual({ ...restored, version: 3 }, before);
+  const historicalResources = Object.fromEntries(LEGACY_RESOURCE_NODES.map((node) =>
+    [node.id, restored.frontier.resources[node.id]]));
+  assert.deepEqual({ ...restored, version: 3,
+    frontier: { ...restored.frontier, resources: historicalResources } }, before);
   assert.deepEqual(old, before);
   result.frontier.tools.pickaxe.durability = 1;
   assert.equal(old.frontier.tools.pickaxe.durability, 71);
@@ -99,7 +105,7 @@ test("damaged v3 frontier, life or economics cannot be concealed by territory de
   }
 });
 
-test("v4 requires every territory field and each authored parcel instead of repairing current data", () => {
+test("v5 requires every territory field and each authored parcel instead of repairing current data", () => {
   const valid = currentCampaign();
   assert.equal(validateState(valid), true);
   const absent = structuredClone(valid) as unknown as Record<string, any>;
@@ -118,7 +124,7 @@ test("v4 requires every territory field and each authored parcel instead of repa
   }
 });
 
-test("v4 parcel ownership, construction, dates and warehouse stock satisfy legal and physical limits", () => {
+test("v5 parcel ownership, construction, dates and warehouse stock satisfy legal and physical limits", () => {
   const valid = estateCampaign();
   assert.equal(validateState(valid), true);
   const mutations: ((state: GameState) => void)[] = [
@@ -208,7 +214,7 @@ test("territory round trips preserve goods, debt and earned services in JSON and
   assert.equal(imported.minutes, state.minutes);
 });
 
-test("a damaged v4 current record recovers a historical v3 backup without modifying either file", async () => {
+test("a damaged v5 current record recovers a historical v3 backup without modifying either file", async () => {
   const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   const old = historicalV3();
   old.savedAt = 1000;
@@ -224,7 +230,7 @@ test("a damaged v4 current record recovers a historical v3 backup without modify
   } });
   try {
     const restored = await loadGame();
-    assert.equal(restored?.version, 4);
+    assert.equal(restored?.version, 5);
     assert.equal(restored?.gold, 93);
     assert.match(getPersistenceError() ?? "", /backup/);
     assert.equal(values.get("kingdom-gods:save"), JSON.stringify(invalid));
