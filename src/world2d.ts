@@ -7,6 +7,9 @@ import { ESTATE_DEFS, estateBuildings } from "./territory-data";
 import type { Dialog, EstateId, GameState, Npc, WorldObject, Zone } from "./types";
 import { findPath, nearestWalkable, objectApproach, type Point, type NavigationContext } from "./navigation";
 import { activeAutonomy, worldInput, blockedWorldInput as blockedInput } from "./world-input";
+import { animalsForZone } from "./wildlife";
+import { animalContainsPoint, createWildlifeSprite, generateWildlifeTextures, updateWildlifeSprite,
+  type WildlifeSprite } from "./wildlife2d";
 
 type Actor = {
   sprite: Phaser.GameObjects.Image;
@@ -50,6 +53,9 @@ class KingdomScene extends Phaser.Scene {
   private scenic = true;
   private objects: Phaser.GameObjects.GameObject[] = [];
   private actors = new Map<string, Actor>();
+  private wildlifeSprites = new Map<string, WildlifeSprite>();
+  private wildlifeTime = 0;
+  private wildlifeMetadataTime = -1;
   private objectSprites = new Map<string, Phaser.GameObjects.Image>();
   private ground?: Phaser.GameObjects.Image;
   private foliage: Phaser.GameObjects.Image[] = [];
@@ -66,6 +72,7 @@ class KingdomScene extends Phaser.Scene {
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private destination: { x: number; y: number; interact?: string; path: Point[] } | null = null;
   private routeBlockedFor = 0;
+  private animalFollowFor = 0;
   private navigate = (event: Event) => {
     if (store.state.phase !== "playing") return;
     const id = (event as CustomEvent<{ id?: string }>).detail?.id;
@@ -102,6 +109,7 @@ class KingdomScene extends Phaser.Scene {
     // Phaser calls create before its first pendingDestroy check in Game.step.
     if ((this.game as Phaser.Game & { pendingDestroy?: boolean }).pendingDestroy) return;
     generateArt(this);
+    generateWildlifeTextures(this);
     this.keys = this.input.keyboard!.addKeys(
       {
         up: "W",
@@ -157,6 +165,8 @@ class KingdomScene extends Phaser.Scene {
     this.objects.forEach((object) => object.destroy());
     this.objects = [];
     this.actors.clear();
+    this.wildlifeSprites.clear();
+    this.wildlifeMetadataTime = -1;
     this.objectSprites.clear();
     this.ground = undefined;
     this.foliage = [];
@@ -786,6 +796,7 @@ class KingdomScene extends Phaser.Scene {
   private clearRoute() {
     this.destination = null;
     this.routeBlockedFor = 0;
+    this.animalFollowFor = 0;
     this.destinationRing?.clear();
   }
 
@@ -850,13 +861,20 @@ class KingdomScene extends Phaser.Scene {
     const npc = store.state.npcs.find((person) => this.npcVisible(person) &&
       Math.hypot(point.x - person.x, point.y - person.y + 25) < 38);
     if (npc) target = { x: npc.x, y: npc.y + 40, id: npc.id };
+    const animal = animalsForZone(store.state, store.state.zone)
+      .filter((animal) => animalContainsPoint(animal, point))
+      .sort((a, b) => b.y - a.y)[0];
+    if (animal && (!npc || animal.y > npc.y))
+      target = { x: animal.x, y: animal.y + 16, id: `animal:${animal.id}` };
     const source = target && (store.state.npcs.find((person) => person.id === target!.id) ||
+      (target.id.startsWith("animal:") ? animal : undefined) ||
       (target.id === "property" && target.x === 2090 ? target :
         objects.find((object) => object.id === target!.id)) || target);
-    if (target && source && Math.hypot(p.x - source.x, p.y - source.y) < 120) {
+    if (target && source && Math.hypot(p.x - source.x, p.y - source.y) < (target.id.startsWith("animal:") ? 130 : 120)) {
       this.interact(target.id);
       return;
     }
+    this.animalFollowFor = 0;
     this.planRoute(target || point, target?.id);
   }
 
@@ -874,6 +892,30 @@ class KingdomScene extends Phaser.Scene {
     if (manual) this.clearRoute();
     let movementDt = dt;
     if (!manual && this.destination) {
+      const animalId = this.destination.interact?.startsWith("animal:")
+        ? this.destination.interact.slice(7) : null;
+      if (animalId) {
+        const animal = store.state.wildlife.animals[animalId];
+        if (!animal || animal.zone !== this.activeZone) {
+          this.clearRoute();
+          return;
+        }
+        if (Math.hypot(animal.x - p.x, animal.y - p.y) <= 130) {
+          this.interact(`animal:${animalId}`);
+          return;
+        }
+        this.animalFollowFor += dt;
+        if (this.animalFollowFor > 12) {
+          this.clearRoute();
+          store.notify("O animal se afastou. Aproxime-se e tente novamente.");
+          return;
+        }
+        if (Math.hypot(animal.x - this.destination.x, animal.y + 16 - this.destination.y) > 60) {
+          const followFor = this.animalFollowFor;
+          this.planRoute({ x: animal.x, y: animal.y + 16 }, `animal:${animalId}`);
+          this.animalFollowFor = followFor;
+        }
+      }
       // An NPC can keep walking after being clicked; refresh its reachable approach.
       const npc = store.state.npcs.find((person) => person.id === this.destination?.interact);
       if (npc && Math.hypot(npc.x - this.destination.x, npc.y + 40 - this.destination.y) > 70)
@@ -923,10 +965,13 @@ class KingdomScene extends Phaser.Scene {
       this.navigationGeometry = geometry;
     }
     const dt = Math.min(delta / 1000, 0.1);
-    if (this.canAct()) {
+    const running = this.canAct() && !document.hidden;
+    if (running) {
       this.move(dt);
       store.tick(dt);
     }
+    if (running || (this.scenic && !document.hidden)) this.wildlifeTime += dt;
+    this.syncWildlife();
     this.syncActors(time);
     if (this.activeZone === "village") {
       const farm = this.objectSprites.get("property");
@@ -1016,6 +1061,37 @@ class KingdomScene extends Phaser.Scene {
     });
   }
 
+  private syncWildlife() {
+    const animals = animalsForZone(store.state, this.activeZone!);
+    const present = new Set(animals.map((animal) => animal.id));
+    const view = this.cameras.main.worldView;
+    for (const animal of animals) {
+      let visual = this.wildlifeSprites.get(animal.id);
+      if (!visual) {
+        visual = createWildlifeSprite(this, animal);
+        this.keep(visual.sprite);
+        this.keep(visual.shadow);
+        this.wildlifeSprites.set(animal.id, visual);
+      }
+      updateWildlifeSprite(visual, animal, this.wildlifeTime);
+      const visible = animal.x >= view.left - 80 && animal.x <= view.right + 80 &&
+        animal.y >= view.top - 80 && animal.y <= view.bottom + 80;
+      visual.sprite.setVisible(visible);
+      visual.shadow.setVisible(visible);
+    }
+    for (const [id, visual] of this.wildlifeSprites) {
+      if (present.has(id)) continue;
+      visual.sprite.destroy(); visual.shadow.destroy();
+      this.wildlifeSprites.delete(id);
+    }
+    if (this.wildlifeTime - this.wildlifeMetadataTime >= .2 || this.wildlifeMetadataTime < 0) {
+      this.wildlifeMetadataTime = this.wildlifeTime;
+      this.game.canvas.dataset.animalCount = String(animals.length);
+      this.game.canvas.dataset.animals = JSON.stringify(animals.map(({ id, species, x, y, behavior, trust }) =>
+        ({ id, species, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, behavior, trust })));
+    }
+  }
+
   private updateResources() {
     if (!this.activeZone) return;
     for (const object of objectsForZone(this.activeZone)) {
@@ -1078,6 +1154,7 @@ class KingdomScene extends Phaser.Scene {
       return;
     }
     const npc = store.state.npcs.find((person) => person.id === nearest.id);
+    const animal = nearest.id.startsWith("animal:");
     const resource = resourceNode(nearest.id);
     const estate = ESTATE_DEFS.some((entry) => entry.id === nearest.id);
     const role = npc && store.state.economy.worker?.npcId === npc.id
@@ -1090,7 +1167,7 @@ class KingdomScene extends Phaser.Scene {
     this.marker
       .setPosition(
         nearest.x,
-        nearest.y + (npc ? -112 : estate ? 58 : resource ? 24 : -40) + Math.sin(time / 380) * 3,
+        nearest.y + (npc ? -112 : animal ? -72 : estate ? 58 : resource ? 24 : -40) + Math.sin(time / 380) * 3,
       )
       .setVisible(true);
   }

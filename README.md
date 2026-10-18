@@ -1,4 +1,4 @@
-# KINGDOM GODS · alpha 0.8 · 3D
+# KINGDOM GODS · alpha 0.9 · 3D
 
 RPG sandbox medieval **3D, local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
@@ -24,7 +24,17 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-## Novidades da alpha 0.8
+## Novidades da alpha 0.9
+
+- **Vegetação:** árvores com ramos e copas variadas, pinheiros, tufos de grama, flores, arbustos, samambaias e plantas de margem. Instâncias compartilham geometrias e o vento é calculado na GPU. Troncos físicos, caminhos, pontos de trabalho e os 55 recursos foram mantidos.
+- **Fauna persistente:** 22 animais de sete espécies. Valeverde tem quatro galinhas, três ovelhas, duas vacas e Bento, o cão; os Ermos têm quatro cervos, seis coelhos e duas raposas. Eles caminham, pastam, descansam e reagem à aproximação dentro de habitats seguros.
+- **Encontros:** clique/toque no animal ou aproxime-se e interaja. Observar cria uma memória; alimentar consome pão (cão) ou trigo (espécies compatíveis), uma vez por animal/dia, aumentando confiança e reduzindo medo. A raposa procura seu alimento. Os animais não bloqueiam o jogador.
+- **Dois visuais:** fauna representada em 3D e no modo 2D. A pausa congela a simulação e as animações da fauna/vegetação 3D; trocar o visual preserva o estado.
+- **Saves v6:** migração dos formatos v1–v5 acrescenta somente a fauna após validar os dados antigos. Posições, intenções, confiança, medo, alimentação e observações são persistentes. Nenhum tempo passa offline.
+
+A fauna é uma primeira simulação local: só a região ativa recebe comportamento detalhado. Não há reprodução, caça, criação de rebanhos, produtos animais ou cadeia ecológica de predação nesta versão. Os modelos e texturas são procedurais e estilizados.
+
+## Base da alpha 0.8 preservada
 
 - **Materiais:** sete texturas procedurais de 64×64 para madeira, telhas, pedra, reboco, terra, caminhos e tecido, compartilhadas por região. Telhados, estradas, casas, plantações e mina possuem UVs próprios. As cores e o estilo de fantasia foram mantidos.
 - **Assets do cenário:** barris, caixas, bandejas de produtos, bigorna, fornalha, ferramentas e suportes/lamparinas na mina. Os detalhes respeitam as bases já bloqueadas e deixam os acessos existentes livres. Pinheiros coletáveis usam copas próprias.

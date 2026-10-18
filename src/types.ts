@@ -22,6 +22,27 @@ export type ItemId =
   | "sword"
   | "herb"
   | "ore";
+export type AnimalSpecies = "chicken" | "sheep" | "cow" | "dog" | "deer" | "rabbit" | "fox";
+export type AnimalBehavior = "idle" | "walk" | "graze" | "rest" | "flee" | "approach";
+export interface AnimalState {
+  id: string;
+  species: AnimalSpecies;
+  zone: Zone;
+  x: number;
+  y: number;
+  facing: number;
+  behavior: AnimalBehavior;
+  target: Point | null;
+  wait: number;
+  trust: number;
+  fear: number;
+  lastFedDay: number | null;
+  seed: number;
+}
+export interface WildlifeState {
+  animals: Record<string, AnimalState>;
+  observed: string[];
+}
 export type Attributes = Record<
   | "strength"
   | "dexterity"
@@ -138,6 +159,7 @@ export interface GameState {
   frontier: FrontierState;
   life: LifeState;
   territory: TerritoryState;
+  wildlife: WildlifeState;
 }
 
 export type EstateId = "oak-hollow" | "stone-rise";

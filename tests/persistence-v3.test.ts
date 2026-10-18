@@ -10,6 +10,7 @@ import type { GameState, Person } from "../src/types";
 function v2Snapshot() {
   const state = structuredClone(initialState()) as unknown as Record<string, any>;
   state.version = 2;
+  delete state.wildlife;
   delete state.frontier;
   delete state.life;
   delete state.territory;
@@ -18,7 +19,7 @@ function v2Snapshot() {
   return state;
 }
 
-test("upgrades a valid v2 campaign to v5 without changing saved time or holdings", () => {
+test("upgrades a valid v2 campaign to v6 without changing saved time or holdings", () => {
   const old = v2Snapshot();
   old.day = 187;
   old.minutes = 712;
@@ -27,7 +28,7 @@ test("upgrades a valid v2 campaign to v5 without changing saved time or holdings
   const before = structuredClone(old);
   const upgraded = migrateState(old);
   assert.ok(upgraded);
-  assert.equal(upgraded.version, 5);
+  assert.equal(upgraded.version, 6);
   assert.equal(validateState(upgraded), true);
   assert.equal(upgraded.day, 187);
   assert.equal(upgraded.minutes, 712);
@@ -260,7 +261,7 @@ test("portable JSON round trip retains mine work, family, escrow and independent
   const envelope = JSON.parse(text);
   assert.equal(envelope.format, "kingdom-gods-campaign");
   assert.equal(envelope.version, 1);
-  assert.equal(envelope.campaign.version, 5);
+  assert.equal(envelope.campaign.version, 6);
   const restored = parseCampaign(text) as typeof state;
   assert.deepEqual(restored, state);
   restored.futureExtension!.route.push("mine-exit");
@@ -271,7 +272,7 @@ test("portable JSON round trip retains mine work, family, escrow and independent
 test("portable parser accepts raw historical JSON and rejects unsafe or malformed files", () => {
   const legacy = v2Snapshot();
   const restored = parseCampaign(JSON.stringify(legacy));
-  assert.equal(restored.version, 5);
+  assert.equal(restored.version, 6);
   assert.equal(restored.day, legacy.day);
   assert.equal(restored.gold, legacy.gold);
   const invalid = livedCampaign();
@@ -343,7 +344,7 @@ test("persistent v5 round trip never advances time or discards unfinished physic
   const stored = await saveGame(state);
   const loaded = await loadGame();
   assert.deepEqual(loaded, stored);
-  assert.equal(loaded!.version, 5);
+  assert.equal(loaded!.version, 6);
   assert.equal(loaded!.day, state.day);
   assert.equal(loaded!.minutes, state.minutes);
   assert.deepEqual(loaded!.frontier, state.frontier);

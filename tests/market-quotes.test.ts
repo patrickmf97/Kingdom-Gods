@@ -128,7 +128,7 @@ test("successful player trades use displayed quotes and record actual coins; rej
   }
 });
 
-test("quotes and trading retain v5 fields and preserve an existing campaign exactly on export and load", async () => {
+test("quotes and trading retain v6 fields and preserve an existing campaign exactly on export and load", async () => {
   const market = await import("../src/market").catch(() => null);
   assert.ok(market, "the shared pure market quote API must exist");
   const legacy = initialState();
@@ -141,5 +141,5 @@ test("quotes and trading retain v5 fields and preserve an existing campaign exac
   assert.deepEqual(migrateState(legacy), before);
   assert.deepEqual(parseCampaign(exportCampaign(legacy)), before);
   assert.deepEqual(legacy, before);
-  assert.equal(legacy.version, 5);
+  assert.equal(legacy.version, 6);
 });

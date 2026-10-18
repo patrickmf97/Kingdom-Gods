@@ -6,6 +6,8 @@ import { LEGACY_RESOURCE_NODES, REGIONS, RESOURCE_NODES } from "./regions";
 import { ITEMS as ITEM_DEFINITIONS } from "./data";
 import { createTerritoryState, syncTerritoryDeeds } from "./territory";
 import { territoryDeedValue, territoryInfluence } from "./territory-data";
+import { ANIMAL_DEFS } from "./wildlife-data";
+import { createWildlifeState, isAnimalHabitatPoint } from "./wildlife";
 
 const DATABASE = "kingdom-gods";
 const STORE = "snapshots";
@@ -518,17 +520,48 @@ function territory(state: GameState): boolean {
     (!value.charter || state.property.owned || owned > 0);
 }
 
-/** Current snapshots are complete v5 states; missing fields are never repaired. */
+function wildlife(state: GameState): boolean {
+  const value: unknown = state.wildlife;
+  if (!object(value) || !object(value.animals) ||
+    Object.keys(value.animals).length !== ANIMAL_DEFS.length ||
+    !Array.isArray(value.observed) ||
+    // Array iteration must inspect holes too: a sparse observation cannot be
+    // represented in portable JSON without changing its saved meaning.
+    !Array.from(value.observed).every((id) => string(id) && ANIMAL_DEFS.some((definition) => definition.id === id)) ||
+    new Set(value.observed).size !== value.observed.length) return false;
+
+  for (const definition of ANIMAL_DEFS) {
+    if (!Object.hasOwn(value.animals, definition.id)) return false;
+    const animal = value.animals[definition.id];
+    if (!object(animal) || animal.id !== definition.id ||
+      animal.species !== definition.species || animal.zone !== definition.zone ||
+      !number(animal.x) || !number(animal.y) ||
+      !isAnimalHabitatPoint(definition, { x: animal.x, y: animal.y }) ||
+      !nonnegative(animal.facing) || animal.facing >= Math.PI * 2 ||
+      !choice(animal.behavior, ["idle", "walk", "graze", "rest", "flee", "approach"]) ||
+      !nonnegative(animal.wait) || animal.wait > 30 ||
+      !percentage(animal.trust) || !percentage(animal.fear) ||
+      !(animal.lastFedDay === null || (day(animal.lastFedDay) && animal.lastFedDay <= state.day)) ||
+      !count(animal.seed) || animal.seed > 0xffffffff) return false;
+    if (animal.target !== null &&
+      (!object(animal.target) || !number(animal.target.x) || !number(animal.target.y) ||
+        !isAnimalHabitatPoint(definition, { x: animal.target.x, y: animal.target.y }))) return false;
+  }
+  return true;
+}
+
+/** Current snapshots are complete v6 states; missing fields are never repaired. */
 export function validateState(value: unknown): value is GameState {
   try {
     return (
       baseState(value, ITEMS, SKILLS, ZONES) &&
-      value.version === 5 &&
+      value.version === 6 &&
       economy(value.economy) &&
       frontier(value as unknown as GameState) &&
       life(value as unknown as GameState) &&
       territory(value as unknown as GameState) &&
-      economicRelations(value as unknown as GameState)
+      economicRelations(value as unknown as GameState) &&
+      wildlife(value as unknown as GameState)
     );
   } catch {
     // Unknown input can contain getters or proxies; validation must never crash loading.
@@ -561,13 +594,31 @@ function validateV4State(value: unknown): value is ObjectValue {
     economicRelations(value as unknown as GameState);
 }
 
+/** Keep the complete v5 contract separate from fields introduced by v6. */
+function validateV5State(value: unknown): value is ObjectValue {
+  return baseState(value, ITEMS, SKILLS, ZONES) && value.version === 5 &&
+    // A reserved future field must not be silently replaced during migration.
+    !Object.hasOwn(value, "wildlife") &&
+    economy(value.economy) && frontier(value as unknown as GameState) &&
+    life(value as unknown as GameState) && territory(value as unknown as GameState) &&
+    economicRelations(value as unknown as GameState);
+}
+
 /** Upgrade an independent copy, keeping saved time and all existing extensions. */
 export function migrateState(value: unknown): GameState | null {
   try {
     if (!object(value)) return null;
-    if (value.version === 5) {
+    if (value.version === 6) {
       if (!validateState(value)) return null;
       const snapshot: unknown = structuredClone(value);
+      return validateState(snapshot) ? snapshot : null;
+    }
+    if (value.version === 5) {
+      if (!validateV5State(value)) return null;
+      const snapshot = {
+        ...structuredClone(value), version: 6,
+        wildlife: createWildlifeState(value.day as number),
+      };
       return validateState(snapshot) ? snapshot : null;
     }
     if (value.version === 4) {
@@ -580,7 +631,7 @@ export function migrateState(value: unknown): GameState | null {
           snapshot.frontier.resources[node.id] = { remaining: node.capacity, readyDay: null };
         }
       }
-      return validateState(snapshot) ? snapshot : null;
+      return validateV5State(snapshot) ? migrateState(snapshot) : null;
     }
     if (value.version === 3) {
       if (!validateV3State(value)) return null;

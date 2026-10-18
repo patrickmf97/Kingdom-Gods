@@ -14,6 +14,7 @@ const originalIds = new Set(ORIGINAL_RESOURCE_IDS);
 function historicalV4(): PersistentGameState {
   const state = structuredClone(initialState());
   state.version = 4;
+  delete (state as Partial<GameState>).wildlife;
   state.frontier.resources = Object.fromEntries(ORIGINAL_RESOURCE_IDS.map((id) =>
     [id, structuredClone(state.frontier.resources[id])]));
   return state;
@@ -54,9 +55,9 @@ function livedV4(): PersistentGameState & { futureExtension: { routes: string[] 
   return { ...state, futureExtension: { routes: ["wild-mine", "mine-exit"] } };
 }
 
-test("new campaigns use complete v5 reserves for all 55 authored resources", () => {
+test("new campaigns use complete v6 reserves for all 55 authored resources", () => {
   const state = initialState();
-  assert.equal(state.version, 5);
+  assert.equal(state.version, 6);
   assert.equal(RESOURCE_NODES.length, 55);
   assert.equal(Object.keys(state.frontier.resources).length, 55);
   for (const node of RESOURCE_NODES) {
@@ -70,7 +71,7 @@ test("v4 adds only new reserves while preserving depleted nodes, partial work an
   const before = structuredClone(old);
   const migrated = migrateState(old);
   assert.ok(migrated);
-  assert.equal(migrated.version, 5);
+  assert.equal(migrated.version, 6);
   assert.equal(validateState(migrated), true);
   assert.equal(Object.keys(migrated.frontier.resources).length, 55);
   const added = RESOURCE_NODES.filter((node) => !originalIds.has(node.id));
@@ -80,6 +81,7 @@ test("v4 adds only new reserves while preserving depleted nodes, partial work an
   }
   const restored = structuredClone(migrated);
   restored.version = 4;
+  delete (restored as Partial<GameState>).wildlife;
   restored.frontier.resources = Object.fromEntries(ORIGINAL_RESOURCE_IDS.map((id) =>
     [id, restored.frontier.resources[id]]));
   assert.deepEqual(restored, before, "migration must not tick time, replenish old nodes or alter commitments");
@@ -98,7 +100,7 @@ test("v3 chains territory and reserve migrations without advancing an overdue re
   const before = structuredClone(old);
   const migrated = migrateState(old);
   assert.ok(migrated);
-  assert.equal(migrated.version, 5);
+  assert.equal(migrated.version, 6);
   assert.equal(validateState(migrated), true);
   assert.equal(Object.keys(migrated.frontier.resources).length, 55);
   assert.deepEqual(migrated.frontier.resources["wild-oak"], { remaining: 0, readyDay: 17 });
@@ -106,6 +108,7 @@ test("v3 chains territory and reserve migrations without advancing an overdue re
   assert.deepEqual(migrated.territory.deeds, ["house:first"]);
   const restored = structuredClone(migrated) as unknown as Record<string, any>;
   restored.version = 3;
+  delete restored.wildlife;
   delete restored.territory;
   restored.frontier.resources = Object.fromEntries(ORIGINAL_RESOURCE_IDS.map((id) =>
     [id, restored.frontier.resources[id]]));
@@ -113,7 +116,7 @@ test("v3 chains territory and reserve migrations without advancing an overdue re
   assert.deepEqual(old, before);
 });
 
-test("v1 and v2 migrate through the historical ten-node schema into complete v5 reserves", () => {
+test("v1 and v2 migrate through the historical ten-node schema into complete v6 reserves", () => {
   for (const version of [1, 2]) {
     const old = historicalV4() as unknown as Record<string, any>;
     old.version = version;
@@ -135,7 +138,7 @@ test("v1 and v2 migrate through the historical ten-node schema into complete v5 
     const before = structuredClone(old);
     const migrated = migrateState(old);
     assert.ok(migrated, `v${version}`);
-    assert.equal(migrated.version, 5);
+    assert.equal(migrated.version, 6);
     assert.equal(validateState(migrated), true);
     assert.equal(Object.keys(migrated.frontier.resources).length, 55);
     assert.equal(migrated.day, old.day);
@@ -204,6 +207,7 @@ test("v5 rejects missing, extra and damaged reserves without repairing current s
   const valid = migrateState(livedV4());
   assert.ok(valid);
   valid.version = 5;
+  delete (valid as Partial<GameState>).wildlife;
   const node = RESOURCE_NODES.find((entry) => !originalIds.has(entry.id));
   assert.ok(node);
   const mutations: ((state: GameState) => void)[] = [
@@ -215,7 +219,8 @@ test("v5 rejects missing, extra and damaged reserves without repairing current s
     (state) => { state.frontier.resources[node.id] = { remaining: 0, readyDay: null }; },
     (state) => { state.frontier.resources[node.id].readyDay = 19; },
   ];
-  assert.equal(validateState(valid), true);
+  assert.equal(validateState(valid), false, "v5 is historical, not a complete current snapshot");
+  assert.ok(migrateState(valid));
   for (const mutate of mutations) {
     const invalid: GameState = structuredClone(valid);
     mutate(invalid);
@@ -224,7 +229,10 @@ test("v5 rejects missing, extra and damaged reserves without repairing current s
     assert.equal(migrateState(invalid), null, String(mutate));
     assert.deepEqual(invalid, before);
   }
-  assert.deepEqual(migrateState(valid), valid);
+  const upgraded = migrateState(valid);
+  assert.ok(upgraded);
+  const { wildlife, ...restored } = upgraded;
+  assert.deepEqual({ ...restored, version: 5 }, valid);
 });
 
 test("v5 accepts discovery, independent depletion and resumed work at a new resource", () => {
@@ -232,6 +240,8 @@ test("v5 accepts discovery, independent depletion and resumed work at a new reso
   assert.ok(state);
   const added = RESOURCE_NODES.filter((node) => !originalIds.has(node.id));
   assert.equal(added.length, 45);
+  state.version = 5;
+  delete (state as Partial<GameState>).wildlife;
   const [working, depleted] = added;
   state.zone = working.zone;
   state.apostle.x = working.x;
@@ -241,6 +251,9 @@ test("v5 accepts discovery, independent depletion and resumed work at a new reso
     duration: working.duration, elapsed: working.duration / 2 };
   state.frontier.resources[depleted.id] = { remaining: 0, readyDay: state.day + depleted.respawnDays };
   state.frontier.discovered.push(working.id, depleted.id);
-  assert.equal(validateState(state), true);
-  assert.deepEqual(migrateState(state), state);
+  const upgraded = migrateState(state);
+  assert.ok(upgraded);
+  assert.equal(validateState(upgraded), true);
+  const { wildlife, ...restored } = upgraded;
+  assert.deepEqual({ ...restored, version: 5 }, state);
 });

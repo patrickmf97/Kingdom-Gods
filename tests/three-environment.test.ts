@@ -109,26 +109,27 @@ test("house fading preserves nearby hero visibility then restores opaque depth-t
   environment.dispose();
 });
 
-test("grass accents retain full coverage without overlapping coplanar patches", () => {
+test("grass accents provide raised ground cover without coplanar ground decals", () => {
   for (const zone of ["village", "wilderness"] as const) {
     const environment = createRegionEnvironment(zone, initialState());
-    const patches = meshes(environment.group).find(mesh => mesh instanceof THREE.InstancedMesh &&
-      (mesh.material as THREE.MeshStandardMaterial).color.getHex() === 0x8ba574) as THREE.InstancedMesh;
-    assert.equal(patches.count, zone === "village" ? 165 : 250);
-    const bounds: THREE.Box3[] = [];
+    const accents = meshes(environment.group).filter(mesh => mesh instanceof THREE.InstancedMesh &&
+      mesh.name.startsWith("meadow-")) as THREE.InstancedMesh[];
+    assert.ok(accents.length > 0 && accents.length <= 6, "ground cover stays batched");
+    assert.ok(accents.reduce((count, mesh) => count + mesh.count, 0) >= 1500, "plants must cover the landscape");
     const matrix = new THREE.Matrix4();
-    patches.geometry.computeBoundingBox();
-    for (let i = 0; i < patches.count; i++) {
-      patches.getMatrixAt(i, matrix);
-      const box = patches.geometry.boundingBox!.clone().applyMatrix4(matrix);
-      assert.ok(box.max.y < .003, "patches must stay below every authored road");
-      for (const previous of bounds) {
-        const overlapX = Math.min(box.max.x, previous.max.x) - Math.max(box.min.x, previous.min.x);
-        const overlapZ = Math.min(box.max.z, previous.max.z) - Math.max(box.min.z, previous.min.z);
-        assert.ok(overlapX <= 0 || overlapZ <= 0, `${zone} patch ${i} overlaps another coplanar grass face`);
+    for (const accent of accents) {
+      accent.geometry.computeBoundingBox();
+      for (let i = 0; i < accent.count; i++) {
+        accent.getMatrixAt(i, matrix);
+        const box = accent.geometry.boundingBox!.clone().applyMatrix4(matrix);
+        assert.ok(box.min.y >= .004 && box.min.y <= .05, "roots stay above the terrain without a second coplanar face");
+        assert.ok(box.max.y - box.min.y > .1, "grass is real raised foliage, not a flat cylinder decal");
       }
-      bounds.push(box);
     }
+    assert.equal(meshes(environment.group).some(mesh => mesh instanceof THREE.InstancedMesh &&
+      mesh.geometry instanceof THREE.CylinderGeometry &&
+      (mesh.material as THREE.MeshStandardMaterial).color.getHex() === 0x8ba574), false,
+      "the old overlapping ground-patch surface must not be reintroduced");
     environment.dispose();
   }
 });
@@ -248,8 +249,11 @@ test("forests use bounded instanced batches and disposing one region leaves anot
   const state = initialState();
   const one = createRegionEnvironment("wilderness", state);
   const two = createRegionEnvironment("mine", state);
-  const forestBatches = meshes(one.group).filter(mesh => mesh instanceof THREE.InstancedMesh && mesh.count > 50);
-  assert.ok(forestBatches.length > 0 && forestBatches.length <= 5);
+  const landscape = one.group.getObjectByName("living-vegetation")!;
+  assert.ok(landscape, "the landscape layer must be present");
+  const forestBatches = meshes(landscape).filter(mesh => mesh instanceof THREE.InstancedMesh);
+  assert.ok(forestBatches.length > 0 && forestBatches.length <= 12,
+    "forest crowns, branches and ground cover must share a bounded instancing budget");
   assert.ok(regionForZone("wilderness").decor.length > 100);
   const resources = new Set<THREE.BufferGeometry | THREE.Material | THREE.InstancedMesh>();
   for (const mesh of meshes(one.group)) {

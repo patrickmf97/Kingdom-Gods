@@ -6,6 +6,8 @@ import { applyEducationToSuccessor, availableGuardians, createLifeState, execute
 import { exportCampaign as serializeCampaign, importCampaign as importSavedCampaign } from "./campaign-files";
 import { createTerritoryState, executeTerritoryAction, processTerritoryDay, syncTerritoryDeeds } from "./territory";
 import { ESTATE_DEFS, estateBuildings } from "./territory-data";
+import { animalDialog, animalsForZone, createWildlifeState, executeWildlifeAction, updateWildlife } from "./wildlife";
+import { animalDefinition } from "./wildlife-data";
 import {
   findPath,
   isWalkable,
@@ -249,7 +251,7 @@ export function initialState(): PersistentGameState {
   const npcs = newNpcs();
   const apostle = newApostle();
   return {
-    version: 5,
+    version: 6,
     started: false,
     intro: true,
     phase: "title",
@@ -297,6 +299,7 @@ export function initialState(): PersistentGameState {
     frontier: createFrontierState(1),
     life: createLifeState(npcs, [], apostle),
     territory: createTerritoryState(1),
+    wildlife: createWildlifeState(1),
     simulation: {
       marriedAt: {},
       gathering: {},
@@ -571,6 +574,7 @@ export class GameStore {
     }
     if (!this.playing()) this.state.minutes %= 1440;
     this.updateNpcs(deltaSeconds);
+    updateWildlife(this.state, deltaSeconds);
     updateLifeNeeds(this.state, this.economicHooks());
     const wasWorking = !!this.state.frontier.work;
     updateFrontierWork(this.state, deltaSeconds, this.economicHooks());
@@ -988,6 +992,7 @@ export class GameStore {
     if (!this.playing()) return null;
     const points: { id: string; label: string; x: number; y: number }[] = [
       ...objectsForZone(this.state.zone),
+      ...animalsForZone(this.state, this.state.zone).map(animal => ({ id: `animal:${animal.id}`, label: animalDefinition(animal.id)!.name, x: animal.x, y: animal.y })),
       ...(this.state.zone === "village" ? [
         ...(this.state.property.building ? [{ id: "property", label: "Moradia da linhagem", x: 2090, y: 815 }] : []),
         ...this.state.npcs.filter(npc => npc.id !== "matron").map(npc => ({ ...npc, label: npc.name })),
@@ -1060,6 +1065,11 @@ export class GameStore {
   interact(id: string): Dialog | null {
     if (!this.playing()) return null;
     if (this.state.frontier.work) cancelWork(this.state, this.economicHooks(), "A conversa interrompeu o trabalho.");
+    if (id.startsWith("animal:")) {
+      const dialog = animalDialog(this.state, id.slice(7));
+      this.activeDialog = dialog ? id : null;
+      return dialog;
+    }
     if (id === "exit") {
       if (
         distance(this.state.apostle, { x: 450, y: 790 }) > 190 ||
@@ -1395,6 +1405,7 @@ export class GameStore {
     }
     this.act(action);
     if (!this.activeDialog || !this.playing()) return null;
+    if (this.activeDialog.startsWith("animal:")) return animalDialog(this.state, this.activeDialog.slice(7));
     const npc = this.nearNpc(this.activeDialog);
     if (npc) return this.npcDialog(npc);
     if (this.activeDialog === "property" && this.nearObject("property"))
@@ -1414,6 +1425,9 @@ export class GameStore {
       return;
     }
     if (!this.playing()) return;
+    if (executeWildlifeAction(this.state, action, this.economicHooks())) {
+      this.scheduleAutoSave(); this.notify(); return;
+    }
     const [verb, id] = action.split(":");
     const item = id as ItemId;
     if (this.state.territory.arrears > 0 && ["acquire-property", "build"].includes(action)) {

@@ -2457,11 +2457,36 @@ function Help({ state }: { state: GameState }) {
         materiais, sementes e ouro para sustentar sua produção.
       </p>
       <div className="panel-section-heading">
+        <h3>Animais da paisagem</h3>
+        <Compass size={17} />
+      </div>
+      <p className="panel-prose">
+        Bento, o cão, passeia perto do centro de Valeverde. Procure galinhas
+        perto das plantações, ovelhas na campina ao sul e vacas a sudeste.
+        Nos Ermos vivem cervos, coelhos e raposas. Aproxime-se devagar e use
+        E, Interagir ou clique no animal. Observar registra o encontro nas
+        memórias; oferecer pão ao cão ou trigo aos outros animais compatíveis
+        consome uma unidade e aumenta a confiança, uma vez por animal a cada dia.
+        Animais assustados fogem e descansam conforme o horário.
+      </p>
+      <p className="panel-prose">
+        Encontros registrados: {state.wildlife.observed.length} de 22.
+        Posição, confiança e alimentação ficam salvas. Criação de rebanhos,
+        reprodução e caça ainda não estão disponíveis.
+      </p>
+      <div className="panel-section-heading">
         <h3>Sobre esta versão</h3>
         <ScrollText size={17} />
       </div>
       <p className="panel-prose">
-        Kingdom Gods alpha 0.8 melhora os materiais, os detalhes e os efeitos do visual 3D. Coleta, caminhada e combate têm partículas; o mercado considera oferta, estações e pedidos, e a produção paga seus trabalhadores. Há 15 pontos de madeira, pedra e ervas em Valeverde, 36 nos Ermos e quatro recursos na mina. Cada reserva se esgota e se renova com o calendário. Use o filtro do mapa para encontrar o material desejado. Inclui Valeverde, os Ermos de Alvor e a Mina do
+        Kingdom Gods alpha 0.9 acrescenta árvores com copas variadas, grama,
+        flores, arbustos e vento suave, além de 22 animais com rotinas próprias.
+        Coleta, caminhada e combate têm partículas; o mercado considera oferta,
+        estações e pedidos, e a produção paga seus trabalhadores. Há 15 pontos
+        de madeira, pedra e ervas em Valeverde, 36 nos Ermos e quatro recursos
+        na mina. Cada reserva se esgota e se renova com o calendário. Use o
+        filtro do mapa para encontrar o material desejado. Inclui Valeverde,
+        os Ermos de Alvor e a Mina do
         Ferro Antigo, além da cripta. Há ferramentas com desgaste, extração,
         oportunidades de exploração, educação dos filhos, tutela e herança.
         Nos Ermos, registre terras, construa armazéns ou abrigos e mantenha

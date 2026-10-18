@@ -8,6 +8,8 @@ import type { Dialog, Zone } from "../types";
 import { createCharacterModel, type ActorAppearance, type CharacterModel } from "./characters";
 import { createRegionEnvironment, type RegionEnvironment } from "./environment";
 import { WorldEffects } from "./effects";
+import { createWildlifeLayer } from "./wildlife";
+import { animalsForZone } from "../wildlife";
 import { cameraChange, DEFAULT_CAMERA_DISTANCE, DEFAULT_CAMERA_YAW, screenToMap, toMap, toWorld, WORLD_SCALE } from "./coordinates";
 
 type Actor = { model: CharacterModel; label: HTMLDivElement; x: number; y: number; appearance: string };
@@ -19,6 +21,8 @@ class ThreeWorld {
   private camera = new THREE.PerspectiveCamera(42, 1, .1, 230);
   private environment?: RegionEnvironment;
   private effects = new WorldEffects();
+  private wildlife = createWildlifeLayer();
+  private presentationTime = 0;
   private actors = new Map<string, Actor>();
   private layer = document.createElement("div");
   private labels = document.createElement("div");
@@ -48,6 +52,7 @@ class ThreeWorld {
   private attackUntil = 0;
   private attackLast = -1;
   private destination: Destination | null = null;
+  private animalPursuit = 0;
   private blockedFor = 0;
   private geometrySignature = "";
   private lastLabels = 0;
@@ -79,7 +84,7 @@ class ThreeWorld {
     this.renderer.shadowMap.enabled = false;
     this.scene.background = new THREE.Color(0xb7c8b3);
     this.scene.fog = new THREE.Fog(0xb7c8b3, 65, 155);
-    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group);
+    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.wildlife.group);
     this.routeLine.frustumCulled = false;
     this.routeLine.renderOrder = 5;
     this.observer.observe(this.element);
@@ -199,12 +204,13 @@ class ThreeWorld {
     this.release();
     this.planRoute(objectApproach(id, this.context()));
   };
-  private clearRoute(): void { this.destination = null; this.blockedFor = 0; this.routeLine.visible = false; }
+  private clearRoute(): void { this.destination = null; this.animalPursuit = 0; this.blockedFor = 0; this.routeLine.visible = false; }
   private planRoute(point: Point, id?: string): void {
     const goal = nearestWalkable(point, this.context());
     if (distance(goal, store.state.apostle) < 1) { this.clearRoute(); if (id) this.interact(id); return; }
     const path = findPath(store.state.apostle, goal, this.context());
     if (!path.length) { this.clearRoute(); store.notify("Não há um caminho livre até esse lugar. Escolha outro acesso."); return; }
+    if (id !== this.destination?.id) this.animalPursuit = 0;
     this.destination = { point: goal, path, id }; this.blockedFor = 0;
     this.drawRoute();
   }
@@ -221,12 +227,21 @@ class ThreeWorld {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1), this.camera);
     // Read actual model hits before projecting on the floor, so roofs and actors can be selected.
-    const targets = [this.environment?.group, ...[...this.actors.values()].map(actor => actor.model.group)].filter((target): target is THREE.Group => !!target);
+    const targets = [this.environment?.group, this.wildlife.group, ...[...this.actors.values()].map(actor => actor.model.group)].filter((target): target is THREE.Group => !!target);
     const hits = this.raycaster.intersectObjects(targets, true);
     let point: Point | null = null;
     if (hits[0]) {
       let selected: THREE.Object3D | null = hits[0].object;
-      while (selected && !selected.userData.actorId) selected = selected.parent;
+      while (selected && !selected.userData.actorId && !selected.userData.animalId) selected = selected.parent;
+      if (selected?.userData.animalId) {
+        const animal = animalsForZone(store.state, store.state.zone).find(animal => animal.id === selected!.userData.animalId);
+        if (animal) {
+          const id = `animal:${animal.id}`;
+          if (distance(animal, store.state.apostle) <= 130) this.interact(id);
+          else this.planRoute({ x: animal.x, y: animal.y + 20 }, id);
+          return;
+        }
+      }
       if (selected?.userData.actorId && selected.userData.actorId !== "player") {
         const npc = store.state.npcs.find(person => person.id === selected!.userData.actorId);
         if (npc) { this.planRoute(nearestWalkable({ x: npc.x, y: npc.y + 35 }, this.context()), npc.id); return; }
@@ -252,8 +267,17 @@ class ThreeWorld {
     if (Math.hypot(input.x, input.y) > .05) this.clearRoute();
     let movementDt = dt;
     if (this.destination) {
+      const animalId = this.destination.id?.startsWith("animal:") ? this.destination.id.slice(7) : undefined;
+      if (animalId) {
+        this.animalPursuit += dt;
+        const animal = animalsForZone(store.state, store.state.zone).find(animal => animal.id === animalId);
+        if (!animal) this.clearRoute();
+        else if (distance(animal, apostle) <= 130) this.interact(`animal:${animal.id}`);
+        else if (this.animalPursuit >= 12) { this.clearRoute(); store.notify("O animal se afastou. Aproxime-se e tente novamente."); }
+        else if (distance(animal, this.destination!.point) > 60) this.planRoute({ x: animal.x, y: animal.y + 20 }, `animal:${animal.id}`);
+      }
       const npc = store.state.npcs.find(person => person.id === this.destination?.id);
-      if (npc && distance(npc, this.destination.point) > 75) this.planRoute({ x: npc.x, y: npc.y + 35 }, npc.id);
+      if (npc && this.destination && distance(npc, this.destination.point) > 75) this.planRoute({ x: npc.x, y: npc.y + 35 }, npc.id);
       while (this.destination?.path.length && distance(this.destination.path[0], apostle) < 1) this.destination.path.shift();
       if (this.destination && !this.destination.path.length) { const id = this.destination.id; this.clearRoute(); if (id) this.interact(id); }
       const waypoint = this.destination?.path[0];
@@ -278,6 +302,7 @@ class ThreeWorld {
     this.zone = zone; this.scenic = scenic;
     this.environment = createRegionEnvironment(zone, store.state);
     this.scene.add(this.environment.group);
+    this.wildlife.update(store.state, zone, this.presentationTime);
     this.renderer.domElement.dataset.region = zone;
     const point = toWorld(scenic ? { x: 1270, y: 880 } : store.state.apostle);
     this.focus.set(point.x, .7, point.z);
@@ -405,9 +430,11 @@ class ThreeWorld {
       store.tick(dt);
     } else this.release();
     this.effects.update(store.state, active ? dt : 0);
+    if (active || (scenic && !document.hidden)) this.presentationTime += dt;
     const time = stamp / 1000;
     this.syncActors(time);
-    this.environment?.update(store.state, time);
+    this.environment?.update(store.state, this.presentationTime);
+    this.wildlife.update(store.state, zone, this.presentationTime);
     this.updateCamera(Math.max(dt, .001));
     if (stamp - this.lastLabels > 45) { this.updateLabels(); this.lastLabels = stamp; }
     if (this.contextAvailable) this.renderer.render(this.scene, this.camera);
@@ -422,6 +449,11 @@ class ThreeWorld {
       canvas.dataset.particleDrawCalls = String(this.effects.drawCalls);
       canvas.dataset.particleVersion = String(this.effects.version);
       canvas.dataset.particleKinds = JSON.stringify(this.effects.counts);
+      const animals = animalsForZone(store.state, zone);
+      canvas.dataset.animalCount = String(animals.length);
+      canvas.dataset.animals = JSON.stringify(animals.map(({ id, species, x, y, behavior, trust }) => ({ id, species, x, y, behavior, trust })));
+      canvas.dataset.presentationTime = String(this.presentationTime);
+      canvas.dataset.routeId = this.destination?.id ?? "";
       canvas.dataset.viewProjection = JSON.stringify(new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse).elements);
       canvas.dataset.frame = String(stamp);
       this.lastDebug = stamp;
@@ -449,6 +481,7 @@ class ThreeWorld {
     this.prompt.removeEventListener("click", this.promptClick);
     this.environment?.dispose();
     this.effects.dispose();
+    this.wildlife.dispose();
     for (const actor of this.actors.values()) actor.model.dispose();
     this.actors.clear();
     for (const owned of [this.haloGeometry, this.haloMaterial, this.shadowGeometry, this.shadowMaterial, this.routeGeometry, this.routeMaterial]) owned.dispose();

@@ -4,6 +4,7 @@ import { ESTATE_DEFS, estateSolid } from "../territory-data";
 import type { GameState, Point, Zone } from "../types";
 import { createHorizon, type RegionHorizon } from "./horizon";
 import { RegionSurfaceTextures, type SurfaceTexture } from "./materials";
+import { createRegionVegetation, VILLAGE_LANDSCAPE_PATHS, type RegionVegetation } from "./vegetation";
 
 /** Presentation only. Navigation and interactions keep their existing logical coordinates. */
 export interface RegionEnvironment {
@@ -26,10 +27,6 @@ type FadeEntry = { x: number; y: number; radius: number; materials: THREE.MeshSt
 type Flame = { mesh: THREE.Mesh; seed: number };
 type NodeVisual = { id: string; live: THREE.Group; depleted: THREE.Group };
 
-function seeded(seed: number): () => number {
-  return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
-}
-
 /** All caches belong to one active region and are released together. */
 class EnvironmentBuilder {
   readonly group = new THREE.Group();
@@ -49,6 +46,7 @@ class EnvironmentBuilder {
   readonly roofGeometry: THREE.BufferGeometry;
   readonly dynamic = new THREE.Group();
   private horizon?: RegionHorizon;
+  private vegetation?: RegionVegetation;
   private dynamicSignature = "";
   private disposed = false;
 
@@ -197,32 +195,6 @@ class EnvironmentBuilder {
     if (!outside) return;
     this.horizon = createHorizon(this.zone);
     if (this.horizon) this.group.add(this.horizon.group);
-    // Instanced low flat patches break up the ground without texture downloads.
-    const random = seeded(this.zone === "village" ? 87321 : 100153);
-    const count = this.zone === "village" ? 165 : 250;
-    const patches = new THREE.InstancedMesh(this.cylinderGeometry, this.material(PALETTE.grassLight), count);
-    const matrix = new THREE.Matrix4(), position = new THREE.Vector3(), scale = new THREE.Vector3();
-    const rotation = new THREE.Quaternion();
-    const placed: { x: number; z: number; rx: number; rz: number }[] = [];
-    // Their tops share one height. Reject intersecting bounding rectangles so
-    // differently coloured cylinders can never fight for the same pixels.
-    // Keep a bounded attempt count; no saved or navigation positions change.
-    for (let attempt = 0; placed.length < count && attempt < count * 60; attempt++) {
-      scale.set(1 + random() * 2.4, .008, .6 + random() * 1.5);
-      position.set(scale.x + random() * (region.width * SCALE - scale.x * 2), -.005,
-        scale.z + random() * (region.height * SCALE - scale.z * 2));
-      if (placed.some(other => Math.abs(position.x - other.x) < scale.x + other.rx + .08 &&
-        Math.abs(position.z - other.z) < scale.z + other.rz + .08)) continue;
-      const i = placed.length;
-      placed.push({ x: position.x, z: position.z, rx: scale.x, rz: scale.z });
-      matrix.compose(position, rotation, scale);
-      patches.setMatrixAt(i, matrix);
-      patches.setColorAt(i, new THREE.Color(i % 3 ? PALETTE.grassLight : PALETTE.grassDark));
-    }
-    patches.count = placed.length;
-    patches.receiveShadow = true;
-    patches.computeBoundingSphere();
-    this.group.add(patches);
   }
 
   house(area: Rectangle, roofColor: number, options: { height?: number; kind?: string; parent?: THREE.Group } = {}): THREE.Group {
@@ -275,42 +247,8 @@ class EnvironmentBuilder {
   }
 
   forest(): void {
-    const decor = regionForZone(this.zone).decor;
-    if (!decor.length) return;
-    const trunk = new THREE.InstancedMesh(this.cylinderGeometry, this.material(PALETTE.timber), decor.length);
-    const roundItems = decor.filter(item => item.key !== "pine");
-    const pineItems = decor.filter(item => item.key === "pine");
-    const crowns = new THREE.InstancedMesh(this.sphereGeometry, this.material(PALETTE.leaf), roundItems.length);
-    const upper = new THREE.InstancedMesh(this.sphereGeometry, this.material(PALETTE.leafLight), roundItems.length);
-    const pines = new THREE.InstancedMesh(this.coneGeometry, this.material(0x466c51), pineItems.length);
-    const matrix = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3(), q = new THREE.Quaternion();
-    decor.forEach((item, i) => {
-      const scale = item.scale ?? 1;
-      // Trunk bases are the same centres and radii used by navigation.
-      p.set((item.x + scale) * SCALE, 1.15 * scale, (item.y - 12 * scale) * SCALE);
-      s.set(7 * scale * SCALE, 2.3 * scale, 7 * scale * SCALE);
-      matrix.compose(p, q, s); trunk.setMatrixAt(i, matrix);
-    });
-    roundItems.forEach((item, i) => {
-      const scale = item.scale ?? 1;
-      p.set(item.x * SCALE, 3.0 * scale, (item.y - 12 * scale) * SCALE);
-      s.set(1.8 * scale, 1.65 * scale, 1.55 * scale);
-      matrix.compose(p, q, s); crowns.setMatrixAt(i, matrix);
-      crowns.setColorAt(i, new THREE.Color(i % 3 ? 0x65854e : 0x52774e));
-      p.x -= .22 * scale; p.y += .92 * scale; p.z -= .15 * scale;
-      s.set(1.43 * scale, 1.08 * scale, 1.2 * scale);
-      matrix.compose(p, q, s); upper.setMatrixAt(i, matrix);
-    });
-    pineItems.forEach((item, i) => {
-      const scale = item.scale ?? 1;
-      p.set(item.x * SCALE, 3.3 * scale, (item.y - 12 * scale) * SCALE);
-      s.set(1.5 * scale, 4.5 * scale, 1.5 * scale);
-      matrix.compose(p, q, s); pines.setMatrixAt(i, matrix);
-    });
-    for (const mesh of [trunk, crowns, upper, pines]) {
-      mesh.castShadow = true; mesh.receiveShadow = true; mesh.computeBoundingSphere();
-      this.group.add(mesh);
-    }
+    this.vegetation = createRegionVegetation(this.zone);
+    if (this.vegetation) this.group.add(this.vegetation.group);
   }
 
   flame(x: number, y: number, base: number, parent: THREE.Object3D = this.group): void {
@@ -349,15 +287,9 @@ class EnvironmentBuilder {
       if (node.kind === "resource") {
         this.cylinder(x, y, 7, .35, PALETTE.wood, 0, depleted);
         this.cylinder(x, y, 7.6, .06, PALETTE.woodLight, .35, depleted);
-        this.cylinder(x, y, 7, 2.25, PALETTE.timber, 0, live);
-        const pine = node.id.includes("pine"), willow = node.id.includes("willow");
-        for (let i = 0; i < 3; i++) {
-          const crown = this.mesh(pine ? this.coneGeometry : this.sphereGeometry,
-            this.material(pine ? [0x45694e, 0x527a56, 0x64875e][i] : i === 1 ? PALETTE.leafLight : PALETTE.leaf), live);
-          crown.position.set(x * SCALE + (pine ? 0 : (i - 1) * .6), pine ? 2.7 + i * .95 : 3 + (i % 2) * .8, y * SCALE);
-          if (pine) crown.scale.set(1.65 - i * .34, 2.55 - i * .25, 1.65 - i * .34);
-          else crown.scale.set(willow ? 1.9 : 1.7, willow ? 1.9 : 1.5, willow ? 1.75 : 1.6);
-        }
+        const kind = node.id.includes("pine") ? "pine" : node.id.includes("willow") ? "willow"
+          : node.id.includes("oak") ? "oak" : "broadleaf";
+        this.vegetation?.addResourceTree(x, y, kind, live);
         // Fallen branches at the base make the starter resource readable too.
         for (let i = 0; i < 2; i++) {
           const log = this.box(x + 8 + i * 7, y + 17, 24, 6, .17, PALETTE.wood, .03, live);
@@ -402,21 +334,8 @@ class EnvironmentBuilder {
   }
 
   village(): void {
-    const paths = [
-      [[1260, 476], [1258, 630], [1256, 842]],
-      [[1230, 1456], [1306, 1396], [1456, 1290]],
-      [[408, 912], [580, 876], [776, 834], [1020, 828], [1256, 842], [1478, 872], [1882, 896]],
-      [[710, 620], [730, 696], [776, 834]],
-      [[1000, 1080], [1016, 952], [1020, 828]],
-      [[1564, 660], [1510, 764], [1478, 872]],
-      [[1640, 1100], [1606, 984], [1478, 872]],
-      [[1282, 826], [1284, 940], [1392, 1090], [1456, 1290], [1698, 1446], [1950, 1570], [2170, 1660]],
-      [[1882, 896], [1990, 752], [2116, 548], [2110, 340]],
-      [[776, 834], [692, 1004], [616, 1236], [630, 1518], [816, 1906]],
-      [[1900, 900], [1980, 840], [2090, 815]],
-    ].map(path => path.map(([x, y]) => ({ x, y })));
-    this.ribbon(paths, 54, PALETTE.roadEdge, .003);
-    this.ribbon(paths, 44, PALETTE.road, .012, "path");
+    this.ribbon(VILLAGE_LANDSCAPE_PATHS, 54, PALETTE.roadEdge, .003);
+    this.ribbon(VILLAGE_LANDSCAPE_PATHS, 44, PALETTE.road, .012, "path");
     // The village plaza is traversable paving, not a raised obstacle.
     const plaza = this.cylinder(1156, 812, 215, .025, 0xbdb498, .005);
     plaza.scale.z *= .4;
@@ -842,6 +761,7 @@ class EnvironmentBuilder {
   update(state: GameState, timeSeconds: number): void {
     if (this.disposed) return;
     this.horizon?.update(state.minutes);
+    this.vegetation?.update(timeSeconds);
     this.updateDynamic(state);
     for (const node of this.nodes) {
       const available = (state.frontier.resources[node.id]?.remaining ?? 1) > 0;
@@ -877,6 +797,7 @@ class EnvironmentBuilder {
     if (this.disposed) return;
     this.disposed = true;
     this.horizon?.dispose();
+    this.vegetation?.dispose();
     this.group.traverse(object => {
       // InstancedMesh owns a GPU instance buffer in addition to the geometry.
       if (object instanceof THREE.InstancedMesh) object.dispose();

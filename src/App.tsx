@@ -375,6 +375,7 @@ export default function App() {
     (order) => order.status === "available" || order.status === "accepted",
   );
   const nearest = s.phase === "playing" ? store.getNearest() : null;
+  const animalEncounter = dialog?.options.some(option => option.action.startsWith("animal-"));
   return (
     <div
       className={`kingdom-app ${s.phase === "playing" ? "is-playing" : "is-landing"} ${mobile ? "is-mobile" : ""}`}
@@ -429,7 +430,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.8 · {rendererMode.toUpperCase()}</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.9 · {rendererMode.toUpperCase()}</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -812,12 +813,12 @@ export default function App() {
               {dialog && (
                 <div className="dialog-box">
                   <div className="dialog-speaker">
-                    <span className="dialog-portrait">
+                    {!animalEncounter && <span className="dialog-portrait">
                       <Portrait
                         person={{ ...a, hair: "#b1a48a", outfit: "#777462" }}
                         size={52}
                       />
-                    </span>
+                    </span>}
                     <div>
                       <small>{dialog.role}</small>
                       <h3>{dialog.name}</h3>
@@ -944,7 +945,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  ALPHA 0.8 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.9 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />
