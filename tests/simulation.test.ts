@@ -86,7 +86,7 @@ test("orphanage introduction gives a bounded starting estate and records the far
   assert.equal(game.state.zone, "village");
   assert.deepEqual(
     { x: game.state.apostle.x, y: game.state.apostle.y },
-    { x: 710, y: 760 },
+    { x: 736, y: 648 },
   );
 });
 

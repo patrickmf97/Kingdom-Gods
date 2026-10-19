@@ -1,5 +1,6 @@
 import { ITEMS, OBJECTS } from "./data";
 import { carriedWeight, carryingCapacity } from "./frontier";
+import { interiorForZone } from "./interiors";
 import {
   ESTATE_BUILDINGS,
   ESTATE_DEFS,
@@ -35,6 +36,9 @@ function nearRegistry(state: GameState): boolean {
 }
 
 function nearEstate(state: GameState, id: EstateId): boolean {
+  const room = interiorForZone(state.zone);
+  const station = room?.stations.find(station => station.id === id);
+  if (station?.kind === "estate") return Math.hypot(state.apostle.x - station.x, state.apostle.y - station.y) <= 140;
   const point = ESTATE_DEFS.find(estate => estate.id === id)!;
   return state.zone === "wilderness" && Math.hypot(state.apostle.x - point.x, state.apostle.y - point.y) <= 140;
 }

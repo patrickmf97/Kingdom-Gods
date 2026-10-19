@@ -1,5 +1,7 @@
 export type Blessing = "vigor" | "wisdom" | "fortune";
-export type Zone = "village" | "orphanage" | "dungeon" | "wilderness" | "mine";
+export type InteriorZone = "orphanage" | "inn-room" | "forge-room" | "mill-room" | "bakery-room" | "mira-room" | "farm-store-room" | "farmhouse-room" | "oak-room" | "stone-room" | "camp-room" | "ranger-room" | "chapel-room";
+export type OutdoorZone = "village" | "wilderness" | "highlands";
+export type Zone = OutdoorZone | InteriorZone | "dungeon" | "mine";
 export type Panel =
   | "inventory"
   | "character"
@@ -113,6 +115,7 @@ export interface Npc {
   relation: number;
   trust: number;
   mood: string;
+  zone: Zone;
 }
 export interface Enemy {
   id: string;

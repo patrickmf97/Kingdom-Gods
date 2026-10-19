@@ -2,7 +2,7 @@ import type { GameState, Apostle, Npc, Person, ResourceNodeDefinition } from "./
 import { createEconomyState } from "./economy";
 import { createFrontierState, FRONTIER_JOB_DEFS } from "./frontier";
 import { createLifeState } from "./life";
-import { LEGACY_RESOURCE_NODES, REGIONS, RESOURCE_NODES } from "./regions";
+import { LEGACY_RESOURCE_NODES, V5_RESOURCE_NODES, REGIONS, RESOURCE_NODES } from "./regions";
 import { ITEMS as ITEM_DEFINITIONS } from "./data";
 import { createTerritoryState, syncTerritoryDeeds } from "./territory";
 import { territoryDeedValue, territoryInfluence } from "./territory-data";
@@ -50,7 +50,8 @@ const LEGACY_SKILLS = [
 const V2_SKILLS = [...LEGACY_SKILLS, "cooking", "smithing"] as const;
 const SKILLS = [...V2_SKILLS, "woodcutting", "herbalism"] as const;
 const LEGACY_ZONES = ["village", "orphanage", "dungeon"] as const;
-const ZONES = [...LEGACY_ZONES, "wilderness", "mine"] as const;
+const HISTORICAL_ZONES = [...LEGACY_ZONES, "wilderness", "mine"] as const;
+const ZONES = Object.keys(REGIONS);
 
 let lastPersistenceError: string | null = null;
 let memoryCurrent: GameState | null = null;
@@ -175,7 +176,7 @@ function apostle(
   );
 }
 
-function npc(value: unknown): boolean {
+function npc(value: unknown): value is ObjectValue {
   return (
     object(value) &&
     ["id", "name", "role", "color", "mood"].every((key) =>
@@ -187,6 +188,15 @@ function npc(value: unknown): boolean {
     nonnegative(value.trust) &&
     value.trust <= 100
   );
+}
+
+function historicalNpc(value: unknown): boolean {
+  // A future location must never be silently replaced with a migration default.
+  return npc(value) && !Object.hasOwn(value, "zone");
+}
+
+function currentNpc(value: unknown): boolean {
+  return npc(value) && choice(value.zone, ZONES);
 }
 
 function enemy(value: unknown): boolean {
@@ -236,6 +246,7 @@ function baseState(
   items: readonly string[],
   skills: readonly string[],
   zones: readonly string[] = LEGACY_ZONES,
+  checkNpc: (entry: unknown) => boolean = historicalNpc,
 ): value is ObjectValue {
   return (
       object(value) &&
@@ -250,7 +261,7 @@ function baseState(
       day(value.day) &&
       nonnegative(value.timeScale) &&
       choice(value.zone, zones) &&
-      array(value.npcs, npc) &&
+      array(value.npcs, checkNpc) &&
       array(value.enemies, enemy) &&
       numericRecord(value.market, items, true) &&
       nonnegative(value.merchantGold) &&
@@ -335,10 +346,15 @@ const LEGACY_DISCOVERABLE_IDS = new Set([
   ...LEGACY_RESOURCE_NODES.map((node) => node.id),
 ]);
 
+const V5_DISCOVERABLE_IDS = new Set([
+  ...LEGACY_DISCOVERABLE_IDS, ...V5_RESOURCE_NODES.map((node) => node.id),
+]);
+
 function frontier(
   state: GameState,
   nodes: readonly ResourceNodeDefinition[] = RESOURCE_NODES,
   discoverableIds: ReadonlySet<string> = DISCOVERABLE_IDS,
+  zones: readonly string[] = ZONES,
 ): boolean {
   const value: unknown = state.frontier;
   if (!object(value) || !object(value.tools) || !object(value.toolStock) ||
@@ -365,7 +381,7 @@ function frontier(
   if (value.work !== null) {
     const work = value.work;
     if (!object(work) || !string(work.nodeId) || !nonnegative(work.elapsed) ||
-      !number(work.duration) || !choice(work.zone, ZONES)) return false;
+      !number(work.duration) || !choice(work.zone, zones)) return false;
     const node = nodes.find((entry) => entry.id === work.nodeId);
     if (!node || node.zone !== work.zone || state.zone !== work.zone ||
       work.duration !== node.duration || work.elapsed > node.duration + 1e-7 ||
@@ -550,12 +566,13 @@ function wildlife(state: GameState): boolean {
   return true;
 }
 
-/** Current snapshots are complete v6 states; missing fields are never repaired. */
+/** Current snapshots are complete v7 states; missing fields are never repaired. */
 export function validateState(value: unknown): value is GameState {
   try {
     return (
-      baseState(value, ITEMS, SKILLS, ZONES) &&
-      value.version === 6 &&
+      baseState(value, ITEMS, SKILLS, ZONES, currentNpc) &&
+      value.version === 7 &&
+      npcRegions(value as unknown as GameState) &&
       economy(value.economy) &&
       frontier(value as unknown as GameState) &&
       life(value as unknown as GameState) &&
@@ -580,37 +597,75 @@ function validateV2State(value: unknown): value is ObjectValue {
 }
 
 function validateV3State(value: unknown): value is ObjectValue {
-  return baseState(value, ITEMS, SKILLS, ZONES) && value.version === 3 &&
+  return baseState(value, ITEMS, SKILLS, HISTORICAL_ZONES) && value.version === 3 &&
     economy(value.economy) &&
-    frontier(value as unknown as GameState, LEGACY_RESOURCE_NODES, LEGACY_DISCOVERABLE_IDS) &&
+    frontier(value as unknown as GameState, LEGACY_RESOURCE_NODES, LEGACY_DISCOVERABLE_IDS, HISTORICAL_ZONES) &&
     life(value as unknown as GameState) && economicRelations(value as unknown as GameState);
 }
 
 function validateV4State(value: unknown): value is ObjectValue {
-  return baseState(value, ITEMS, SKILLS, ZONES) && value.version === 4 &&
+  return baseState(value, ITEMS, SKILLS, HISTORICAL_ZONES) && value.version === 4 &&
     economy(value.economy) &&
-    frontier(value as unknown as GameState, LEGACY_RESOURCE_NODES, LEGACY_DISCOVERABLE_IDS) &&
+    frontier(value as unknown as GameState, LEGACY_RESOURCE_NODES, LEGACY_DISCOVERABLE_IDS, HISTORICAL_ZONES) &&
     life(value as unknown as GameState) && territory(value as unknown as GameState) &&
     economicRelations(value as unknown as GameState);
 }
 
 /** Keep the complete v5 contract separate from fields introduced by v6. */
 function validateV5State(value: unknown): value is ObjectValue {
-  return baseState(value, ITEMS, SKILLS, ZONES) && value.version === 5 &&
+  return baseState(value, ITEMS, SKILLS, HISTORICAL_ZONES) && value.version === 5 &&
     // A reserved future field must not be silently replaced during migration.
     !Object.hasOwn(value, "wildlife") &&
-    economy(value.economy) && frontier(value as unknown as GameState) &&
+    economy(value.economy) &&
+    frontier(value as unknown as GameState, V5_RESOURCE_NODES, V5_DISCOVERABLE_IDS, HISTORICAL_ZONES) &&
     life(value as unknown as GameState) && territory(value as unknown as GameState) &&
     economicRelations(value as unknown as GameState);
+}
+
+function validateV6State(value: unknown): value is ObjectValue {
+  return baseState(value, ITEMS, SKILLS, HISTORICAL_ZONES) && value.version === 6 &&
+    economy(value.economy) &&
+    frontier(value as unknown as GameState, V5_RESOURCE_NODES, V5_DISCOVERABLE_IDS, HISTORICAL_ZONES) &&
+    life(value as unknown as GameState) && territory(value as unknown as GameState) &&
+    economicRelations(value as unknown as GameState) && wildlife(value as unknown as GameState);
+}
+
+function companionId(state: GameState): unknown {
+  const details = (state as unknown as ObjectValue).simulation;
+  return object(details) ? details.companionId : undefined;
+}
+
+function npcRegions(state: GameState): boolean {
+  return state.npcs.every((entry) => entry.id === "matron"
+    ? entry.zone === "orphanage"
+    : entry.zone !== "dungeon" ||
+      (state.zone === "dungeon" && companionId(state) === entry.id));
 }
 
 /** Upgrade an independent copy, keeping saved time and all existing extensions. */
 export function migrateState(value: unknown): GameState | null {
   try {
     if (!object(value)) return null;
-    if (value.version === 6) {
+    if (value.version === 7) {
       if (!validateState(value)) return null;
       const snapshot: unknown = structuredClone(value);
+      return validateState(snapshot) ? snapshot : null;
+    }
+    if (value.version === 6) {
+      if (!validateV6State(value)) return null;
+      const snapshot = structuredClone(value) as unknown as GameState;
+      snapshot.version = 7;
+      snapshot.npcs = snapshot.npcs.map((entry) => ({ ...entry,
+        zone: entry.id === "matron" ? "orphanage" :
+          snapshot.zone === "dungeon" && companionId(snapshot) === entry.id
+            ? "dungeon" : "village",
+      }));
+      const previousIds = new Set(V5_RESOURCE_NODES.map((node) => node.id));
+      for (const node of RESOURCE_NODES) {
+        if (!previousIds.has(node.id)) {
+          snapshot.frontier.resources[node.id] = { remaining: node.capacity, readyDay: null };
+        }
+      }
       return validateState(snapshot) ? snapshot : null;
     }
     if (value.version === 5) {
@@ -619,14 +674,14 @@ export function migrateState(value: unknown): GameState | null {
         ...structuredClone(value), version: 6,
         wildlife: createWildlifeState(value.day as number),
       };
-      return validateState(snapshot) ? snapshot : null;
+      return validateV6State(snapshot) ? migrateState(snapshot) : null;
     }
     if (value.version === 4) {
       if (!validateV4State(value)) return null;
       const snapshot = structuredClone(value) as unknown as GameState;
       snapshot.version = 5;
       const legacyIds = new Set(LEGACY_RESOURCE_NODES.map((node) => node.id));
-      for (const node of RESOURCE_NODES) {
+      for (const node of V5_RESOURCE_NODES) {
         if (!legacyIds.has(node.id)) {
           snapshot.frontier.resources[node.id] = { remaining: node.capacity, readyDay: null };
         }

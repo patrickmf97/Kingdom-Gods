@@ -123,7 +123,7 @@ class ThreeWorld {
     this.contextAvailable = false;
     this.effects.dispose();
     this.release();
-    window.dispatchEvent(new CustomEvent("kg-renderer-failure", { detail: { message: "O navegador interrompeu o visual 3D. O jogo passou para 2D e sua campanha foi preservada. Você pode tentar o 3D novamente no guia." } }));
+    window.dispatchEvent(new CustomEvent("kg-renderer-failure", { detail: { message: "O navegador interrompeu o visual 3D. Sua campanha foi preservada. Use Tentar novamente para retomar." } }));
   };
   private contextRestored = () => {
     this.contextAvailable = true;
@@ -251,7 +251,7 @@ class ThreeWorld {
     if (!point && this.raycaster.ray.intersectPlane(this.ground, this.vector)) point = toMap(this.vector);
     if (!point) return;
     if (store.state.zone === "village" && store.state.property.building && point.x >= 2010 && point.x <= 2170 && point.y >= 680 && point.y <= 810) {
-      this.planRoute({ x: 2090, y: 815 }, "property"); return;
+      this.planRoute({ x: 2090, y: 815 }, "farmhouse"); return;
     }
     const candidate = objectsForZone(store.state.zone).map(object => ({ object, range: distance(point!, object) }))
       .filter(({ object, range }) => range <= Math.max(40, Math.min(110, (object.w ?? 75) / 2)))
@@ -277,7 +277,8 @@ class ThreeWorld {
         else if (distance(animal, this.destination!.point) > 60) this.planRoute({ x: animal.x, y: animal.y + 20 }, `animal:${animal.id}`);
       }
       const npc = store.state.npcs.find(person => person.id === this.destination?.id);
-      if (npc && this.destination && distance(npc, this.destination.point) > 75) this.planRoute({ x: npc.x, y: npc.y + 35 }, npc.id);
+      if (npc && npc.zone !== store.state.zone) { this.clearRoute(); store.notify(`${npc.name} entrou em outro ambiente. Siga pela porta para encontrá-lo.`); }
+      else if (npc && this.destination && distance(npc, this.destination.point) > 75) this.planRoute({ x: npc.x, y: npc.y + 35 }, npc.id);
       while (this.destination?.path.length && distance(this.destination.path[0], apostle) < 1) this.destination.path.shift();
       if (this.destination && !this.destination.path.length) { const id = this.destination.id; this.clearRoute(); if (id) this.interact(id); }
       const waypoint = this.destination?.path[0];
@@ -349,7 +350,7 @@ class ThreeWorld {
     if (!this.scenic && state.apostle.alive) {
       this.placeActor("player", state.apostle, state.apostle, state.apostle.name, time, "human", state.apostle.equipment === "sword"); living.add("player");
     }
-    const npcs = state.npcs.filter(npc => this.zone === "orphanage" ? npc.id === "matron" : this.zone === "village" ? npc.id !== "matron" : this.zone === "dungeon" && npc.id === state.simulation.companionId);
+    const npcs = state.npcs.filter(npc => npc.zone === this.zone);
     for (const npc of npcs) {
       const relative = state.family.find(person => person.id === npc.id);
       if (relative?.alive === false || (!this.scenic && npc.id === state.apostle.id)) continue;
@@ -398,7 +399,7 @@ class ThreeWorld {
     this.camera.updateMatrixWorld();
     this.sunlight.position.set(this.focus.x - 22, 45, this.focus.z + 12);
     this.sunlight.target.position.copy(this.focus);
-    const interior = this.zone === "mine" || this.zone === "dungeon" || this.zone === "orphanage";
+    const interior = this.zone !== "village" && this.zone !== "wilderness" && this.zone !== "highlands";
     const sunlight = Math.max(.12, Math.sin((store.state.minutes - 360) / 1440 * Math.PI * 2));
     this.ambient.intensity = interior ? 1.6 : 1.05 + sunlight * 1.0;
     this.sunlight.intensity = interior ? .9 : .3 + sunlight * 2.0;
@@ -413,7 +414,7 @@ class ThreeWorld {
       this.contextAvailable = false;
       this.effects.dispose();
       this.release();
-      window.dispatchEvent(new CustomEvent("kg-renderer-failure", { detail: { message: "O visual 3D encontrou um problema neste navegador. O jogo passou para 2D e preservou sua campanha." } }));
+      window.dispatchEvent(new CustomEvent("kg-renderer-failure", { detail: { message: "O visual 3D encontrou um problema. Sua campanha foi preservada. Use Tentar novamente para retomar." } }));
     }
   };
   private renderFrame(stamp: number): void {

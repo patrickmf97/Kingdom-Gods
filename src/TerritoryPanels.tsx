@@ -7,6 +7,7 @@ import { carriedWeight, carryingCapacity } from "./frontier";
 import { estateActionReason } from "./territory";
 import { ESTATE_BUILDINGS, ESTATE_DEFS, ESTATE_STORAGE_CAPACITY, estateLimit, estateStorageWeight } from "./territory-data";
 import { store } from "./simulation";
+import { interiorForZone } from "./interiors";
 import "./territory.css";
 
 const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -72,7 +73,7 @@ function EstateCard({ state, id, onClose }: { state: GameState; id: EstateId; on
       <div><dt>Tributo</dt><dd>1 ouro por dia de posse</dd></div>
     </dl>
     <WalkTo state={state} id={id} zone="wilderness" onClose={onClose} />
-    {state.zone !== "wilderness" ? <p className="panel-hint">Saia pela estrada ao sudeste de Valeverde. Nos Ermos, o mapa mostra os marcos de registro.</p> : null}
+    {state.zone !== "wilderness" && !interiorForZone(state.zone)?.stations.some(station => station.kind === "estate") ? <p className="panel-hint">Saia pela estrada ao sudeste de Valeverde. Nos Ermos, o mapa mostra os marcos de registro.</p> : null}
     {!holding.owned ? <>
       <TerritoryAction state={state} action={`estate-buy:${id}`}><ScrollText size={15} /> Registrar terreno · {definition.cost} ouro</TerritoryAction>
       <p className="panel-hint">O pagamento entra no fundo da vila. A escritura permanece na família durante a sucessão.</p>

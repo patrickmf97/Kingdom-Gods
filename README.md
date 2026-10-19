@@ -1,4 +1,4 @@
-# KINGDOM GODS · alpha 0.9 · 3D
+# KINGDOM GODS · alpha 0.10 · 3D
 
 RPG sandbox medieval **3D, local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
@@ -24,12 +24,24 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-## Novidades da alpha 0.9
+## Novidades da alpha 0.10
+
+- **Apenas 3D:** Phaser e o modo 2D foram removidos. Falhas de WebGL pausam o visual e oferecem uma nova tentativa com o estado preservado.
+- **Interiores autorais:** 13 mapas de 900×900, com mobiliário 3D, colisões compartilhadas e estações funcionais. Há orfanato, estalagem, forja, moinho, padaria, casa de Mira, celeiro, casa da linhagem, construções dos dois terrenos, tenda, alojamento e capela. Prédios privados exigem aquisição/construção. Barraca de mercado, poço e ruínas abertas permanecem estruturas a céu aberto.
+- **Portas físicas:** entrada por proximidade, saída para a mesma porta, mapa local com móveis e destinos. Comércio, produção, depósito, descanso e relações usam a estação ou pessoa da região atual.
+- **Brumavale:** Terras Altas de 2560×1920 ligadas aos Ermos pelo desfiladeiro oriental. Trilhas, escarpas, pinheiros, prados, alojamento/capela e 12 recursos finitos. O catálogo possui 67 reservas; as 55 anteriores mantêm seus IDs e valores.
+- **Trabalho financiado:** orçamento compartilhado protege as ofertas financiadas das despesas diárias. Ofertas sem verba ficam identificadas e desabilitadas; aceitação e entrega conservam tesouro, reserva e pagamento único.
+- **Rotinas:** moradores caminham até portas e transitam entre suas regiões de trabalho/descanso. Alimento, relações e tutela verificam a região, evitando serviços à distância. Animais que não conseguem recuar param de correr no lugar e mantêm sua intenção sem sortear rotas a cada quadro.
+- **Campanhas v7:** migração dos formatos v1–v6 acrescenta as regiões dos NPCs e as 12 reservas. Bens, família, horários, fauna e alimentação permanecem salvos. Corrigido o salvamento na sucessão após morte na cripta com acompanhante.
+
+Interiores usam uma instância por edifício e os prédios não possuem andares navegáveis. Brumavale é uma região autoral conectada; política, novos reinos e multiplayer continuam como etapas posteriores.
+
+## Base da alpha 0.9 preservada
 
 - **Vegetação:** árvores com ramos e copas variadas, pinheiros, tufos de grama, flores, arbustos, samambaias e plantas de margem. Instâncias compartilham geometrias e o vento é calculado na GPU. Troncos físicos, caminhos, pontos de trabalho e os 55 recursos foram mantidos.
 - **Fauna persistente:** 22 animais de sete espécies. Valeverde tem quatro galinhas, três ovelhas, duas vacas e Bento, o cão; os Ermos têm quatro cervos, seis coelhos e duas raposas. Eles caminham, pastam, descansam e reagem à aproximação dentro de habitats seguros.
 - **Encontros:** clique/toque no animal ou aproxime-se e interaja. Observar cria uma memória; alimentar consome pão (cão) ou trigo (espécies compatíveis), uma vez por animal/dia, aumentando confiança e reduzindo medo. A raposa procura seu alimento. Os animais não bloqueiam o jogador.
-- **Dois visuais:** fauna representada em 3D e no modo 2D. A pausa congela a simulação e as animações da fauna/vegetação 3D; trocar o visual preserva o estado.
+- **Apresentação da fauna:** animais representados no mundo 3D; a pausa congela a simulação e as animações. O modo 2D usado na alpha 0.9 foi retirado na alpha 0.10.
 - **Saves v6:** migração dos formatos v1–v5 acrescenta somente a fauna após validar os dados antigos. Posições, intenções, confiança, medo, alimentação e observações são persistentes. Nenhum tempo passa offline.
 
 A fauna é uma primeira simulação local: só a região ativa recebe comportamento detalhado. Não há reprodução, caça, criação de rebanhos, produtos animais ou cadeia ecológica de predação nesta versão. Os modelos e texturas são procedurais e estilizados.
@@ -57,10 +69,10 @@ A fauna é uma primeira simulação local: só a região ativa recebe comportame
 - **Personagens:** apóstolo e moradores com volume, rosto e cores salvas; esqueletos distintos, espada visível conforme equipamento e animações simples de caminhada, trabalho e ataque.
 - **Câmera:** acompanha o apóstolo. Abra o botão de câmera para girar, aproximar, afastar ou restaurar; Z/X giram e a roda do mouse controla a distância. WASD e joystick seguem as direções da tela após a rotação. Clique/toque no cenário seleciona personagens, objetos ou um destino no chão; o mapa continua oferecendo rotas seguras.
 - **Sistemas preservados:** comércio, trabalho, combate, terrenos, depósitos, família, memórias e sucessão continuam na mesma simulação. Trocar a aparência não reinicia a campanha.
-- **Escolha visual:** em Controles e informações, selecione Visual 3D ou Visual 2D. Só o renderizador escolhido é carregado. Navegadores sem suporte ao 3D recebem a versão 2D com aviso. A perda de contexto gráfico durante a partida também troca o visual preservando o estado.
+- **Renderização:** desde a alpha 0.10 há apenas o mundo 3D. Preferências antigas de visual são ignoradas; falhas gráficas oferecem nova tentativa preservando a campanha.
 - **Celular:** resolução de renderização limitada, florestas instanciadas e sombras simples para conter o custo gráfico. O desempenho depende do aparelho; os testes automatizados de navegador não equivalem a medir 60 FPS em um telefone real.
 
-O 3D atual é estilizado, com modelos gerados no código, chão plano e construções de posição fixa. A interface, o criador visual e o mapa permanecem em 2D. Não há saltos, múltiplos andares navegáveis ou animações de captura de movimento.
+O 3D atual é estilizado, com modelos gerados no código, chão plano e construções de posição fixa. A interface, o criador visual e o mapa permanecem como painéis sobre o mundo. Não há saltos, múltiplos andares navegáveis ou animações de captura de movimento.
 
 ## Base da alpha 0.5 preservada
 
@@ -97,7 +109,7 @@ IndexedDB mantém snapshot atual e backup; localStorage é fallback. O jogo salv
 
 ## Simplificações e limites
 
-Duas regiões externas autorais (vila e Ermos), dois mapas subterrâneos/interiores de exploração (mina e cripta), além do orfanato. Apenas a região ativa é instanciada; texturas são geradas sob demanda e ficam em cache, e cenários distantes são ocultados. A navegação usa grade de 24 pixels e segmentos seguros, com pés de raio 9 e colisão por subpassos. Personagens respeitam obstáculos estáticos, sem bloqueio mútuo de suas silhuetas.
+Três regiões externas autorais (vila, Ermos e Terras Altas), dois mapas de exploração subterrânea (mina e cripta) e 13 interiores de edifícios, incluindo o orfanato. Apenas a região ativa é instanciada; texturas são geradas sob demanda e ficam em cache, e cenários distantes são ocultados. A navegação usa grade de 24 pixels e segmentos seguros, com pés de raio 9 e colisão por subpassos. Personagens respeitam obstáculos estáticos, sem bloqueio mútuo de suas silhuetas.
 
 Há a fazenda original e dois terrenos adicionais, construções em posições fixas (uma por terreno), uma trabalhadora contratável, duas ferramentas, três receitas e três oportunidades iniciais além dos pedidos rotativos e da missão da cripta. A economia representa produção e consumo regionais por regras agregadas. Necessidades de NPCs não causam mortes aleatórias; Elara permanece no orfanato com rotina simplificada. Educação é prática numérica e vínculo, sem escola completa ou simulação de infância minuto a minuto. Descendência usa traços básicos e dezesseis dias entre união e nascimento. O ano tem 360 dias. Não há linguagem gerada por IA; autonomia e relações seguem regras e memórias.
 
@@ -110,18 +122,20 @@ A política inicial limita-se a registro territorial, influência, carta e obrig
 - `simulation.ts`: autoridade local e integração dos sistemas, sem autoridade remota fictícia.
 - `frontier.ts`: ferramentas, trabalho, recursos finitos, descobertas, reservas e oportunidades.
 - `territory-data.ts`, `territory.ts`: parcelas, limites de posse, construções, depósitos, influência e obrigações.
-- `life.ts`: necessidades, tutores, educação, regência e registros familiares.
-- `economy.ts`, `market.ts`: produção financiada, cotações, lavouras, manutenção, salários, orçamento e pedidos.
-- `persistence.ts`, `campaign-files.ts`: validação, migração v1/v2/v3/v4, backups e intercâmbio de campanhas.
-- `world.ts`, `world-input.ts`: seleção de renderizador, carregamento sob demanda, ciclo de vida e entrada compartilhada.
+- `life.ts`, `npc-routines.ts`: necessidades, deslocamentos entre portas e interiores, tutores, educação, regência e registros familiares.
+- `economy.ts`, `market.ts`, `civic-budget.ts`: produção financiada, cotações, lavouras, manutenção, salários, verbas reservadas e pedidos.
+- `interiors.ts`, `highlands.ts`: interiores, móveis, estações, acesso e dados das Terras Altas.
+- `persistence.ts`, `campaign-files.ts`: validação, migrações v1–v6 para v7, backups e intercâmbio de campanhas.
+- `world.ts`, `world-input.ts`: carregamento 3D sob demanda, recuperação de WebGL, ciclo de vida e entrada compartilhada.
 - `three/world3d.ts`, `three/coordinates.ts`: Three.js, câmera, seleção por raio, rotas e apresentação da simulação.
 - `three/environment.ts`, `three/characters.ts`: cenários e personagens tridimensionais, animações e descarte de recursos.
 - `three/horizon.ts`: céu, serras e transição atmosférica das regiões externas, sem alterar navegação.
 - `three/materials.ts`, `three/effects.ts`: texturas procedurais e partículas reutilizadas, com propriedade e descarte por instância.
-- `world2d.ts`, `art.ts`, `region-art.ts`: visual 2D preservado com Phaser e pixel art determinística.
+- `three/interiors.ts`, `three/highlands.ts`: mobiliário, arquitetura interna e paisagem das Terras Altas.
+- `village-decor.ts`: posições de decoração compartilhadas por navegação e apresentação.
 - `App.tsx`, `Panels.tsx`, `ExpansionPanels.tsx`, `TerritoryPanels.tsx`: interface React responsiva e ações reais.
 - `transport.ts`: intenções serializáveis para a futura integração de servidor.
 
 ## Verificação
 
-As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo desta entrega fica em `docs/verification-alpha06.md`, com fluxos no navegador e limites da verificação. As verificações anteriores permanecem em `docs/verification-alpha05.md`, `docs/verification-alpha04.md` e `docs/verification-alpha03.md`.
+As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo desta entrega fica em `docs/verification-alpha10.md`, com fluxos no navegador e limites da verificação. Os recibos anteriores permanecem no diretório `docs`.

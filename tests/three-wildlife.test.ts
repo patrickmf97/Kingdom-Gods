@@ -103,17 +103,20 @@ test("actual behavior controls walk, grazing, folded rest and fleeing poses whil
   const idle = pose(root), origin = root.position.toArray();
   const samples = new Map<AnimalBehavior, number[][]>();
   for (const behavior of ["walk", "approach", "graze", "rest", "flee"] as AnimalBehavior[]) {
-    subject.behavior = behavior; view.update(state, "village", .22);
+    subject.behavior = behavior;
+    if (["walk", "approach", "flee"].includes(behavior)) subject.x += 1;
+    view.update(state, "village", .22);
     samples.set(behavior, pose(root));
     assert.notDeepEqual(samples.get(behavior), idle, `${behavior} has an actual pose`);
-    assert.deepEqual(root.position.toArray(), origin, "animation cannot drift the simulation root");
+    assert.deepEqual(root.position.toArray(), [subject.x * (1 / 24), 0, subject.y * (1 / 24)], "animation cannot drift the simulation root");
     if (behavior === "graze") assert.ok(head.rotation.x > .5, "grazing lowers the muzzle toward the ground");
     if (behavior === "rest") assert.ok(Math.abs(leg.rotation.x) > .8, "rest folds legs beneath the body");
   }
   assert.notDeepEqual(samples.get("walk"), samples.get("flee"));
   const frozen = pose(root); view.update(state, "village", .22); assert.deepEqual(pose(root), frozen);
   view.update(state, "village", .45); assert.notDeepEqual(pose(root), frozen);
-  subject.behavior = "idle"; view.update(state, "village", .22); assert.deepEqual(pose(root), idle);
+  subject.behavior = "idle"; subject.x = origin[0] * 24;
+  view.update(state, "village", .22); assert.deepEqual(pose(root), idle);
   view.dispose();
 });
 
@@ -169,4 +172,18 @@ test("each layer releases only its owned resources once, including cached off-zo
   assert.equal(disposals, owned.size); assert.equal(otherDisposals, 0); assert.equal(first.group.children.length, 0);
   second.update(state, "village", 10); assert.equal(second.group.children.length, 10);
   second.dispose(); assert.equal(otherDisposals, other.size);
+});
+
+test("locomotion joints stop when a fleeing animal cannot change position", async () => {
+  const view = await layer(), state = campaign(), subject = state.wildlife.animals["cow-1"];
+  subject.behavior = "flee";
+  view.update(state, "village", .2);
+  const root = animal(view.group, "cow"), leg = root.getObjectByName("leg-front-left")!, rig = root.getObjectByName("animal-rig")!;
+  const stationary = [...leg.rotation.toArray(), ...rig.position.toArray(), ...rig.rotation.toArray()];
+  view.update(state, "village", .5);
+  assert.deepEqual([...leg.rotation.toArray(), ...rig.position.toArray(), ...rig.rotation.toArray()], stationary);
+  subject.x += 3;
+  view.update(state, "village", .7);
+  assert.notDeepEqual([...leg.rotation.toArray(), ...rig.position.toArray(), ...rig.rotation.toArray()], stationary);
+  view.dispose();
 });

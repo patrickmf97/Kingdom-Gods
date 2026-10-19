@@ -56,7 +56,7 @@ test("the built homestead remains physically interactive at its new doorway", ()
   g.state.property.owned = true;
   g.state.property.building = true;
   Object.assign(g.state.apostle, { x: 2090, y: 815 });
-  assert.equal(g.getNearest()?.label, "Moradia da linhagem");
+  assert.equal(g.getNearest()?.label, "Porta da casa da linhagem");
   assert.ok(g.interact("property"));
   g.state.economy.condition = 50;
   g.state.inventory.wood = 2;

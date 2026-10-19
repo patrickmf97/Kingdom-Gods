@@ -24,6 +24,7 @@ interface AnimalModel {
   species: AnimalSpecies;
   restOffset: number;
   phase: number;
+  sample?: { x: number; y: number; time: number; moving: boolean };
 }
 
 const C = {
@@ -298,9 +299,9 @@ export function createWildlifeLayer(): WildlifeLayer {
     models.set(animal.id, result);
     return result;
   }
-  function animate(model: AnimalModel, animal: AnimalState, time: number) {
-    const moving = animal.behavior === "walk" || animal.behavior === "approach" || animal.behavior === "flee";
-    const fleeing = animal.behavior === "flee", resting = animal.behavior === "rest", grazing = animal.behavior === "graze";
+  function animate(model: AnimalModel, animal: AnimalState, time: number, displaced = false) {
+    const moving = displaced && (animal.behavior === "walk" || animal.behavior === "approach" || animal.behavior === "flee");
+    const fleeing = moving && animal.behavior === "flee", resting = animal.behavior === "rest", grazing = animal.behavior === "graze";
     const rabbit = animal.species === "rabbit", bird = animal.species === "chicken";
     const cycle = time * (fleeing ? 14 : bird ? 10 : rabbit ? 9 : 7) + model.phase;
     const stride = moving ? Math.sin(cycle) * (fleeing ? .83 : .48) : 0;
@@ -329,7 +330,11 @@ export function createWildlifeLayer(): WildlifeLayer {
         if (visual.group.parent !== group) group.add(visual.group);
         visual.group.position.set(animal.x * WORLD_SCALE, 0, animal.y * WORLD_SCALE);
         visual.group.rotation.y = Math.PI / 2 - animal.facing;
-        animate(visual, animal, time);
+        const previous = visual.sample;
+        const displaced = !!previous && (Math.hypot(animal.x - previous.x, animal.y - previous.y) > .01 ||
+          (time === previous.time && previous.moving));
+        visual.sample = { x: animal.x, y: animal.y, time, moving: displaced };
+        animate(visual, animal, time, displaced);
       }
       for (const child of [...group.children]) if (!active.has(child.userData.animalId)) group.remove(child);
       // Imported campaigns are looked up by stable ID, never retained state references.

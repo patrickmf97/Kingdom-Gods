@@ -1,13 +1,15 @@
 import { ITEMS, OBJECTS } from "./data";
+import { updateNpcRoutines } from "./npc-routines";
 import { marketQuote } from "./market";
 import { objectsForZone, portalForZone, regionForZone, resourceNode } from "./regions";
 import { cancelWork, createFrontierState, discoverLocation, executeFrontierAction, processFrontierDay, updateFrontierWork } from "./frontier";
-import { applyEducationToSuccessor, availableGuardians, createLifeState, executeLifeAction, npcGoalDestination, processLifeDay, recordLifeEvent, registerChildEducation, updateLifeNeeds } from "./life";
+import { applyEducationToSuccessor, availableGuardians, createLifeState, executeLifeAction, processLifeDay, recordLifeEvent, registerChildEducation, updateLifeNeeds } from "./life";
 import { exportCampaign as serializeCampaign, importCampaign as importSavedCampaign } from "./campaign-files";
 import { createTerritoryState, executeTerritoryAction, processTerritoryDay, syncTerritoryDeeds } from "./territory";
 import { ESTATE_DEFS, estateBuildings } from "./territory-data";
 import { animalDialog, animalsForZone, createWildlifeState, executeWildlifeAction, updateWildlife } from "./wildlife";
 import { animalDefinition } from "./wildlife-data";
+import { entranceForObject, interiorAllowed, interiorForZone } from "./interiors";
 import {
   findPath,
   isWalkable,
@@ -162,6 +164,7 @@ function newNpcs(): Npc[] {
   return [
     {
       id: "matron",
+      zone: "orphanage",
       name: "Irmã Elara",
       role: "Matrona do orfanato",
       x: 400,
@@ -175,6 +178,7 @@ function newNpcs(): Npc[] {
     },
     {
       id: "merchant",
+      zone: "village",
       name: "Tomas",
       role: "Mercador",
       x: 1280,
@@ -188,6 +192,7 @@ function newNpcs(): Npc[] {
     },
     {
       id: "mira",
+      zone: "village",
       name: "Mira",
       role: "Aprendiz de curandeira",
       x: 1580,
@@ -201,6 +206,7 @@ function newNpcs(): Npc[] {
     },
     {
       id: "aldric",
+      zone: "village",
       name: "Aldric",
       role: "Ferreiro",
       x: 1560,
@@ -214,6 +220,7 @@ function newNpcs(): Npc[] {
     },
     {
       id: "guard",
+      zone: "village",
       name: "Cedric",
       role: "Guardião da cripta",
       x: 2050,
@@ -227,6 +234,7 @@ function newNpcs(): Npc[] {
     },
     {
       id: "farmer",
+      zone: "village",
       name: "Lina",
       role: "Lavradora",
       x: 1830,
@@ -251,7 +259,7 @@ export function initialState(): PersistentGameState {
   const npcs = newNpcs();
   const apostle = newApostle();
   return {
-    version: 6,
+    version: 7,
     started: false,
     intro: true,
     phase: "title",
@@ -365,10 +373,7 @@ export class GameStore {
     };
     recover(this.state.apostle, this.state.zone);
     for (const npc of this.state.npcs) {
-      const zone = npc.id === "matron" ? "orphanage" :
-        this.state.zone === "dungeon" && this.state.simulation.companionId === npc.id
-          ? "dungeon" : "village";
-      recover(npc, zone);
+      recover(npc, npc.zone);
     }
     this.npcRoutes.clear();
     return moved;
@@ -429,10 +434,12 @@ export class GameStore {
   }
   private nearObject(id: string, radius = 190): boolean {
     const object = objectsForZone(this.state.zone).find((object) => object.id === id);
+    const entrance = entranceForObject(this.state.zone, id);
     return (
       !!object &&
       (distance(this.state.apostle, object) <= radius ||
-        (id === "property" && this.state.property.building &&
+        (!!entrance && distance(this.state.apostle, entrance.entrance) <= radius) ||
+        (id === "property" && this.state.zone === "village" && this.state.property.building &&
           distance(this.state.apostle, { x: 2090, y: 815 }) <= radius))
     );
   }
@@ -442,9 +449,7 @@ export class GameStore {
       !npc ||
       npc.id === this.state.apostle.id ||
       this.state.family.some((person) => person.id === id && !person.alive) ||
-      (id === "matron"
-        ? this.state.zone !== "orphanage"
-        : this.state.zone !== "village") ||
+      npc.zone !== this.state.zone ||
       distance(this.state.apostle, npc) > 180
     )
       return null;
@@ -689,67 +694,7 @@ export class GameStore {
       this.state.enemies = newEnemies();
   }
   private updateNpcs(delta: number): void {
-    const hour = this.state.minutes / 60;
-    const working = hour >= 7 && hour < 18;
-    const workplaces: Record<string, Point> = {
-      merchant: { x: 1280, y: 940 },
-      mira: { x: 1460, y: 1000 },
-      aldric: { x: 1560, y: 790 },
-      guard: { x: 2050, y: 450 },
-      farmer: this.state.economy.worker?.npcId === "farmer"
-        ? { x: 1900, y: 810 } : { x: 1830, y: 1040 },
-    };
-    // Distinct gathering spots keep conversations and silhouettes readable.
-    const evening: Record<string, Point> = {
-      merchant: { x: 940, y: 1180 },
-      mira: { x: 1040, y: 1180 },
-      aldric: { x: 1140, y: 1180 },
-      guard: { x: 980, y: 1280 },
-      farmer: { x: 1100, y: 1280 },
-    };
-    for (const npc of this.state.npcs) {
-      if (npc.id === "matron") continue;
-      const companion = this.state.zone === "dungeon" &&
-        this.state.simulation.companionId === npc.id;
-      const context = this.navigationContext(companion ? "dungeon" : "village");
-      if (!isWalkable(npc, context)) {
-        Object.assign(npc, nearestWalkable(npc, context));
-        this.npcRoutes.delete(npc.id);
-      }
-      const needDestination = companion ? null : npcGoalDestination(this.state, npc);
-      const destination = companion
-        ? nearestWalkable({ x: this.state.apostle.x + 40, y: this.state.apostle.y + 35 }, context)
-        : needDestination ?? (working ? workplaces[npc.id]
-        : hour >= 18 && hour < 22 ? evening[npc.id]
-        : { x: npc.homeX, y: npc.homeY });
-      if (!destination) continue;
-      // Companion routes refresh only after the apostle crosses a 32px cell.
-      const target = `${context.zone}:${context.building}:${Math.round(destination.x / (companion ? 32 : 1))}:${Math.round(destination.y / (companion ? 32 : 1))}`;
-      let route = this.npcRoutes.get(npc.id);
-      if (!route || route.target !== target) {
-        route = { target, points: findPath(npc, destination, context) };
-        this.npcRoutes.set(npc.id, route);
-      }
-      let remaining = (companion ? 180 : 74) * Math.min(delta, 1);
-      while (route.points.length && remaining > 0) {
-        const point = route.points[0];
-        const range = distance(npc, point);
-        if (range < 0.5) { route.points.shift(); continue; }
-        const step = Math.min(remaining, range);
-        const next = moveWithCollisions(npc, {
-          x: (point.x - npc.x) / range * step,
-          y: (point.y - npc.y) / range * step,
-        }, context);
-        const travelled = distance(npc, next);
-        Object.assign(npc, next);
-        remaining -= step;
-        if (travelled < step * 0.8) {
-          this.npcRoutes.delete(npc.id);
-          break;
-        }
-        if (step === range) route.points.shift();
-      }
-    }
+    updateNpcRoutines(this.state, delta, this.npcRoutes, { companionId: this.state.simulation.companionId });
   }
   move(dx: number, dy: number, deltaSeconds: number): void {
     if (
@@ -991,12 +936,13 @@ export class GameStore {
   getNearest(): { id: string; label: string; distance: number; x: number; y: number } | null {
     if (!this.playing()) return null;
     const points: { id: string; label: string; x: number; y: number }[] = [
-      ...objectsForZone(this.state.zone),
+      ...objectsForZone(this.state.zone).filter(object => object.id !== "farmhouse" || this.state.property.building).map(object => {
+        const room = entranceForObject(this.state.zone, object.id);
+        return room ? { ...object, x: room.entrance.x, y: room.entrance.y } : object;
+      }),
       ...animalsForZone(this.state, this.state.zone).map(animal => ({ id: `animal:${animal.id}`, label: animalDefinition(animal.id)!.name, x: animal.x, y: animal.y })),
-      ...(this.state.zone === "village" ? [
-        ...(this.state.property.building ? [{ id: "property", label: "Moradia da linhagem", x: 2090, y: 815 }] : []),
-        ...this.state.npcs.filter(npc => npc.id !== "matron").map(npc => ({ ...npc, label: npc.name })),
-      ] : this.state.zone === "orphanage" ? [{ id: "matron", label: "Irmã Elara", x: 400, y: 290 }] : []),
+      ...this.state.npcs.filter(npc => npc.zone === this.state.zone && npc.id !== this.state.apostle.id &&
+        !this.state.family.some(person => person.id === npc.id && !person.alive)).map(npc => ({ ...npc, label: npc.name })),
     ];
     const nearest = points
       .map((point) => ({
@@ -1019,7 +965,12 @@ export class GameStore {
       this.notify();
       return;
     }
+    const targetRoom = interiorForZone(zone);
+    if (targetRoom && !interiorAllowed(this.state, targetRoom)) {
+      this.message("Esta construção ainda não está disponível para sua linhagem.", "warning"); this.notify(); return;
+    }
     const origin = this.state.zone;
+    const originRoom = interiorForZone(origin);
     cancelWork(this.state, this.economicHooks(), "A viagem interrompeu o trabalho.");
     const companion = this.state.npcs.find(npc => npc.id === this.state.simulation.companionId);
     this.state.zone = zone;
@@ -1040,6 +991,7 @@ export class GameStore {
           (this.state.simulation.npcMemories[npc.id]?.length || 0) >= 3,
       );
       this.state.simulation.companionId = friend?.id;
+      if (friend) { friend.zone = "dungeon"; Object.assign(friend, nearestWalkable({ x: 490, y: 720 }, this.navigationContext("dungeon"))); }
       if (friend)
         this.message(
           `${friend.name} acompanha você, lembrando da amizade construída.`,
@@ -1049,20 +1001,48 @@ export class GameStore {
     if (zone === "village") {
       this.state.apostle.x = origin === "wilderness" ? 2170 : origin === "orphanage" || this.state.intro ? 710 : 2110;
       this.state.apostle.y = origin === "wilderness" ? 1580 : origin === "orphanage" || this.state.intro ? 760 : 470;
-      if (companion) Object.assign(companion,
+      if (companion) Object.assign(companion, { zone: "village" },
         nearestWalkable({ x: 2150, y: 490 }, this.navigationContext("village")));
       delete this.state.simulation.companionId;
     }
     if (zone === "wilderness") Object.assign(this.state.apostle,
       origin === "mine" ? { x: 2250, y: 600 } : { x: 400, y: 1780 });
     if (zone === "mine") Object.assign(this.state.apostle, { x: 400, y: 970 });
-    if (zone !== "dungeon") delete this.state.simulation.companionId;
+    if (zone === "highlands") Object.assign(this.state.apostle, { x: 360, y: 1640 });
+    if (targetRoom) Object.assign(this.state.apostle, targetRoom.zone === "orphanage" ? { x: 450, y: 750 } : targetRoom.spawn);
+    if (originRoom && zone === originRoom.entrance.zone) Object.assign(this.state.apostle, originRoom.entrance);
+    if (zone !== "dungeon") {
+      if (companion?.zone === "dungeon") Object.assign(companion, { zone: "village", x: 2150, y: 490 });
+      delete this.state.simulation.companionId;
+    }
+    Object.assign(this.state.apostle, nearestWalkable(this.state.apostle, this.navigationContext()));
     this.activeDialog = null;
     this.scheduleAutoSave();
     this.notify();
   }
 
   interact(id: string): Dialog | null {
+    if (!this.playing()) return null;
+    const room = interiorForZone(this.state.zone);
+    if (id === "exit" && room) {
+      if (!this.nearObject("exit", 140)) return null;
+      if (room.zone === "orphanage" && this.state.intro) return {
+        name: "Um último conselho", role: "Orfanato", text: "Fale com Irmã Elara antes de partir. Ela preparou suas provisões.",
+        options: [{ label: "Entendi", action: "close" }],
+      };
+      this.setZone(room.entrance.zone);
+      Object.assign(this.state.apostle, nearestWalkable(room.entrance, this.navigationContext()));
+      return null;
+    }
+    const entrance = entranceForObject(this.state.zone, id);
+    const dialog = this.interactionDialog(id);
+    if (!entrance || this.state.zone === entrance.zone || !this.nearObject(id)) return dialog;
+    return { ...(dialog ?? { name: entrance.name, role: "Porta de entrada", text: "Um ambiente abrigado espera além desta porta.", options: [] }),
+      options: [{ label: `Entrar · ${entrance.name}`, action: `enter:${entrance.zone}`, disabled: !interiorAllowed(this.state, entrance) || distance(this.state.apostle, entrance.entrance) > 150 },
+        ...(dialog?.options ?? [{ label: "Voltar", action: "close" }])] };
+  }
+
+  private interactionDialog(id: string): Dialog | null {
     if (!this.playing()) return null;
     if (this.state.frontier.work) cancelWork(this.state, this.economicHooks(), "A conversa interrompeu o trabalho.");
     if (id.startsWith("animal:")) {
@@ -1178,7 +1158,7 @@ export class GameStore {
       return null;
     }
     return {
-      name: OBJECTS.find((object) => object.id === id)?.label || "Valeverde",
+      name: objectsForZone(this.state.zone).find((object) => object.id === id)?.label || regionForZone(this.state.zone).name,
       role: "Uma aldeia viva",
       text: "A vida da aldeia segue seu ritmo. Converse com os moradores e descubra seu lugar aqui.",
       options: [{ label: "Voltar", action: "close" }],
@@ -1437,6 +1417,17 @@ export class GameStore {
     if (this.state.apostle.age < 16 && (["acquire-property", "build"].includes(action) || action.startsWith("hire:"))) {
       this.message("Sob regência, contratos de terra, construção e emprego ficam reservados ao adulto responsável.", "warning");
       this.notify(); return;
+    }
+    if (verb === "enter") {
+      const room = interiorForZone(id as Zone);
+      if (!room || this.state.zone !== room.entrance.zone ||
+          Math.hypot(this.state.apostle.x - room.entrance.x, this.state.apostle.y - room.entrance.y) > 150) {
+        this.message("Aproxime-se da porta para entrar.", "warning"); this.notify(); return;
+      }
+      if (!interiorAllowed(this.state, room)) {
+        this.message("Adquira o terreno e conclua a construção para acessar este interior.", "warning"); this.notify(); return;
+      }
+      this.setZone(room.zone); return;
     }
     if (verb === "travel") {
       const portal = portalForZone(this.state.zone, id);
@@ -1947,6 +1938,9 @@ export class GameStore {
     this.npcRoutes.clear();
     this.attackCooldown = this.dodgeCooldown = this.invulnerability = 0;
     this.enemyCooldowns = {};
+    for (const npc of this.state.npcs) if (npc.zone === "dungeon") {
+      Object.assign(npc, { zone: "village" }, nearestWalkable({ x: 2150, y: 490 }, this.navigationContext("village")));
+    }
     delete this.state.simulation.companionId;
     delete this.state.simulation.autonomousUntil;
     delete this.state.simulation.autonomousReason;

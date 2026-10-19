@@ -31,7 +31,7 @@ const separation = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
 test("new campaigns author exactly 22 named animals with stable legal habitats", () => {
   const { state } = game();
-  assert.equal(state.version, 6);
+  assert.equal(state.version, 7);
   assert.equal(ANIMAL_DEFS.length, 22);
   assert.equal(new Set(ANIMAL_DEFS.map(animal => animal.id)).size, 22);
   assert.equal(new Set(ANIMAL_DEFS.map(animal => animal.name)).size, 22);
@@ -107,8 +107,9 @@ test("day grazing, night rest and crepuscular fox activity follow the actual cal
 test("wild animals flee nearby strangers and fear settles when the stranger leaves", () => {
   const { state } = game("wilderness");
   const deer = near(state, "deer-1", 20), original = { x: deer.x, y: deer.y };
-  for (let step = 0; step < 20; step++) updateWildlife(state, 0.1);
-  assert.equal(deer.behavior, "flee");
+  updateWildlife(state, 0.1);
+  assert.equal(deer.behavior, "flee", "a viable retreat starts immediately");
+  for (let step = 1; step < 20; step++) updateWildlife(state, 0.1);
   assert.ok(deer.fear > 0);
   assert.ok(separation(deer, state.apostle) > separation(original, state.apostle), "fleeing increases distance");
   Object.assign(state.apostle, { x: 400, y: 1780 });
@@ -221,4 +222,19 @@ test("separate campaigns never share animals, observed IDs or initial random see
   a.animals["dog-1"].trust = 99; a.observed.push("dog-1");
   assert.equal(b.animals["dog-1"].trust, 55); assert.deepEqual(b.observed, []);
   assert.notEqual(createWildlifeState(2).animals["dog-1"].seed, b.animals["dog-1"].seed);
+});
+
+test("a frightened animal with no room to retreat rests instead of running in place or rerolling every tick", () => {
+  const { state } = game("wilderness"), rabbit = state.wildlife.animals["rabbit-1"], definition = animalDefinition(rabbit.id)!;
+  // Farther from a stationary apostle than any target inside the home habitat.
+  Object.assign(rabbit, { x: definition.homeX + definition.radius - 1, y: definition.homeY, behavior: "idle", target: null, wait: 0 });
+  Object.assign(state.apostle, { x: definition.homeX, y: definition.homeY });
+  state.minutes = 22 * 60;
+  updateWildlife(state, .1);
+  assert.equal(rabbit.target, null);
+  assert.equal(rabbit.behavior, "rest");
+  const seed = rabbit.seed;
+  for (let tick = 0; tick < 10; tick++) updateWildlife(state, .1);
+  assert.equal(rabbit.seed, seed, "failed retreat respects its retry delay");
+  assert.equal(rabbit.behavior, "rest");
 });

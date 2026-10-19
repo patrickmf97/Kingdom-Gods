@@ -1,4 +1,7 @@
 import * as THREE from "three";
+import { interiorForZone } from "../interiors";
+import { createInteriorLayer } from "./interiors";
+import { createHighlandsLayer } from "./highlands";
 import { regionForZone, RESOURCE_NODES, WILDERNESS_ROADS, type Rectangle } from "../regions";
 import { ESTATE_DEFS, estateSolid } from "../territory-data";
 import type { GameState, Point, Zone } from "../types";
@@ -813,6 +816,9 @@ class EnvironmentBuilder {
 }
 
 export function createRegionEnvironment(zone: Zone, state: GameState): RegionEnvironment {
+  if (zone === "highlands") return createHighlandsLayer(state);
+  const room = interiorForZone(zone);
+  if (room) return createInteriorLayer(room, state);
   const builder = new EnvironmentBuilder(zone);
   builder.terrain();
   if (zone === "village") builder.village();

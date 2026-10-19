@@ -39,7 +39,8 @@ import { store } from "./simulation";
 import { objectsForZone, regionForZone, resourceNode, WILDERNESS_ROADS } from "./regions";
 import { MAX_CAMPAIGN_BYTES, parseCampaign } from "./campaign-files";
 import { getRendererMode, mountWorld, worldInput } from "./world";
-import { GamePanel, ItemIcon, Portrait } from "./Panels";
+import { GamePanel, ItemIcon, Portrait, LocalMapTerrain, mapObjectsForState } from "./Panels";
+import { interiorForZone } from "./interiors";
 import "./three.css";
 
 function Sigil({ size = 36 }: { size?: number }) {
@@ -65,27 +66,21 @@ function Sigil({ size = 36 }: { size?: number }) {
 function MiniMap({ onOpen }: { onOpen: () => void }) {
   const state = store.state;
   const region = regionForZone(state.zone);
+  const local = !!interiorForZone(state.zone) || state.zone === "dungeon";
   const cave = state.zone === "mine";
-  return (
-    <button className="minimap" onClick={onOpen} aria-label={`Abrir mapa de ${region.name}`}>
-      <svg viewBox={`0 0 ${region.width} ${region.height}`} aria-hidden="true">
-        <rect width={region.width} height={region.height} fill={cave ? "#303f3b" : "#bec69c"} />
-        {region.walkableAreas?.map((area, index) => <rect key={`floor-${index}`} x={area.left} y={area.top} width={area.right-area.left} height={area.bottom-area.top} fill="#9e9a7c" />)}
-        {state.zone === "village" ? <>
-          <path d="M-120 436 102 524 244 702 388 908 320 1130 274 1304 406 1554 300 1774 136 1980" stroke="#78a69c" strokeWidth="110" fill="none" />
-          <path d="M285 893H485M720 650V880H1550L2100 340M1280 880V1100H1650L1900 900" stroke="#e4d7ad" strokeWidth="65" fill="none" />
-        </> : null}
-        {state.zone === "wilderness" ? <>
-          {WILDERNESS_ROADS.map((road,index)=><polyline key={`road-${index}`} points={road.map(point=>`${point.x},${point.y}`).join(" ")} fill="none" stroke="#e4d7ad" strokeWidth="65" />)}
-          <rect x="2280" y="1430" width="360" height="200" rx="40" fill="#78a69c" />
-        </> : null}
-        {region.decor.filter((_,index)=>index%3===0).map((tree,index)=><circle key={`tree-${index}`} cx={tree.x} cy={tree.y-35} r="40" fill="#759064" />)}
-        {objectsForZone(state.zone).map(object=><circle key={object.id} cx={object.x} cy={object.y} r={cave ? 15 : 32} fill={object.kind === "ore" ? "#a9bbc0" : "#926d50"} />)}
-        <circle cx={state.apostle.x} cy={state.apostle.y} r={cave ? 24 : 50} fill="#f9f3d6" stroke="#2b493b" strokeWidth={cave ? 8 : 18} />
-      </svg>
-      <span>{region.name} <ArrowUpRight size={13} /></span>
-    </button>
-  );
+  return <button className="minimap" onClick={onOpen} aria-label={`Abrir mapa de ${region.name}`}>
+    <svg viewBox={`0 0 ${region.width} ${region.height}`} aria-hidden="true">
+      <LocalMapTerrain state={state} compact />
+      {mapObjectsForState(state).map(object => object.id === "exit" || object.kind === "portal" ? <g key={object.id} transform={`translate(${object.x} ${object.y})`}>
+        <circle r={local ? 24 : cave ? 24 : 40} fill="#f4e9bd" stroke="#4d6555" strokeWidth={local || cave ? 5 : 8} />
+        <path d={local || cave ? "M-12 0h24M3-9l9 9-9 9" : "M-20 0h40M5-14l15 14-15 14"} fill="none" stroke="#4d6555" strokeWidth={local || cave ? 4 : 7} />
+      </g> : <circle key={object.id} cx={object.x} cy={object.y} r={local ? 12 : cave ? 15 : 28} fill={object.kind === "ore" ? "#a9bbc0" : local ? "#e5d49d" : "#926d50"} stroke={local ? "#53654a" : "none"} strokeWidth="4" />)}
+      {state.npcs.filter(npc => npc.zone === state.zone).map(npc => <circle key={npc.id} cx={npc.x} cy={npc.y} r={local ? 11 : 17} fill="#66849b" stroke="#f4ebd8" strokeWidth={local ? 3 : 5} />)}
+      {state.zone === "dungeon" ? state.enemies.filter(enemy => enemy.alive).map(enemy => <circle key={enemy.id} cx={enemy.x} cy={enemy.y} r="15" fill="#b56c55" />) : null}
+      <circle cx={state.apostle.x} cy={state.apostle.y} r={local ? 20 : cave ? 24 : 50} fill="#f9f3d6" stroke="#2b493b" strokeWidth={local ? 6 : cave ? 8 : 18} />
+    </svg>
+    <span>{region.name} <ArrowUpRight size={13} /></span>
+  </button>;
 }
 
 const navItems: { id: Panel; label: string; icon: typeof Users }[] = [
@@ -136,11 +131,10 @@ export default function App() {
       setRendererNotice("");
     };
     const status = (event: Event) => {
-      const detail = (event as CustomEvent<{ mode: "3d" | "2d"; loading?: boolean; message?: string }>).detail;
+      const detail = (event as CustomEvent<{ mode: "3d"; loading?: boolean; message?: string }>).detail;
       if (!detail) return;
       setRendererMode(detail.mode);
-      if (detail.mode !== "3d") setCameraOpen(false);
-      if (detail.mode === "2d" && detail.message && !detail.loading) setRendererNotice(detail.message);
+      if (detail.message && !detail.loading) setRendererNotice(detail.message);
     };
     window.addEventListener("kg-renderer-change", changed);
     window.addEventListener("kg-renderer-status", status);
@@ -430,7 +424,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.9 · {rendererMode.toUpperCase()}</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.10 · {rendererMode.toUpperCase()}</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -945,7 +939,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  ALPHA 0.9 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.10 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />

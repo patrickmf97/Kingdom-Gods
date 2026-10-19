@@ -1,7 +1,9 @@
-import { villageDecor, type VillageDecoration } from "./art";
+import { villageDecor, type VillageDecoration } from "./village-decor";
+import { INTERIORS, interiorRegion } from "./interiors";
+import { HIGHLANDS_REGION, HIGHLAND_RESOURCE_NODES, WILDERNESS_HIGHLANDS_PORTAL } from "./highlands";
 import { OBJECTS, WORLD_H, WORLD_W } from "./data";
 import { ESTATE_DEFS, estateObject } from "./territory-data";
-import type { Point, ResourceNodeDefinition, WorldObject, Zone } from "./types";
+import type { InteriorZone, Point, ResourceNodeDefinition, WorldObject, Zone } from "./types";
 
 export interface Rectangle { left: number; top: number; right: number; bottom: number }
 export interface Portal extends WorldObject { to: Zone; spawn: Point }
@@ -98,7 +100,8 @@ const additionalResourceNodes: ResourceNodeDefinition[] = [
   outdoorNode("wild-herbs-central-meadow", "wilderness", "herb", 1510, 1830, "Ervas da campina central"),
   outdoorNode("wild-herbs-eastern-ruins", "wilderness", "herb", 2350, 1210, "Ervas a leste das ruínas"),
 ];
-export const RESOURCE_NODES: ResourceNodeDefinition[] = [...LEGACY_RESOURCE_NODES, ...additionalResourceNodes];
+export const V5_RESOURCE_NODES: readonly ResourceNodeDefinition[] = Object.freeze([...LEGACY_RESOURCE_NODES, ...additionalResourceNodes].map(node => Object.freeze(node)));
+export const RESOURCE_NODES: ResourceNodeDefinition[] = [...V5_RESOURCE_NODES, ...HIGHLAND_RESOURCE_NODES];
 
 /** Clear a visible work space, including canopy overhangs from trees south of it. */
 function hidesResource(item: VillageDecoration, node: ResourceNodeDefinition): boolean {
@@ -111,6 +114,7 @@ const villagePortals: Portal[] = [
   { id: "wild-gate", kind: "portal", x: 2170, y: 1660, label: "Trilha para os Ermos de Alvor", to: "wilderness", spawn: { x: 400, y: 1780 } },
 ];
 const wildernessPortals: Portal[] = [
+  WILDERNESS_HIGHLANDS_PORTAL,
   { id: "wild-village", kind: "portal", x: 400, y: 1820, label: "Caminho para Valeverde", to: "village", spawn: { x: 2170, y: 1580 } },
   { id: "wild-mine", kind: "cave", x: 2250, y: 450, label: "Mina do Ferro Antigo", w: 220, h: 180, to: "mine", spawn: { x: 400, y: 970 } },
 ];
@@ -148,7 +152,7 @@ const wildernessObjects: WorldObject[] = [
 // The original exclusion list also controls whether a scale PRNG draw occurs.
 // Expanding it before generation would move every later decorative tree.
 const originalWildernessObjects: WorldObject[] = [
-  ...wildernessPortals, ...wildernessLandmarks,
+  ...wildernessPortals.filter(portal => portal.id !== "wild-highlands"), ...wildernessLandmarks,
   ...LEGACY_RESOURCE_NODES.filter(node => node.zone === "wilderness"),
 ];
 const wildernessDecor: VillageDecoration[] = [];
@@ -197,14 +201,16 @@ const villageWalls: Rectangle[] = [
 const nodeFootprint = (node: ResourceNodeDefinition): Rectangle =>
   node.kind === "resource" ? rect(node.x - 8, node.y - 20, node.x + 8, node.y - 4) : rect(node.x - 16, node.y - 22, node.x + 16, node.y - 6);
 
+const interiorRegions = Object.fromEntries(INTERIORS.map(definition => [definition.zone, interiorRegion(definition)])) as Record<InteriorZone, RegionDefinition>;
+
 export const REGIONS: Record<Zone, RegionDefinition> = {
   village: { id: "village", name: "Valeverde", width: WORLD_W, height: WORLD_H,
-    objects: [...OBJECTS, ...villagePortals, ...additionalResourceNodes.filter(node => node.zone === "village")],
+    objects: [...OBJECTS, ...villagePortals, ...additionalResourceNodes.filter(node => node.zone === "village"),
+      { id: "farm-store", kind: "door", x: 1970, y: 786, label: "Porta do celeiro" },
+      { id: "farmhouse", kind: "door", x: 2090, y: 815, label: "Porta da casa da linhagem" }],
     portals: villagePortals, decor: gatheringVillageDecor,
     // Environment surfaces address the first 24 authored wall bases by index.
     solids: [...villageWalls, ...additionalResourceNodes.filter(node => node.zone === "village" && node.kind !== "herb").map(nodeFootprint)] },
-  orphanage: { id: "orphanage", name: "Orfanato de Santa Elara", width: 900, height: 900,
-    objects: orphanagePortals, portals: orphanagePortals, decor: [], solids: [] },
   dungeon: { id: "dungeon", name: "Cripta das Raízes", width: 900, height: 900,
     objects: dungeonPortals, portals: dungeonPortals, decor: [], solids: [] },
   wilderness: { id: "wilderness", name: "Ermos de Alvor", width: 3072, height: 2304,
@@ -222,6 +228,8 @@ export const REGIONS: Record<Zone, RegionDefinition> = {
       rect(840, 260, 1120, 600), rect(760, 120, 1160, 380), rect(450, 180, 620, 540),
       rect(160, 120, 680, 340), rect(760, 760, 1120, 1020), rect(880, 580, 1040, 850)],
   },
+  highlands: HIGHLANDS_REGION,
+  ...interiorRegions,
 };
 export function regionForZone(zone: Zone): RegionDefinition { return REGIONS[zone]; }
 export function objectsForZone(zone: Zone): WorldObject[] { return REGIONS[zone].objects; }

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as regions from "../src/regions";
 import { villageDecor } from "../src/art";
 import { ESTATE_DEFS } from "../src/territory-data";
+import { HIGHLAND_EXIT } from "../src/highlands";
 import { findPath, isWalkable, moveWithCollisions, objectApproach } from "../src/navigation";
 import { createFrontierState, executeFrontierAction, processFrontierDay, updateFrontierWork } from "../src/frontier";
 import type { ExpansionHooks, Point, ResourceNodeDefinition, Zone } from "../src/types";
@@ -12,8 +13,9 @@ const outdoorZones = ["village", "wilderness"] as const;
 const addedNodes = () => regions.RESOURCE_NODES.filter(node => !originalIds.includes(node.id));
 
 test("outdoor maps have separate, named wood, stone and herb deposits across the landscape", () => {
-  assert.equal(regions.RESOURCE_NODES.length, 55);
-  assert.equal(new Set(regions.RESOURCE_NODES.map(node => node.id)).size, 55);
+  assert.equal(regions.V5_RESOURCE_NODES.length, 55, "historical saves retain their original finite catalog");
+  assert.equal(regions.RESOURCE_NODES.length, 67);
+  assert.equal(new Set(regions.RESOURCE_NODES.map(node => node.id)).size, 67);
   for (const zone of outdoorZones) {
     for (const resource of ["wood", "stone", "herb"]) {
       const nodes = regions.RESOURCE_NODES.filter(node => node.zone === zone && node.resource === resource);
@@ -84,16 +86,18 @@ function assertRoute(from: Point, to: Point, zone: Zone, building: boolean): voi
   let previous = from;
   for (const point of route) {
     const moved = moveWithCollisions(previous, { x: point.x - previous.x, y: point.y - previous.y }, context);
-    assert.ok(Math.hypot(moved.x - point.x, moved.y - point.y) < 0.01, "the actual movement system follows the route");
+    assert.ok(Math.hypot(moved.x - point.x, moved.y - point.y) < 0.01,
+      `${zone} route from ${from.x},${from.y} to ${to.x},${to.y} stops at ${moved.x},${moved.y} instead of ${point.x},${point.y}`);
     previous = point;
   }
 }
 
 test("every deposit can be worked from every regional entry with all acquired buildings present", () => {
   const entries = {
-    village: [{ x: 710, y: 760 }, { x: 2170, y: 1580 }, { x: 2110, y: 470 }],
-    wilderness: [{ x: 400, y: 1780 }, { x: 2250, y: 600 }],
+    village: [{ x: 736, y: 648 }, { x: 2170, y: 1580 }, { x: 2110, y: 470 }],
+    wilderness: [{ x: 400, y: 1780 }, { x: 2250, y: 600 }, HIGHLAND_EXIT.spawn],
     mine: [{ x: 400, y: 970 }],
+    highlands: [{ x: 360, y: 1640 }],
   };
   for (const node of regions.RESOURCE_NODES) {
     const context = { zone: node.zone, building: true, estates: ["oak-hollow", "stone-rise"] as ("oak-hollow" | "stone-rise")[] };
@@ -122,7 +126,7 @@ test("new gathering clearings remove nearby decorative trunks without shifting t
 });
 
 test("each added deposit uses real timed work, finite charges and calendar regeneration", async () => {
-  assert.equal(addedNodes().length, 45);
+  assert.equal(addedNodes().length, 57);
   const { initialState } = await import("../src/simulation");
   for (const node of addedNodes()) {
     const state = initialState();
@@ -132,7 +136,8 @@ test("each added deposit uses real timed work, finite charges and calendar regen
     const hooks: ExpansionHooks = { message: () => {}, remember: () => {}, practice: () => {}, nearObject: () => false, nearNpc: () => false };
     Object.assign(state.apostle, objectApproach(node.id, { zone: node.zone, building: false }));
     assert.equal(node.tool, node.resource === "herb" ? null : node.resource === "wood" ? "axe" : "pickaxe");
-    const peer = regions.resourceNode(node.resource === "wood" ? "wild-oak" : node.resource === "stone" ? "wild-stone" : "wild-herbs")!;
+    const peer = regions.resourceNode(node.resource === "wood" ? "wild-oak" : node.resource === "stone" ? "wild-stone" :
+      node.resource === "ore" ? "mine-iron-west" : "wild-herbs")!;
     assert.deepEqual([node.duration, node.stamina, node.yield, node.capacity, node.respawnDays],
       [peer.duration, peer.stamina, peer.yield, peer.capacity, peer.respawnDays], "additional deposits preserve the existing work balance");
     if (node.tool) {

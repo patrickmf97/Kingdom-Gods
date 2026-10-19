@@ -1,14 +1,21 @@
 import { ITEMS, OBJECTS } from "./data";
+import { civicBudget } from "./civic-budget";
+import { interiorForZone } from "./interiors";
 import type {
   Apostle, EducationFocus, EducationProfile, ExpansionHooks, GameState,
-  LegacyEvent, LifeState, Memory, Npc, Person, Point,
+  LegacyEvent, LifeState, Memory, Npc, Person, Point, Zone,
 } from "./types";
 
 export const educationLabels: Record<EducationFocus, string> = {
   farming: "Agricultura", mining: "Mineração", wisdom: "Conhecimentos",
 };
-const MARKET: Point = { x: 1280, y: 940 };
-const INN: Point = { x: 1100, y: 1140 };
+export type NpcDestination = Point & { zone: Zone };
+/** Services use their actual station coordinates, so matching numbers in another room never suffice. */
+export function npcServiceDestination(id: "market" | "inn"): NpcDestination {
+  const definition = interiorForZone("inn-room")!;
+  const station = definition.stations.find(object => object.id === id)!;
+  return { zone: definition.zone, x: station.x, y: station.y };
+}
 const bound = (value: number) => Math.max(0, Math.min(100, value));
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const active = (state: GameState) => state.started && state.phase === "playing" && state.apostle.alive;
@@ -178,20 +185,14 @@ export function executeLifeAction(state: GameState, action: string, hooks: Expan
   return true;
 }
 
-export function npcGoalDestination(state: GameState, npc: Npc): Point | null {
+export function npcGoalDestination(state: GameState, npc: Npc): NpcDestination | null {
   if (npc.id === "matron") return null;
   const needs = state.life.needs[npc.id];
   if (!needs) return null;
-  if (needs.hunger >= 70) { needs.goal = "eat"; return { ...MARKET }; }
-  if (needs.fatigue >= 75) { needs.goal = "rest"; return { ...INN }; }
+  if (needs.hunger >= 70) { needs.goal = "eat"; return npcServiceDestination("market"); }
+  if (needs.fatigue >= 75) { needs.goal = "rest"; return npcServiceDestination("inn"); }
   needs.goal = "work";
   return null;
-}
-
-function budgetAvailable(state: GameState): number {
-  const reserved = state.economy.orders.filter(order => order.status === "available" || order.status === "accepted")
-    .reduce((sum, order) => sum + order.reward, 0);
-  return Math.max(0, state.economy.civicFunds - reserved);
 }
 
 /** Resolve needs only after an NPC physically arrives, independently of the apostle's current map. */
@@ -200,11 +201,12 @@ export function updateLifeNeeds(state: GameState, _hooks: ExpansionHooks): void 
   for (const npc of state.npcs) {
     const needs = state.life.needs[npc.id];
     if (!needs || npc.id === "matron" || familyMember(state, npc.id)?.alive === false) continue;
-    if (needs.hunger >= 70 && distance(npc, MARKET) <= 150) {
+    const market = npcServiceDestination("market"), inn = npcServiceDestination("inn");
+    if (needs.hunger >= 70 && npc.zone === market.zone && distance(npc, market) <= 150) {
       const price = Math.max(1, Math.round(ITEMS.bread.price * (1 + Math.max(0, 8 - state.market.bread) * 0.03)));
       const savings = state.economy.npcSavings[npc.id] ?? 0;
       const personal = savings >= price;
-      if (state.market.bread > 0 && (personal || budgetAvailable(state) >= price)) {
+      if (state.market.bread > 0 && (personal || civicBudget(state).available >= price)) {
         if (personal) state.economy.npcSavings[npc.id] = savings - price;
         else state.economy.civicFunds -= price;
         state.merchantGold += price;
@@ -216,7 +218,7 @@ export function updateLifeNeeds(state: GameState, _hooks: ExpansionHooks): void 
         if (state.economy.ledger.length > 30) state.economy.ledger.splice(0, state.economy.ledger.length - 30);
       } else npc.mood = "Com fome · procurando alimento";
     }
-    if (needs.hunger < 70 && needs.fatigue >= 75 && distance(npc, INN) <= 160) {
+    if (needs.hunger < 70 && needs.fatigue >= 75 && npc.zone === inn.zone && distance(npc, inn) <= 160) {
       needs.fatigue = bound(needs.fatigue - 30);
       npc.mood = "Descansado na estalagem";
     }
@@ -228,7 +230,8 @@ function guardianAtHome(state: GameState, id: string): boolean {
   const npc = state.npcs.find(person => person.id === id);
   if (!npc) return !!familyMember(state, id)?.alive;
   const property = OBJECTS.find(object => object.id === "property");
-  return !!property && (distance(npc, property) <= 260 || distance(npc, { x: 2090, y: 815 }) <= 190);
+  return npc.zone === "farmhouse-room" || (npc.zone === "village" && !!property &&
+    (distance(npc, property) <= 260 || distance(npc, { x: 2090, y: 815 }) <= 190));
 }
 
 export function processLifeDay(state: GameState, hooks: ExpansionHooks): void {

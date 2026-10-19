@@ -36,8 +36,8 @@ async function game() {
     practice: (skill, amount) => state.apostle.skills[skill] = (state.apostle.skills[skill] || 0) + amount,
     nearObject: (id) => id === "property" && state.zone === "village" &&
       Math.hypot(state.apostle.x - 1900, state.apostle.y - 880) <= 190,
-    nearNpc: (id) => state.zone === (id === "matron" ? "orphanage" : "village") &&
-      !!state.npcs.find(npc => npc.id === id && Math.hypot(npc.x - state.apostle.x, npc.y - state.apostle.y) <= 180),
+    nearNpc: (id) => !!state.npcs.find(npc => npc.id === id && npc.zone === state.zone &&
+      Math.hypot(npc.x - state.apostle.x, npc.y - state.apostle.y) <= 180),
   };
   return { module, state, hooks };
 }
@@ -66,7 +66,7 @@ test("hunger and fatigue rise while the apostle explores another map", async () 
 test("a hungry NPC purchases actual bread at the market from personal savings", async () => {
   const { module, state, hooks } = await game();
   const farmer = state.npcs.find(npc => npc.id === "farmer")!;
-  farmer.x = 1280; farmer.y = 940;
+  Object.assign(farmer, module.npcServiceDestination("market"));
   state.life.needs.farmer.hunger = 80;
   state.economy.npcSavings.farmer = 50;
   const total = currency(state), bread = state.market.bread, merchant = state.merchantGold;
@@ -81,7 +81,7 @@ test("a hungry NPC purchases actual bread at the market from personal savings", 
 test("the civic pantry can pay for a hungry citizen using only unreserved coins", async () => {
   const { module, state, hooks } = await game();
   const farmer = state.npcs.find(npc => npc.id === "farmer")!;
-  farmer.x = 1280; farmer.y = 940;
+  Object.assign(farmer, module.npcServiceDestination("market"));
   state.life.needs.farmer.hunger = 80;
   state.economy.civicFunds = 10;
   const total = currency(state);
@@ -93,7 +93,7 @@ test("the civic pantry can pay for a hungry citizen using only unreserved coins"
 test("NPC meals protect the reward of accepted village orders", async () => {
   const { module, state, hooks } = await game();
   const farmer = state.npcs.find(npc => npc.id === "farmer")!;
-  farmer.x = 1280; farmer.y = 940;
+  Object.assign(farmer, module.npcServiceDestination("market"));
   state.life.needs.farmer.hunger = 80;
   state.economy.civicFunds = 10;
   state.economy.orders = [{ id: "reserved", title: "Lenha", item: "wood", quantity: 2,
@@ -111,7 +111,7 @@ test("a distant hungry NPC routes to food instead of purchasing remotely", async
   const bread = state.market.bread;
   module.processLifeDay(state, hooks);
   assert.equal(state.market.bread, bread);
-  assert.deepEqual(module.npcGoalDestination(state, state.npcs.find(n => n.id === "farmer")!), { x: 1280, y: 940 });
+  assert.deepEqual(module.npcGoalDestination(state, state.npcs.find(n => n.id === "farmer")!), module.npcServiceDestination("market"));
 });
 
 test("a routed NPC eats immediately on arrival without waiting another day", async () => {
@@ -122,7 +122,7 @@ test("a routed NPC eats immediately on arrival without waiting another day", asy
   const bread = state.market.bread;
   module.updateLifeNeeds(state, hooks);
   assert.equal(state.market.bread, bread);
-  farmer.x = 1280; farmer.y = 940;
+  Object.assign(farmer, module.npcServiceDestination("market"));
   module.updateLifeNeeds(state, hooks);
   assert.equal(state.market.bread, bread - 1);
   assert.equal(state.life.needs.farmer.hunger, 32);
@@ -135,10 +135,10 @@ test("hungry needs outrank fatigue; satisfied tired NPCs rest at the inn", async
   const farmer = state.npcs.find(n => n.id === "farmer")!;
   state.life.needs.farmer.hunger = 75;
   state.life.needs.farmer.fatigue = 80;
-  assert.deepEqual(module.npcGoalDestination(state, farmer), { x: 1280, y: 940 });
+  assert.deepEqual(module.npcGoalDestination(state, farmer), module.npcServiceDestination("market"));
   state.life.needs.farmer.hunger = 30;
-  farmer.x = 1100; farmer.y = 1140;
-  assert.deepEqual(module.npcGoalDestination(state, farmer), { x: 1100, y: 1140 });
+  Object.assign(farmer, module.npcServiceDestination("inn"));
+  assert.deepEqual(module.npcGoalDestination(state, farmer), module.npcServiceDestination("inn"));
   module.processLifeDay(state, hooks);
   assert.equal(state.life.needs.farmer.fatigue, 58);
 });
@@ -146,7 +146,7 @@ test("hungry needs outrank fatigue; satisfied tired NPCs rest at the inn", async
 test("food scarcity caps hunger and changes mood without killing an NPC", async () => {
   const { module, state, hooks } = await game();
   const farmer = state.npcs.find(n => n.id === "farmer")!;
-  farmer.x = 1280; farmer.y = 940;
+  Object.assign(farmer, module.npcServiceDestination("market"));
   state.life.needs.farmer.hunger = 98;
   state.market.bread = 0;
   module.processLifeDay(state, hooks);

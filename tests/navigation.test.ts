@@ -108,7 +108,7 @@ test("the crypt's exterior wall stops movement while its physical entrance stays
   assert.equal(isWalkable({ x: 2145, y: 280 }, village), false);
   const entrance = objectApproach("dungeon", village);
   assert.ok(isWalkable(entrance, village));
-  assert.ok(findPath({ x: 710, y: 760 }, entrance, village).length > 0);
+  assert.ok(findPath({ x: 736, y: 648 }, entrance, village).length > 0);
 });
 
 test("both noticeboard legs block feet without blocking its front interaction approach", () => {
@@ -181,7 +181,7 @@ test("interaction anchors are reachable and path planning terminates for invalid
     const anchor = objectApproach(object.id, builtVillage);
     assert.ok(isWalkable(anchor, builtVillage), object.id);
     assert.ok(Math.hypot(anchor.x - object.x, anchor.y - object.y) <= 110, `${object.id} remains within interaction range`);
-    const start = { x: 710, y: 760 };
+    const start = { x: 736, y: 648 };
     const route = findPath(start, anchor, builtVillage);
     assert.ok(route.length > 0, `${object.id} can be reached from the orphanage exit`);
     let previous = start;

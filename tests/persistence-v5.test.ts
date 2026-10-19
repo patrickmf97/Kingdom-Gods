@@ -1,8 +1,9 @@
 import test from "node:test";
+import { removeV7Fields, historicalProjection } from "./historical-state";
 import assert from "node:assert/strict";
 import { initialState, type PersistentGameState } from "../src/simulation";
 import { migrateState, validateState } from "../src/persistence";
-import { RESOURCE_NODES } from "../src/regions";
+import { RESOURCE_NODES, V5_RESOURCE_NODES } from "../src/regions";
 import type { GameState } from "../src/types";
 
 // Historical files contain exactly these ten reserves, independently of the
@@ -13,6 +14,7 @@ const originalIds = new Set(ORIGINAL_RESOURCE_IDS);
 
 function historicalV4(): PersistentGameState {
   const state = structuredClone(initialState());
+  removeV7Fields(state as unknown as GameState);
   state.version = 4;
   delete (state as Partial<GameState>).wildlife;
   state.frontier.resources = Object.fromEntries(ORIGINAL_RESOURCE_IDS.map((id) =>
@@ -55,11 +57,11 @@ function livedV4(): PersistentGameState & { futureExtension: { routes: string[] 
   return { ...state, futureExtension: { routes: ["wild-mine", "mine-exit"] } };
 }
 
-test("new campaigns use complete v6 reserves for all 55 authored resources", () => {
+test("new campaigns use complete v7 reserves for all 67 authored resources", () => {
   const state = initialState();
-  assert.equal(state.version, 6);
-  assert.equal(RESOURCE_NODES.length, 55);
-  assert.equal(Object.keys(state.frontier.resources).length, 55);
+  assert.equal(state.version, 7);
+  assert.equal(RESOURCE_NODES.length, 67);
+  assert.equal(Object.keys(state.frontier.resources).length, 67);
   for (const node of RESOURCE_NODES) {
     assert.deepEqual(state.frontier.resources[node.id], { remaining: node.capacity, readyDay: null });
   }
@@ -71,19 +73,15 @@ test("v4 adds only new reserves while preserving depleted nodes, partial work an
   const before = structuredClone(old);
   const migrated = migrateState(old);
   assert.ok(migrated);
-  assert.equal(migrated.version, 6);
+  assert.equal(migrated.version, 7);
   assert.equal(validateState(migrated), true);
-  assert.equal(Object.keys(migrated.frontier.resources).length, 55);
+  assert.equal(Object.keys(migrated.frontier.resources).length, 67);
   const added = RESOURCE_NODES.filter((node) => !originalIds.has(node.id));
-  assert.equal(added.length, 45);
+  assert.equal(added.length, 57);
   for (const node of added) {
     assert.deepEqual(migrated.frontier.resources[node.id], { remaining: node.capacity, readyDay: null });
   }
-  const restored = structuredClone(migrated);
-  restored.version = 4;
-  delete (restored as Partial<GameState>).wildlife;
-  restored.frontier.resources = Object.fromEntries(ORIGINAL_RESOURCE_IDS.map((id) =>
-    [id, restored.frontier.resources[id]]));
+  const restored = historicalProjection(migrated, 4);
   assert.deepEqual(restored, before, "migration must not tick time, replenish old nodes or alter commitments");
   assert.deepEqual(old, before);
   migrated.frontier.resources["wild-oak"].readyDay = 99;
@@ -100,23 +98,18 @@ test("v3 chains territory and reserve migrations without advancing an overdue re
   const before = structuredClone(old);
   const migrated = migrateState(old);
   assert.ok(migrated);
-  assert.equal(migrated.version, 6);
+  assert.equal(migrated.version, 7);
   assert.equal(validateState(migrated), true);
-  assert.equal(Object.keys(migrated.frontier.resources).length, 55);
+  assert.equal(Object.keys(migrated.frontier.resources).length, 67);
   assert.deepEqual(migrated.frontier.resources["wild-oak"], { remaining: 0, readyDay: 17 });
   assert.equal(migrated.territory.lastTaxDay, old.day);
   assert.deepEqual(migrated.territory.deeds, ["house:first"]);
-  const restored = structuredClone(migrated) as unknown as Record<string, any>;
-  restored.version = 3;
-  delete restored.wildlife;
-  delete restored.territory;
-  restored.frontier.resources = Object.fromEntries(ORIGINAL_RESOURCE_IDS.map((id) =>
-    [id, restored.frontier.resources[id]]));
+  const restored = historicalProjection(migrated, 3);
   assert.deepEqual(restored, before);
   assert.deepEqual(old, before);
 });
 
-test("v1 and v2 migrate through the historical ten-node schema into complete v6 reserves", () => {
+test("v1 and v2 migrate through the historical ten-node schema into complete v7 reserves", () => {
   for (const version of [1, 2]) {
     const old = historicalV4() as unknown as Record<string, any>;
     old.version = version;
@@ -138,9 +131,9 @@ test("v1 and v2 migrate through the historical ten-node schema into complete v6 
     const before = structuredClone(old);
     const migrated = migrateState(old);
     assert.ok(migrated, `v${version}`);
-    assert.equal(migrated.version, 6);
+    assert.equal(migrated.version, 7);
     assert.equal(validateState(migrated), true);
-    assert.equal(Object.keys(migrated.frontier.resources).length, 55);
+    assert.equal(Object.keys(migrated.frontier.resources).length, 67);
     assert.equal(migrated.day, old.day);
     assert.equal(migrated.minutes, old.minutes);
     assert.equal(migrated.savedAt, old.savedAt);
@@ -206,6 +199,7 @@ test("legacy versions cannot claim discovery or work at newly authored resource 
 test("v5 rejects missing, extra and damaged reserves without repairing current saves", () => {
   const valid = migrateState(livedV4());
   assert.ok(valid);
+  removeV7Fields(valid);
   valid.version = 5;
   delete (valid as Partial<GameState>).wildlife;
   const node = RESOURCE_NODES.find((entry) => !originalIds.has(entry.id));
@@ -231,15 +225,15 @@ test("v5 rejects missing, extra and damaged reserves without repairing current s
   }
   const upgraded = migrateState(valid);
   assert.ok(upgraded);
-  const { wildlife, ...restored } = upgraded;
-  assert.deepEqual({ ...restored, version: 5 }, valid);
+  assert.deepEqual(historicalProjection(upgraded, 5), valid);
 });
 
 test("v5 accepts discovery, independent depletion and resumed work at a new resource", () => {
   const state = migrateState(livedV4());
   assert.ok(state);
-  const added = RESOURCE_NODES.filter((node) => !originalIds.has(node.id));
+  const added = V5_RESOURCE_NODES.filter((node) => !originalIds.has(node.id));
   assert.equal(added.length, 45);
+  removeV7Fields(state as unknown as GameState);
   state.version = 5;
   delete (state as Partial<GameState>).wildlife;
   const [working, depleted] = added;
@@ -254,6 +248,5 @@ test("v5 accepts discovery, independent depletion and resumed work at a new reso
   const upgraded = migrateState(state);
   assert.ok(upgraded);
   assert.equal(validateState(upgraded), true);
-  const { wildlife, ...restored } = upgraded;
-  assert.deepEqual({ ...restored, version: 5 }, state);
+  assert.deepEqual(historicalProjection(upgraded, 5), state);
 });

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findPath, isWalkable, moveWithCollisions, objectApproach } from "../src/navigation";
+import { INTERIORS } from "../src/interiors";
 import type { Point, Zone } from "../src/types";
 
 const context = (zone: Zone) => ({ zone, building: false });
@@ -36,9 +37,10 @@ function clearRoute(from: Point, route: Point[], zone: Zone): void {
 
 test("every inter-region portal has a walkable destination and reachable physical approach", () => {
   const origins: Record<Zone, Point> = {
-    village: { x: 710, y: 760 }, orphanage: { x: 400, y: 400 }, dungeon: { x: 450, y: 750 },
-    wilderness: { x: 400, y: 1780 }, mine: { x: 400, y: 970 },
-  };
+    village: { x: 736, y: 648 }, orphanage: { x: 400, y: 400 }, dungeon: { x: 450, y: 750 },
+    wilderness: { x: 400, y: 1780 }, mine: { x: 400, y: 970 }, highlands: { x: 360, y: 1640 },
+    ...Object.fromEntries(INTERIORS.map(room => [room.zone,room.spawn])),
+  } as Record<Zone,Point>;
   for (const region of Object.values(REGIONS)) {
     for (const portal of region.portals) {
       assert.ok(isWalkable(portal.spawn, context(portal.to)), `${portal.id} destination is safe`);
@@ -53,7 +55,7 @@ test("every inter-region portal has a walkable destination and reachable physica
 });
 
 test("each resource deposit is reachable without walking through its trunk or ore rock", () => {
-  const origins = { village: { x: 710, y: 760 }, wilderness: { x: 400, y: 1780 }, mine: { x: 400, y: 970 } };
+  const origins = { village: { x: 736, y: 648 }, wilderness: { x: 400, y: 1780 }, mine: { x: 400, y: 970 }, highlands: { x: 360, y: 1640 } };
   assert.equal(new Set(RESOURCE_NODES.map((node) => node.id)).size, RESOURCE_NODES.length);
   for (const node of RESOURCE_NODES) {
     assert.equal(resourceNode(node.id), node);

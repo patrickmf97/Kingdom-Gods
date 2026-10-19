@@ -1,4 +1,5 @@
 import { ITEMS } from "./data";
+import { civicBudget, frontierJobFunded } from "./civic-budget";
 import { RESOURCE_NODES, objectsForZone, resourceNode } from "./regions";
 import type {
   ExpansionHooks,
@@ -86,19 +87,12 @@ function nearby(state: GameState, node: ResourceNodeDefinition): boolean {
 }
 
 function marketplace(state: GameState, hooks: ExpansionHooks): boolean {
-  return state.zone === "village" && (hooks.nearObject("market") || hooks.nearObject("forge"));
+  return hooks.nearObject("market") || hooks.nearObject("forge");
 }
 
 function jobDesk(state: GameState, job: FrontierJob, hooks: ExpansionHooks): boolean {
-  return (state.zone === "village" && (hooks.nearObject("market") || hooks.nearObject("sign"))) ||
-    (job.kind === "survey" && state.zone === "wilderness" && hooks.nearObject("wild-camp"));
-}
-
-function civicAvailable(state: GameState): number {
-  const reserved = state.economy.orders
-    .filter(order => order.status === "available" || order.status === "accepted")
-    .reduce((sum, order) => sum + order.reward, 0);
-  return Math.max(0, state.economy.civicFunds - reserved);
+  return hooks.nearObject("market") || hooks.nearObject("sign") ||
+    (job.kind === "survey" && hooks.nearObject("wild-camp"));
 }
 
 function warning(hooks: ExpansionHooks, text: string): true {
@@ -147,7 +141,7 @@ export function executeFrontierAction(state: GameState, action: string, hooks: E
       hooks.practice("trading", 0.4);
       hooks.message(`${definition.name} comprado por ${definition.cost} coroas.`, "success");
     } else {
-      if (state.zone !== "village" || !hooks.nearObject("forge")) return warning(hooks, "Leve a ferramenta à forja de Aldric.");
+      if (!hooks.nearObject("forge")) return warning(hooks, "Leve a ferramenta à forja de Aldric.");
       if (!tool.owned) return warning(hooks, "Você ainda não possui esta ferramenta.");
       if (tool.durability >= 100) return warning(hooks, "A ferramenta já está em perfeito estado.");
       if (state.inventory.ore < 1 || state.inventory.wood < 1 || state.gold < 3) return warning(hooks, "O reparo exige 1 minério, 1 madeira e 3 coroas.");
@@ -184,7 +178,7 @@ export function executeFrontierAction(state: GameState, action: string, hooks: E
   if (state.day >= job.deadline) return warning(hooks, "O prazo desta oportunidade terminou.");
   if (verb === "frontier-accept") {
     if (job.status !== "available") return warning(hooks, "Esta oportunidade já foi assumida ou encerrada.");
-    if (civicAvailable(state) < job.reward) return warning(hooks, "A vila não tem verba livre para garantir esta recompensa. Outros pedidos já reservaram o tesouro.");
+    if (!frontierJobFunded(state, job.id)) return warning(hooks, `Esta oportunidade aguarda verba: ${job.reward} coroas necessárias; ${civicBudget(state).available} livres após as reservas do conselho e das outras oportunidades.`);
     state.economy.civicFunds -= job.reward;
     state.frontier.escrow += job.reward;
     job.status = job.kind === "survey" && job.targets.every(target => state.frontier.discovered.includes(target)) ? "complete" : "accepted";
@@ -271,7 +265,7 @@ export function processFrontierDay(state: GameState, hooks: ExpansionHooks): voi
       state.economy.prosperity = Math.max(0, state.economy.prosperity - 3);
       hooks.remember("Uma promessa interrompida", `Deixei passar o prazo de ${job.title}. A recompensa reservada voltou ao tesouro da vila.`, "Arrependimento", 55);
       hooks.message(`Prazo encerrado: ${job.title}. A recompensa voltou ao tesouro.`, "warning");
-    } else if (job.kind === "delivery" && job.item && state.market[job.item] >= job.quantity && civicAvailable(state) >= job.reward && Number.isSafeInteger(state.merchantGold + job.reward)) {
+    } else if (job.kind === "delivery" && job.item && state.market[job.item] >= job.quantity && civicBudget(state).available >= job.reward && Number.isSafeInteger(state.merchantGold + job.reward)) {
       state.market[job.item] -= job.quantity;
       state.economy.civicFunds -= job.reward;
       state.merchantGold += job.reward;

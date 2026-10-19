@@ -109,14 +109,19 @@ export function updateWildlife(state: GameState, deltaSeconds: number): void {
     const frightDistance = definition.domestic ? Math.max(22, 48 - animal.trust * 0.35) : Math.max(65, 155 - animal.trust);
     const frightened = playerDistance < frightDistance && animal.trust < 65;
     animal.fear = clamp(animal.fear + (frightened ? 24 : -10) * dt, 0, 100);
+    const wasMoving = animal.behavior === "flee" || animal.behavior === "walk" || animal.behavior === "approach";
     animal.wait = Math.max(0, animal.wait - dt);
+    if (frightened && animal.fear <= 24 * dt + .001 && !wasMoving) animal.wait = 0;
     if (frightened) {
-      if (animal.behavior !== "flee" || !animal.target || distance(animal, animal.target) < 6) {
-        clearTarget(animal, cache);
+      // A bounded habitat may have no retreat farther from a stationary visitor.
+      // Keep the failed-route delay instead of rolling a fresh fleeing target every frame.
+      if (animal.target && animal.behavior !== "flee") clearTarget(animal, cache);
+      if (animal.target && distance(animal, animal.target) < 6) clearTarget(animal, cache);
+      if (!animal.target && animal.wait <= 0) {
         animal.target = chooseTarget(animal, definition, state.apostle, true);
+        if (!animal.target) animal.wait = 2.5;
       }
-      animal.behavior = "flee";
-      animal.wait = 0;
+      animal.behavior = animal.target ? "flee" : resting(definition, state.minutes) ? "rest" : "idle";
     } else if (resting(definition, state.minutes)) {
       clearTarget(animal, cache);
       animal.behavior = "rest";
@@ -129,7 +134,7 @@ export function updateWildlife(state: GameState, deltaSeconds: number): void {
       animal.behavior = "idle";
       animal.wait = 1;
     }
-    if (animal.behavior === "rest") continue;
+    if (animal.behavior === "rest" || (frightened && !animal.target)) continue;
     if (!frightened && animal.fear <= 12 && animal.trust >= 45 && playerDistance > 75 && playerDistance < 220) {
       const along = 1 - 60 / playerDistance;
       const target = { x: animal.x + (state.apostle.x - animal.x) * along, y: animal.y + (state.apostle.y - animal.y) * along };
@@ -163,7 +168,7 @@ export function updateWildlife(state: GameState, deltaSeconds: number): void {
     }
     if (!route.points.length) {
       clearTarget(animal, cache); animal.wait = 1.5;
-      if (animal.behavior !== "flee") animal.behavior = "idle";
+      animal.behavior = resting(definition, state.minutes) ? "rest" : "idle";
       continue;
     }
     const point = route.points[0], remaining = distance(animal, point);
@@ -171,15 +176,20 @@ export function updateWildlife(state: GameState, deltaSeconds: number): void {
     if (remaining > 0.001) {
       const from = { x: animal.x, y: animal.y };
       const moved = moveWithCollisions(animal, { x: (point.x - animal.x) / remaining * step, y: (point.y - animal.y) / remaining * step }, contextFor(animal.zone));
-      if (habitatSegment(definition, from, moved)) {
-        if (distance(from, moved) > 0.01) animal.facing = (Math.atan2(moved.y - from.y, moved.x - from.x) + TAU) % TAU;
+      if (habitatSegment(definition, from, moved) && distance(from, moved) > 0.01) {
+        animal.facing = (Math.atan2(moved.y - from.y, moved.x - from.x) + TAU) % TAU;
         Object.assign(animal, moved);
+      } else {
+        clearTarget(animal, cache);
+        animal.behavior = resting(definition, state.minutes) ? "rest" : "idle";
+        animal.wait = 2.5;
+        continue;
       }
     }
     if (distance(animal, point) < 1) route.points.shift();
     if (!route.points.length) {
       clearTarget(animal, cache);
-      if (animal.behavior !== "flee") animal.behavior = "idle";
+      animal.behavior = resting(definition, state.minutes) ? "rest" : "idle";
       animal.wait = 1 + random(animal) * 3;
     }
   }

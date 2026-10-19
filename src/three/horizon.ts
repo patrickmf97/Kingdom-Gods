@@ -10,7 +10,7 @@ export interface RegionHorizon {
 
 /** Four draw calls, no textures, lights, shadows, interaction or navigation. */
 export function createHorizon(zone: Zone): RegionHorizon | undefined {
-  if (zone !== "village" && zone !== "wilderness") return undefined;
+  if (zone !== "village" && zone !== "wilderness" && zone !== "highlands") return undefined;
   const group = new THREE.Group(); group.name = `horizon-${zone}`;
   const region = regionForZone(zone), width = region.width / 24, depth = region.height / 24;
   const geometries: THREE.BufferGeometry[] = [];
@@ -70,11 +70,11 @@ export function createHorizon(zone: Zone): RegionHorizon | undefined {
     { outset: 18, height: () => -8, color: 0x91ab97, alpha: .9 },
     { outset: 70, height: () => -50, color: 0xb0cbd0, alpha: 0 },
   ], -300);
-  const phase = zone === "village" ? .7 : 2.1;
+  const phase = zone === "village" ? .7 : zone === "highlands" ? 3.8 : 2.1;
   // Broad, irregular peaks and saddles avoid a repeated perimeter fence.
   const ridge = (i: number, base: number, phaseOffset: number) => {
     const angle = i / steps * Math.PI * 2;
-    return base + Math.sin(angle * 5 + phase + phaseOffset) * 8 +
+    return base + (zone === "highlands" ? 13 : 0) + Math.sin(angle * 5 + phase + phaseOffset) * 8 +
       Math.sin(angle * 3 - phase) * 6 + Math.sin(angle * 11 + phaseOffset) * 4;
   };
   ring("horizon-mountains-far", [

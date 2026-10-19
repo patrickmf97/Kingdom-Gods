@@ -20,7 +20,7 @@ test("estate interactions require a physical sign and construction persists as a
   assert.equal(g.state.territory.parcels["oak-hollow"].owned, false);
   g.state.zone = "wilderness";
   Object.assign(g.state.apostle, { x: 1100, y: 1740 });
-  assert.equal(g.interact("oak-hollow")?.options[0].action, "open-property");
+  assert.ok(g.interact("oak-hollow")?.options.some(option => option.action === "open-property"));
   g.act("estate-buy:oak-hollow");
   g.state.inventory.wood = 12;
   g.state.inventory.stone = 8;

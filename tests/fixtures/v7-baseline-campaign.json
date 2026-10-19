@@ -1,0 +1,983 @@
+{
+  "version": 7,
+  "started": false,
+  "intro": true,
+  "phase": "title",
+  "apostle": {
+    "id": "apostle-1",
+    "name": "Rowan",
+    "surname": "Valen",
+    "sex": "male",
+    "skin": "#d3a17b",
+    "hair": "#493327",
+    "eyes": "#7ca078",
+    "outfit": "#6d8866",
+    "age": 16,
+    "birthDay": -5759,
+    "alive": true,
+    "generation": 1,
+    "parents": [],
+    "title": "Órfão de Valeverde",
+    "x": 400,
+    "y": 400,
+    "hp": 125,
+    "maxHp": 125,
+    "stamina": 120,
+    "maxStamina": 120,
+    "blessing": "vigor",
+    "attributes": {
+      "strength": 10,
+      "dexterity": 10,
+      "constitution": 10,
+      "intelligence": 10,
+      "wisdom": 10,
+      "charisma": 10,
+      "perception": 10,
+      "will": 10,
+      "vitality": 125,
+      "endurance": 13,
+      "energy": 120
+    },
+    "skills": {
+      "sword": 0,
+      "farming": 0,
+      "mining": 0,
+      "trading": 0,
+      "building": 0,
+      "leadership": 0,
+      "cooking": 0,
+      "smithing": 0,
+      "woodcutting": 0,
+      "herbalism": 0
+    },
+    "personality": {
+      "compassion": 55,
+      "courage": 50,
+      "loyalty": 60,
+      "anger": 15
+    },
+    "memories": [],
+    "equipment": null
+  },
+  "gold": 0,
+  "inventory": {
+    "bread": 0,
+    "wood": 0,
+    "stone": 0,
+    "wheat": 0,
+    "flour": 0,
+    "seed": 0,
+    "sword": 0,
+    "herb": 0,
+    "ore": 0
+  },
+  "minutes": 480,
+  "day": 1,
+  "timeScale": 6,
+  "zone": "orphanage",
+  "npcs": [
+    {
+      "id": "matron",
+      "zone": "orphanage",
+      "name": "Irmã Elara",
+      "role": "Matrona do orfanato",
+      "x": 400,
+      "y": 290,
+      "homeX": 400,
+      "homeY": 290,
+      "color": "#adb8a2",
+      "relation": 55,
+      "trust": 70,
+      "mood": "Acolhedora"
+    },
+    {
+      "id": "merchant",
+      "zone": "village",
+      "name": "Tomas",
+      "role": "Mercador",
+      "x": 1280,
+      "y": 940,
+      "homeX": 1000,
+      "homeY": 1200,
+      "color": "#bfa576",
+      "relation": 10,
+      "trust": 20,
+      "mood": "Atento aos negócios"
+    },
+    {
+      "id": "mira",
+      "zone": "village",
+      "name": "Mira",
+      "role": "Aprendiz de curandeira",
+      "x": 1580,
+      "y": 1220,
+      "homeX": 1640,
+      "homeY": 1230,
+      "color": "#b89089",
+      "relation": 10,
+      "trust": 15,
+      "mood": "Curiosa"
+    },
+    {
+      "id": "aldric",
+      "zone": "village",
+      "name": "Aldric",
+      "role": "Ferreiro",
+      "x": 1560,
+      "y": 790,
+      "homeX": 1560,
+      "homeY": 790,
+      "color": "#a89177",
+      "relation": 5,
+      "trust": 15,
+      "mood": "Concentrado"
+    },
+    {
+      "id": "guard",
+      "zone": "village",
+      "name": "Cedric",
+      "role": "Guardião da cripta",
+      "x": 2050,
+      "y": 450,
+      "homeX": 2050,
+      "homeY": 450,
+      "color": "#7c97a2",
+      "relation": 15,
+      "trust": 25,
+      "mood": "Vigilante"
+    },
+    {
+      "id": "farmer",
+      "zone": "village",
+      "name": "Lina",
+      "role": "Lavradora",
+      "x": 1830,
+      "y": 1040,
+      "homeX": 1770,
+      "homeY": 1210,
+      "color": "#9ca677",
+      "relation": 10,
+      "trust": 20,
+      "mood": "Esperançosa"
+    }
+  ],
+  "enemies": [
+    {
+      "id": "skeleton-1",
+      "x": 360,
+      "y": 330,
+      "hp": 44,
+      "maxHp": 44,
+      "alive": true
+    },
+    {
+      "id": "skeleton-2",
+      "x": 570,
+      "y": 320,
+      "hp": 50,
+      "maxHp": 50,
+      "alive": true
+    },
+    {
+      "id": "skeleton-3",
+      "x": 670,
+      "y": 510,
+      "hp": 56,
+      "maxHp": 56,
+      "alive": true
+    }
+  ],
+  "market": {
+    "bread": 20,
+    "wood": 20,
+    "stone": 15,
+    "wheat": 18,
+    "flour": 8,
+    "seed": 12,
+    "sword": 3,
+    "herb": 10,
+    "ore": 4
+  },
+  "merchantGold": 450,
+  "property": {
+    "owned": false,
+    "id": "property",
+    "name": "Parcela do Moinho",
+    "cost": 180,
+    "kingdom": "Auren",
+    "plantedAt": null,
+    "harvests": 0,
+    "building": false
+  },
+  "family": [],
+  "quest": "available",
+  "kills": 0,
+  "messages": [],
+  "savedAt": null,
+  "deaths": 0,
+  "economy": {
+    "condition": 100,
+    "crop": null,
+    "worker": null,
+    "npcSavings": {},
+    "ledger": [],
+    "orders": [],
+    "civicFunds": 180,
+    "prosperity": 55,
+    "lastOrderDay": 0
+  },
+  "frontier": {
+    "tools": {
+      "axe": {
+        "owned": false,
+        "durability": 0
+      },
+      "pickaxe": {
+        "owned": false,
+        "durability": 0
+      }
+    },
+    "toolStock": {
+      "axe": 3,
+      "pickaxe": 3
+    },
+    "resources": {
+      "tree1": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "herb1": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "stone1": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-oak": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-herbs": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "mine-iron-west": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "mine-iron-east": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "mine-iron-deep": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "mine-stone": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-oak-south-meadow": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "village-pine-north-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "village-oak-east-orchard": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "village-willow-south-field": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "village-stone-west-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-stone-north-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-stone-east-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-stone-south-pasture": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-herbs-orphanage": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-herbs-west-bank": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-herbs-east-orchard": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-herbs-south-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-oak-west-hollow": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-west-slope": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-north-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-north-ridge": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-east-ridge": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-east-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-lakeside": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-south-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-south-ridge": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-southwest": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-central-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-stone-west-bluff": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-west-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-north-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-mine-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-east-bluff": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-east-slope": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-lakeshore": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-south-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-southwest": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-west-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-central-rise": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-west-hollow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-west-grove": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-north-grove": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-cave-heath": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-east-heath": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-lake-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-south-valley": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-southwest": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-return-path": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-central-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-eastern-ruins": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "highland-pine-west-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "highland-pine-ranger-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "highland-pine-east-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "highland-stone-west-bluff": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "highland-stone-north-pass": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "highland-stone-south-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "highland-herbs-south-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "highland-herbs-chapel-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "highland-herbs-east-heath": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "highland-iron-west-ridge": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "highland-iron-north-ridge": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "highland-iron-east-ridge": {
+        "remaining": 4,
+        "readyDay": null
+      }
+    },
+    "work": null,
+    "discovered": [],
+    "jobs": [
+      {
+        "id": "survey-trails",
+        "title": "Conhecer as Terras Livres",
+        "description": "Visite o acampamento, as ruínas, o lago e a entrada da mina. Volte ao mural ou ao acampamento para registrar o percurso.",
+        "kind": "survey",
+        "item": null,
+        "quantity": 0,
+        "targets": [
+          "wild-camp",
+          "wild-ruins",
+          "wild-lake",
+          "wild-mine"
+        ],
+        "reward": 18,
+        "deadline": 9,
+        "status": "available"
+      },
+      {
+        "id": "mine-supply",
+        "title": "Ferro para a forja",
+        "description": "Aldric precisa de quatro minérios de ferro. Leve-os ao mercado ou ao mural; a mina oferece uma alternativa pacífica à cripta.",
+        "kind": "delivery",
+        "item": "ore",
+        "quantity": 4,
+        "targets": [],
+        "reward": 52,
+        "deadline": 7,
+        "status": "available"
+      },
+      {
+        "id": "healing-herbs",
+        "title": "Ervas para os viajantes",
+        "description": "Entregue cinco ervas medicinais ao mercado ou ao mural para abastecer a curandeira.",
+        "kind": "delivery",
+        "item": "herb",
+        "quantity": 5,
+        "targets": [],
+        "reward": 38,
+        "deadline": 7,
+        "status": "available"
+      }
+    ],
+    "escrow": 0
+  },
+  "life": {
+    "needs": {
+      "matron": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "merchant": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "mira": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "aldric": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "guard": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "farmer": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      }
+    },
+    "education": {},
+    "history": [],
+    "heirId": null,
+    "guardianId": null
+  },
+  "territory": {
+    "parcels": {
+      "oak-hollow": {
+        "owned": false,
+        "registeredDay": null,
+        "building": "none",
+        "condition": 0,
+        "storage": {
+          "bread": 0,
+          "wood": 0,
+          "stone": 0,
+          "wheat": 0,
+          "flour": 0,
+          "seed": 0,
+          "sword": 0,
+          "herb": 0,
+          "ore": 0
+        }
+      },
+      "stone-rise": {
+        "owned": false,
+        "registeredDay": null,
+        "building": "none",
+        "condition": 0,
+        "storage": {
+          "bread": 0,
+          "wood": 0,
+          "stone": 0,
+          "wheat": 0,
+          "flour": 0,
+          "seed": 0,
+          "sword": 0,
+          "herb": 0,
+          "ore": 0
+        }
+      }
+    },
+    "influence": 0,
+    "deeds": [],
+    "charter": false,
+    "arrears": 0,
+    "lastTaxDay": 1
+  },
+  "wildlife": {
+    "animals": {
+      "chicken-1": {
+        "id": "chicken-1",
+        "species": "chicken",
+        "zone": "village",
+        "x": 1810,
+        "y": 1140,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.17,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2462823217
+      },
+      "chicken-2": {
+        "id": "chicken-2",
+        "species": "chicken",
+        "zone": "village",
+        "x": 1875,
+        "y": 1180,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 2.6,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2412490360
+      },
+      "chicken-3": {
+        "id": "chicken-3",
+        "species": "chicken",
+        "zone": "village",
+        "x": 1935,
+        "y": 1130,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.79,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2429267979
+      },
+      "chicken-4": {
+        "id": "chicken-4",
+        "species": "chicken",
+        "zone": "village",
+        "x": 1900,
+        "y": 1230,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.74,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2513156074
+      },
+      "sheep-1": {
+        "id": "sheep-1",
+        "species": "sheep",
+        "zone": "village",
+        "x": 1410,
+        "y": 1530,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.21,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 508760921
+      },
+      "sheep-2": {
+        "id": "sheep-2",
+        "species": "sheep",
+        "zone": "village",
+        "x": 1490,
+        "y": 1580,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 2.6399999999999997,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 458428064
+      },
+      "sheep-3": {
+        "id": "sheep-3",
+        "species": "sheep",
+        "zone": "village",
+        "x": 1540,
+        "y": 1500,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.83,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 475205683
+      },
+      "cow-1": {
+        "id": "cow-1",
+        "species": "cow",
+        "zone": "village",
+        "x": 1840,
+        "y": 1460,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 1.17,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 1363785017
+      },
+      "cow-2": {
+        "id": "cow-2",
+        "species": "cow",
+        "zone": "village",
+        "x": 1920,
+        "y": 1530,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.6,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 1313452160
+      },
+      "dog-1": {
+        "id": "dog-1",
+        "species": "dog",
+        "zone": "village",
+        "x": 1160,
+        "y": 950,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.92,
+        "trust": 55,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2229715192
+      },
+      "deer-1": {
+        "id": "deer-1",
+        "species": "deer",
+        "zone": "wilderness",
+        "x": 620,
+        "y": 1050,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 1.46,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 4088636446
+      },
+      "deer-2": {
+        "id": "deer-2",
+        "species": "deer",
+        "zone": "wilderness",
+        "x": 1060,
+        "y": 730,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.27,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 4071858827
+      },
+      "deer-3": {
+        "id": "deer-3",
+        "species": "deer",
+        "zone": "wilderness",
+        "x": 1660,
+        "y": 630,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 2.08,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 4055081208
+      },
+      "deer-4": {
+        "id": "deer-4",
+        "species": "deer",
+        "zone": "wilderness",
+        "x": 2660,
+        "y": 1910,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 1.41,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 4172524541
+      },
+      "rabbit-1": {
+        "id": "rabbit-1",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 480,
+        "y": 400,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 2.94,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 199193894
+      },
+      "rabbit-2": {
+        "id": "rabbit-2",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 1000,
+        "y": 1020,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 1.75,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 182416275
+      },
+      "rabbit-3": {
+        "id": "rabbit-3",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 1280,
+        "y": 1890,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.56,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 165638656
+      },
+      "rabbit-4": {
+        "id": "rabbit-4",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 1830,
+        "y": 1900,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 2.8899999999999997,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 283081989
+      },
+      "rabbit-5": {
+        "id": "rabbit-5",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 2780,
+        "y": 1280,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 1.7,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 266304370
+      },
+      "rabbit-6": {
+        "id": "rabbit-6",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 2700,
+        "y": 490,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.51,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 249526751
+      },
+      "fox-1": {
+        "id": "fox-1",
+        "species": "fox",
+        "zone": "wilderness",
+        "x": 420,
+        "y": 800,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 2.59,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2012243559
+      },
+      "fox-2": {
+        "id": "fox-2",
+        "species": "fox",
+        "zone": "wilderness",
+        "x": 2540,
+        "y": 780,
+        "facing": 0,
+        "behavior": "idle",
+        "target": null,
+        "wait": 3.78,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2029021178
+      }
+    },
+    "observed": []
+  },
+  "simulation": {
+    "marriedAt": {},
+    "gathering": {},
+    "npcMemories": {},
+    "lastChildDay": -100
+  }
+}

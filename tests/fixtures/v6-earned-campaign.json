@@ -1,0 +1,1072 @@
+{
+  "version": 6,
+  "started": true,
+  "intro": false,
+  "phase": "playing",
+  "apostle": {
+    "id": "apostle-1",
+    "name": "Rowan",
+    "surname": "Valen",
+    "sex": "male",
+    "skin": "#d3a17b",
+    "hair": "#493327",
+    "eyes": "#7ca078",
+    "outfit": "#6d8866",
+    "age": 16,
+    "birthDay": -5759,
+    "alive": true,
+    "generation": 1,
+    "parents": [],
+    "title": "Órfão de Valeverde",
+    "x": 660,
+    "y": 1050,
+    "hp": 125,
+    "maxHp": 125,
+    "stamina": 120,
+    "maxStamina": 120,
+    "blessing": "vigor",
+    "attributes": {
+      "strength": 10,
+      "dexterity": 10,
+      "constitution": 10,
+      "intelligence": 10,
+      "wisdom": 10,
+      "charisma": 10,
+      "perception": 10,
+      "will": 10,
+      "vitality": 125,
+      "endurance": 13,
+      "energy": 120
+    },
+    "skills": {
+      "sword": 0,
+      "farming": 0,
+      "mining": 0,
+      "trading": 0,
+      "building": 0,
+      "leadership": 0,
+      "cooking": 0,
+      "smithing": 0,
+      "woodcutting": 0,
+      "herbalism": 0
+    },
+    "personality": {
+      "compassion": 55,
+      "courage": 50,
+      "loyalty": 60,
+      "anger": 15
+    },
+    "memories": [
+      {
+        "id": "1",
+        "day": 31,
+        "title": "Um encontro na paisagem",
+        "text": "Observei Pipoca enquanto observa os arredores.",
+        "emotion": "Curiosidade",
+        "intensity": 45
+      },
+      {
+        "id": "2",
+        "day": 31,
+        "title": "Alimento e confiança",
+        "text": "Ofereci 1 Trigo a Pipoca. Confiança: 25 → 41; medo: 0 → 0.",
+        "emotion": "Cuidado",
+        "intensity": 55
+      },
+      {
+        "id": "3",
+        "day": 31,
+        "title": "Um encontro na paisagem",
+        "text": "Observei Bento enquanto observa os arredores.",
+        "emotion": "Curiosidade",
+        "intensity": 45
+      },
+      {
+        "id": "4",
+        "day": 31,
+        "title": "Alimento e confiança",
+        "text": "Ofereci 1 Pão de centeio a Bento. Confiança: 55 → 71; medo: 0 → 0.",
+        "emotion": "Cuidado",
+        "intensity": 55
+      },
+      {
+        "id": "5",
+        "day": 31,
+        "title": "Um encontro na paisagem",
+        "text": "Observei Cervo da baixada enquanto observa os arredores.",
+        "emotion": "Curiosidade",
+        "intensity": 45
+      }
+    ],
+    "equipment": null,
+    "partnerId": "mira"
+  },
+  "gold": 237,
+  "inventory": {
+    "bread": 7,
+    "wood": 17,
+    "stone": 0,
+    "wheat": 7,
+    "flour": 0,
+    "seed": 0,
+    "sword": 0,
+    "herb": 0,
+    "ore": 9
+  },
+  "minutes": 803.5,
+  "day": 31,
+  "timeScale": 6,
+  "zone": "wilderness",
+  "npcs": [
+    {
+      "id": "matron",
+      "name": "Irmã Elara",
+      "role": "Matrona do orfanato",
+      "x": 400,
+      "y": 290,
+      "homeX": 400,
+      "homeY": 290,
+      "color": "#adb8a2",
+      "relation": 55,
+      "trust": 70,
+      "mood": "Acolhedora"
+    },
+    {
+      "id": "merchant",
+      "name": "Tomas",
+      "role": "Mercador",
+      "x": 1280,
+      "y": 940,
+      "homeX": 1000,
+      "homeY": 1200,
+      "color": "#bfa576",
+      "relation": 10,
+      "trust": 20,
+      "mood": "Atento aos negócios"
+    },
+    {
+      "id": "mira",
+      "name": "Mira",
+      "role": "Aprendiz de curandeira",
+      "x": 1580,
+      "y": 1220,
+      "homeX": 1640,
+      "homeY": 1230,
+      "color": "#b89089",
+      "relation": 10,
+      "trust": 15,
+      "mood": "Curiosa"
+    },
+    {
+      "id": "aldric",
+      "name": "Aldric",
+      "role": "Ferreiro",
+      "x": 1560,
+      "y": 790,
+      "homeX": 1560,
+      "homeY": 790,
+      "color": "#a89177",
+      "relation": 5,
+      "trust": 15,
+      "mood": "Concentrado"
+    },
+    {
+      "id": "guard",
+      "name": "Cedric",
+      "role": "Guardião da cripta",
+      "x": 2050,
+      "y": 450,
+      "homeX": 2050,
+      "homeY": 450,
+      "color": "#7c97a2",
+      "relation": 15,
+      "trust": 25,
+      "mood": "Vigilante"
+    },
+    {
+      "id": "farmer",
+      "name": "Lina",
+      "role": "Lavradora",
+      "x": 1830,
+      "y": 1040,
+      "homeX": 1770,
+      "homeY": 1210,
+      "color": "#9ca677",
+      "relation": 10,
+      "trust": 20,
+      "mood": "Esperançosa"
+    }
+  ],
+  "enemies": [
+    {
+      "id": "skeleton-1",
+      "x": 360,
+      "y": 330,
+      "hp": 44,
+      "maxHp": 44,
+      "alive": true
+    },
+    {
+      "id": "skeleton-2",
+      "x": 570,
+      "y": 320,
+      "hp": 50,
+      "maxHp": 50,
+      "alive": true
+    },
+    {
+      "id": "skeleton-3",
+      "x": 670,
+      "y": 510,
+      "hp": 56,
+      "maxHp": 56,
+      "alive": true
+    }
+  ],
+  "market": {
+    "bread": 20,
+    "wood": 20,
+    "stone": 15,
+    "wheat": 18,
+    "flour": 8,
+    "seed": 12,
+    "sword": 3,
+    "herb": 10,
+    "ore": 4
+  },
+  "merchantGold": 450,
+  "property": {
+    "owned": false,
+    "id": "property",
+    "name": "Parcela do Moinho",
+    "cost": 180,
+    "kingdom": "Auren",
+    "plantedAt": null,
+    "harvests": 0,
+    "building": false
+  },
+  "family": [
+    {
+      "id": "mira",
+      "name": "Mira",
+      "surname": "Valen",
+      "sex": "female",
+      "skin": "#d3a17b",
+      "hair": "#493327",
+      "eyes": "#7ca078",
+      "outfit": "#a9806d",
+      "age": 22,
+      "birthDay": -7919,
+      "alive": true,
+      "generation": 1,
+      "parents": [],
+      "title": "Companheira",
+      "partnerId": "apostle-1"
+    },
+    {
+      "id": "child-1",
+      "name": "Aelia",
+      "surname": "Valen",
+      "sex": "female",
+      "skin": "#d3a17b",
+      "hair": "#493327",
+      "eyes": "#7ca078",
+      "outfit": "#a9806d",
+      "age": 8,
+      "birthDay": -2879,
+      "alive": true,
+      "generation": 2,
+      "parents": [
+        "apostle-1",
+        "mira"
+      ],
+      "title": "Herdeira"
+    }
+  ],
+  "quest": "available",
+  "kills": 0,
+  "messages": [
+    {
+      "id": 1,
+      "text": "Encontro com Pipoca registrado.",
+      "type": "success"
+    },
+    {
+      "id": 2,
+      "text": "Pipoca aceitou o alimento. Confiança +16.",
+      "type": "success"
+    },
+    {
+      "id": 3,
+      "text": "Encontro com Bento registrado.",
+      "type": "success"
+    },
+    {
+      "id": 4,
+      "text": "Bento aceitou o alimento. Confiança +16.",
+      "type": "success"
+    },
+    {
+      "id": 5,
+      "text": "Encontro com Cervo da baixada registrado.",
+      "type": "success"
+    }
+  ],
+  "savedAt": 17000,
+  "deaths": 0,
+  "economy": {
+    "condition": 100,
+    "crop": null,
+    "worker": null,
+    "npcSavings": {},
+    "ledger": [],
+    "orders": [],
+    "civicFunds": 180,
+    "prosperity": 55,
+    "lastOrderDay": 0
+  },
+  "frontier": {
+    "tools": {
+      "axe": {
+        "owned": false,
+        "durability": 0
+      },
+      "pickaxe": {
+        "owned": true,
+        "durability": 67
+      }
+    },
+    "toolStock": {
+      "axe": 3,
+      "pickaxe": 3
+    },
+    "resources": {
+      "tree1": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "herb1": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "stone1": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-oak": {
+        "remaining": 0,
+        "readyDay": 29
+      },
+      "wild-herbs": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "mine-iron-west": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "mine-iron-east": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "mine-iron-deep": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "mine-stone": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-oak-south-meadow": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "village-pine-north-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "village-oak-east-orchard": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "village-willow-south-field": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "village-stone-west-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-stone-north-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-stone-east-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-stone-south-pasture": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-herbs-orphanage": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-herbs-west-bank": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-herbs-east-orchard": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "village-herbs-south-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-oak-west-hollow": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-west-slope": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-north-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-north-ridge": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-east-ridge": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-east-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-lakeside": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-south-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-south-ridge": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-oak-southwest": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-pine-central-grove": {
+        "remaining": 4,
+        "readyDay": null
+      },
+      "wild-stone-west-bluff": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-west-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-north-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-mine-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-east-bluff": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-east-slope": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-lakeshore": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-south-ridge": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-southwest": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-west-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-stone-central-rise": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-west-hollow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-west-grove": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-north-grove": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-cave-heath": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-east-heath": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-lake-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-south-valley": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-southwest": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-return-path": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-central-meadow": {
+        "remaining": 5,
+        "readyDay": null
+      },
+      "wild-herbs-eastern-ruins": {
+        "remaining": 5,
+        "readyDay": null
+      }
+    },
+    "work": null,
+    "discovered": [],
+    "jobs": [
+      {
+        "id": "survey-trails",
+        "title": "Conhecer as Terras Livres",
+        "description": "Visite o acampamento, as ruínas, o lago e a entrada da mina. Volte ao mural ou ao acampamento para registrar o percurso.",
+        "kind": "survey",
+        "item": null,
+        "quantity": 0,
+        "targets": [
+          "wild-camp",
+          "wild-ruins",
+          "wild-lake",
+          "wild-mine"
+        ],
+        "reward": 18,
+        "deadline": 9,
+        "status": "available"
+      },
+      {
+        "id": "mine-supply",
+        "title": "Ferro para a forja",
+        "description": "Aldric precisa de quatro minérios de ferro. Leve-os ao mercado ou ao mural; a mina oferece uma alternativa pacífica à cripta.",
+        "kind": "delivery",
+        "item": "ore",
+        "quantity": 4,
+        "targets": [],
+        "reward": 52,
+        "deadline": 7,
+        "status": "available"
+      },
+      {
+        "id": "healing-herbs",
+        "title": "Ervas para os viajantes",
+        "description": "Entregue cinco ervas medicinais ao mercado ou ao mural para abastecer a curandeira.",
+        "kind": "delivery",
+        "item": "herb",
+        "quantity": 5,
+        "targets": [],
+        "reward": 38,
+        "deadline": 7,
+        "status": "available"
+      }
+    ],
+    "escrow": 0
+  },
+  "life": {
+    "needs": {
+      "matron": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "merchant": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "mira": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "aldric": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "guard": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      },
+      "farmer": {
+        "hunger": 20,
+        "fatigue": 10,
+        "goal": "work"
+      }
+    },
+    "education": {
+      "child-1": {
+        "focus": "mining",
+        "guardianId": "mira",
+        "practice": 12,
+        "bond": 64,
+        "lessons": 3,
+        "lastLessonDay": 30
+      }
+    },
+    "history": [
+      {
+        "day": 30,
+        "kind": "education",
+        "personId": "child-1",
+        "relatedId": "mira",
+        "text": "Aelia aprendeu com Mira.",
+        "gold": 0,
+        "property": false
+      }
+    ],
+    "heirId": "child-1",
+    "guardianId": null
+  },
+  "territory": {
+    "parcels": {
+      "oak-hollow": {
+        "owned": false,
+        "registeredDay": null,
+        "building": "none",
+        "condition": 0,
+        "storage": {
+          "bread": 0,
+          "wood": 0,
+          "stone": 0,
+          "wheat": 0,
+          "flour": 0,
+          "seed": 0,
+          "sword": 0,
+          "herb": 0,
+          "ore": 0
+        }
+      },
+      "stone-rise": {
+        "owned": false,
+        "registeredDay": null,
+        "building": "none",
+        "condition": 0,
+        "storage": {
+          "bread": 0,
+          "wood": 0,
+          "stone": 0,
+          "wheat": 0,
+          "flour": 0,
+          "seed": 0,
+          "sword": 0,
+          "herb": 0,
+          "ore": 0
+        }
+      }
+    },
+    "influence": 0,
+    "deeds": [],
+    "charter": false,
+    "arrears": 0,
+    "lastTaxDay": 1
+  },
+  "wildlife": {
+    "animals": {
+      "chicken-1": {
+        "id": "chicken-1",
+        "species": "chicken",
+        "zone": "village",
+        "x": 1768.2177942887859,
+        "y": 1090.1834541439648,
+        "facing": 4.487783814107834,
+        "behavior": "walk",
+        "target": {
+          "x": 1766.3412328397594,
+          "y": 1081.969489582046
+        },
+        "wait": 0,
+        "trust": 41,
+        "fear": 0,
+        "lastFedDay": 31,
+        "seed": 3399092761
+      },
+      "chicken-2": {
+        "id": "chicken-2",
+        "species": "chicken",
+        "zone": "village",
+        "x": 1844.1701704652082,
+        "y": 1112.4096169643872,
+        "facing": 4.6355536047880275,
+        "behavior": "graze",
+        "target": null,
+        "wait": 4.61827682889998,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 3752321224
+      },
+      "chicken-3": {
+        "id": "chicken-3",
+        "species": "chicken",
+        "zone": "village",
+        "x": 1882.9997752905833,
+        "y": 1105.4175188175093,
+        "facing": 0.24823418437753375,
+        "behavior": "graze",
+        "target": null,
+        "wait": 6.569684954127297,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 4140077851
+      },
+      "chicken-4": {
+        "id": "chicken-4",
+        "species": "chicken",
+        "zone": "village",
+        "x": 1965.66659684029,
+        "y": 1270.5962339721862,
+        "facing": 0.6597646817529172,
+        "behavior": "idle",
+        "target": null,
+        "wait": 0.8684666422195733,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 3032914982
+      },
+      "sheep-1": {
+        "id": "sheep-1",
+        "species": "sheep",
+        "zone": "village",
+        "x": 1437.928103361907,
+        "y": 1474.1433575173328,
+        "facing": 4.727752115210521,
+        "behavior": "walk",
+        "target": {
+          "x": 1438.0526148182903,
+          "y": 1466.0394346094422
+        },
+        "wait": 0,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2040016262
+      },
+      "sheep-2": {
+        "id": "sheep-2",
+        "species": "sheep",
+        "zone": "village",
+        "x": 1536.0515729808608,
+        "y": 1518.2611031882925,
+        "facing": 5.353266435183139,
+        "behavior": "graze",
+        "target": null,
+        "wait": 3.8596676541492343,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 3959674364
+      },
+      "sheep-3": {
+        "id": "sheep-3",
+        "species": "sheep",
+        "zone": "village",
+        "x": 1445.2594565015634,
+        "y": 1449.8092960923018,
+        "facing": 3.6287717056842395,
+        "behavior": "idle",
+        "target": null,
+        "wait": 1.58906927308999,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 843344421
+      },
+      "cow-1": {
+        "id": "cow-1",
+        "species": "cow",
+        "zone": "village",
+        "x": 1845.4239770912054,
+        "y": 1468.39603900379,
+        "facing": 5.242441283319835,
+        "behavior": "walk",
+        "target": {
+          "x": 1823.5203269053245,
+          "y": 1406.9770353285608
+        },
+        "wait": 0,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 1683440904
+      },
+      "cow-2": {
+        "id": "cow-2",
+        "species": "cow",
+        "zone": "village",
+        "x": 1903.7638797505533,
+        "y": 1582.944870808573,
+        "facing": 1.323446993799915,
+        "behavior": "graze",
+        "target": null,
+        "wait": 3.145394805818796,
+        "trust": 25,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2487125200
+      },
+      "dog-1": {
+        "id": "dog-1",
+        "species": "dog",
+        "zone": "village",
+        "x": 1192.017105631599,
+        "y": 936.5675823806516,
+        "facing": 0.6830637254474432,
+        "behavior": "idle",
+        "target": null,
+        "wait": 1.4960260787047446,
+        "trust": 71,
+        "fear": 0,
+        "lastFedDay": 31,
+        "seed": 1425966478
+      },
+      "deer-1": {
+        "id": "deer-1",
+        "species": "deer",
+        "zone": "wilderness",
+        "x": 496.961987803223,
+        "y": 1040.412177923407,
+        "facing": 2.5725003930883013,
+        "behavior": "idle",
+        "target": null,
+        "wait": 0.75,
+        "trust": 0,
+        "fear": 7.5,
+        "lastFedDay": null,
+        "seed": 1101500703
+      },
+      "deer-2": {
+        "id": "deer-2",
+        "species": "deer",
+        "zone": "wilderness",
+        "x": 1060,
+        "y": 730,
+        "facing": 0,
+        "behavior": "graze",
+        "target": null,
+        "wait": 0.9587719838600606,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 4044804335
+      },
+      "deer-3": {
+        "id": "deer-3",
+        "species": "deer",
+        "zone": "wilderness",
+        "x": 1637.552673350531,
+        "y": 668.6161025331573,
+        "facing": 1.7708553430468434,
+        "behavior": "walk",
+        "target": {
+          "x": 1616.9392358903037,
+          "y": 721.098278797489
+        },
+        "wait": 0,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 3279970851
+      },
+      "deer-4": {
+        "id": "deer-4",
+        "species": "deer",
+        "zone": "wilderness",
+        "x": 2688,
+        "y": 1896,
+        "facing": 5.81953769817878,
+        "behavior": "walk",
+        "target": {
+          "x": 2718.7299989892854,
+          "y": 1960.0369462162387
+        },
+        "wait": 0,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2596533246
+      },
+      "rabbit-1": {
+        "id": "rabbit-1",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 475.5204355898177,
+        "y": 351.9719425252508,
+        "facing": 4.619388296658626,
+        "behavior": "graze",
+        "target": null,
+        "wait": 4.738088594283909,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2566748558
+      },
+      "rabbit-2": {
+        "id": "rabbit-2",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 1000,
+        "y": 1020,
+        "facing": 0,
+        "behavior": "graze",
+        "target": null,
+        "wait": 2.363666580291465,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 3318864321
+      },
+      "rabbit-3": {
+        "id": "rabbit-3",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 1344.039184251681,
+        "y": 1904.035314253171,
+        "facing": 0.21575619369441323,
+        "behavior": "graze",
+        "target": null,
+        "wait": 1.8629881511442363,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 3103533190
+      },
+      "rabbit-4": {
+        "id": "rabbit-4",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 1830,
+        "y": 1900,
+        "facing": 0,
+        "behavior": "graze",
+        "target": null,
+        "wait": 1.1177371551748365,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 315883811
+      },
+      "rabbit-5": {
+        "id": "rabbit-5",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 2793.012842133706,
+        "y": 1304.5662892693729,
+        "facing": 2.3427284022989454,
+        "behavior": "idle",
+        "target": null,
+        "wait": 1.2123569063842297,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 1019849872
+      },
+      "rabbit-6": {
+        "id": "rabbit-6",
+        "species": "rabbit",
+        "zone": "wilderness",
+        "x": 2734.519643387126,
+        "y": 516.158577661308,
+        "facing": 0.6484669377422971,
+        "behavior": "graze",
+        "target": null,
+        "wait": 1.3663802968803793,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 4180188845
+      },
+      "fox-1": {
+        "id": "fox-1",
+        "species": "fox",
+        "zone": "wilderness",
+        "x": 420,
+        "y": 800,
+        "facing": 0,
+        "behavior": "rest",
+        "target": null,
+        "wait": 3,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2012243559
+      },
+      "fox-2": {
+        "id": "fox-2",
+        "species": "fox",
+        "zone": "wilderness",
+        "x": 2540,
+        "y": 780,
+        "facing": 0,
+        "behavior": "rest",
+        "target": null,
+        "wait": 3,
+        "trust": 0,
+        "fear": 0,
+        "lastFedDay": null,
+        "seed": 2029021178
+      }
+    },
+    "observed": [
+      "chicken-1",
+      "dog-1",
+      "deer-1"
+    ]
+  },
+  "simulation": {
+    "marriedAt": {},
+    "gathering": {},
+    "npcMemories": {},
+    "lastChildDay": -100
+  }
+}

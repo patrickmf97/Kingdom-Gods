@@ -1,4 +1,5 @@
 import test from "node:test";
+import { removeV7Fields } from "./historical-state";
 import assert from "node:assert/strict";
 import { initialState } from "../src/simulation";
 import { migrateState, validateState } from "../src/persistence";
@@ -9,6 +10,7 @@ import type { GameState, Person } from "../src/types";
 
 function v2Snapshot() {
   const state = structuredClone(initialState()) as unknown as Record<string, any>;
+  removeV7Fields(state as unknown as GameState);
   state.version = 2;
   delete state.wildlife;
   delete state.frontier;
@@ -19,7 +21,7 @@ function v2Snapshot() {
   return state;
 }
 
-test("upgrades a valid v2 campaign to v6 without changing saved time or holdings", () => {
+test("upgrades a valid v2 campaign to v7 without changing saved time or holdings", () => {
   const old = v2Snapshot();
   old.day = 187;
   old.minutes = 712;
@@ -28,7 +30,7 @@ test("upgrades a valid v2 campaign to v6 without changing saved time or holdings
   const before = structuredClone(old);
   const upgraded = migrateState(old);
   assert.ok(upgraded);
-  assert.equal(upgraded.version, 6);
+  assert.equal(upgraded.version, 7);
   assert.equal(validateState(upgraded), true);
   assert.equal(upgraded.day, 187);
   assert.equal(upgraded.minutes, 712);
@@ -138,7 +140,7 @@ test("rejects damaged v2 saves before creating tools, needs or new skill default
   }
 });
 
-test("current v5 requires complete frontier and life state instead of repairing corruption", () => {
+test("current v7 requires complete frontier and life state instead of repairing corruption", () => {
   const valid = livedCampaign();
   assert.equal(validateState(valid), true);
   for (const root of ["frontier", "life"] as const) {
@@ -261,7 +263,7 @@ test("portable JSON round trip retains mine work, family, escrow and independent
   const envelope = JSON.parse(text);
   assert.equal(envelope.format, "kingdom-gods-campaign");
   assert.equal(envelope.version, 1);
-  assert.equal(envelope.campaign.version, 6);
+  assert.equal(envelope.campaign.version, 7);
   const restored = parseCampaign(text) as typeof state;
   assert.deepEqual(restored, state);
   restored.futureExtension!.route.push("mine-exit");
@@ -272,7 +274,7 @@ test("portable JSON round trip retains mine work, family, escrow and independent
 test("portable parser accepts raw historical JSON and rejects unsafe or malformed files", () => {
   const legacy = v2Snapshot();
   const restored = parseCampaign(JSON.stringify(legacy));
-  assert.equal(restored.version, 6);
+  assert.equal(restored.version, 7);
   assert.equal(restored.day, legacy.day);
   assert.equal(restored.gold, legacy.gold);
   const invalid = livedCampaign();
@@ -338,13 +340,13 @@ test("invalid import or a storage failure leaves the previous playable campaign 
   }
 });
 
-test("persistent v5 round trip never advances time or discards unfinished physical work", async () => {
+test("persistent v7 round trip never advances time or discards unfinished physical work", async () => {
   await clearSavedGame();
   const state = livedCampaign();
   const stored = await saveGame(state);
   const loaded = await loadGame();
   assert.deepEqual(loaded, stored);
-  assert.equal(loaded!.version, 6);
+  assert.equal(loaded!.version, 7);
   assert.equal(loaded!.day, state.day);
   assert.equal(loaded!.minutes, state.minutes);
   assert.deepEqual(loaded!.frontier, state.frontier);

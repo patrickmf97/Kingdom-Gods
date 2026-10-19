@@ -35,16 +35,18 @@ import {
   SKILL_NAMES,
 } from "./data";
 import { store } from "./simulation";
-import { getRendererMode, setRendererMode } from "./world";
 import type { PersistentGameState } from "./simulation";
 import { cropProfile, RECIPES } from "./economy";
 import { marketQuote } from "./market";
+import { civicBudget } from "./civic-budget";
 import { findPath, objectApproach } from "./navigation";
 import type { NavigationContext } from "./navigation";
 import { objectsForZone, regionForZone, resourceNode, RESOURCE_NODES, WILDERNESS_ROADS } from "./regions";
 import { ToolsPanel, FrontierJobs, FamilyEducation, FamilyHistory, NpcNeeds, CampaignTransfer } from "./ExpansionPanels";
 import { TerritoryPanels } from "./TerritoryPanels";
 import { estateBuildings, estateSolid } from "./territory-data";
+import { entranceForObject, interiorAllowed, interiorForZone } from "./interiors";
+import { HIGHLAND_BUILDINGS, HIGHLAND_RIDGES, HIGHLAND_ROADS } from "./highlands";
 import "./panels.css";
 
 const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -310,7 +312,7 @@ const nearObject = (state: GameState, id: string, radius = 190) => {
   );
 };
 const nearNpc = (state: GameState, npc: GameState["npcs"][number]) =>
-  state.zone === (npc.id === "matron" ? "orphanage" : "village") &&
+  state.zone === npc.zone &&
   Math.hypot(state.apostle.x - npc.x, state.apostle.y - npc.y) <= 180;
 const isPlaying = (state: GameState) =>
   state.phase === "playing" && state.apostle.alive;
@@ -614,6 +616,7 @@ function VillageOrders({ state }: { state: GameState }) {
     isPlaying(state) &&
     (nearObject(state, "sign") || nearObject(state, "market"));
   const canDeliver = isPlaying(state) && nearObject(state, "market");
+  const budget = civicBudget(state);
   const statuses = {
     available: "Disponível",
     accepted: "Aceito por você",
@@ -631,11 +634,21 @@ function VillageOrders({ state }: { state: GameState }) {
         Pedidos do conselho usam mercadorias reais e o fundo da vila. A
         recompensa é paga uma vez, na entrega ao mercado. Moradores podem
         atender pedidos disponíveis; aceitar um pedido reserva essa tarefa para
-        você.
+        você. As recompensas publicadas ficam reservadas no tesouro; os
+        gastos diários usam apenas a verba livre.
       </p>
       <div className="panel-summary panel-economy-summary">
         <span>
           Fundo cívico <b>{money(state.economy.civicFunds)} ouro</b>
+        </span>
+        <span>
+          Verba livre <b>{money(budget.available)} ouro</b>
+        </span>
+        <span>
+          Reservado no tesouro <b>{money(budget.reservedOrders + budget.reservedFrontier)} ouro</b>
+        </span>
+        <span>
+          Fundo de tarefas aceitas <b>{money(budget.escrow)} ouro</b>
         </span>
         <span>
           Prosperidade <b>{state.economy.prosperity}/100</b>
@@ -648,12 +661,13 @@ function VillageOrders({ state }: { state: GameState }) {
               order.status === "available" || order.status === "accepted";
             const inTime = state.day < order.deadline;
             const enough = state.inventory[order.item] >= order.quantity;
+            const funded = budget.financedOrderIds.includes(order.id);
             return (
               <article key={order.id} className="panel-order-card">
                 <span
                   className={`panel-status ${["fulfilled", "resolved"].includes(order.status) ? "panel-status-good" : ""}`}
                 >
-                  {statuses[order.status]}
+                  {active && !inTime ? "Prazo encerrado" : order.status === "available" && !funded ? "Aguardando verba" : statuses[order.status]}
                 </span>
                 <h3>{order.title}</h3>
                 <div className="panel-order-goods">
@@ -677,11 +691,11 @@ function VillageOrders({ state }: { state: GameState }) {
                     disabled={
                       !canAccept ||
                       !inTime ||
-                      state.economy.civicFunds < order.reward
+                      !funded
                     }
                     onClick={() => act(`order-accept:${order.id}`)}
                   >
-                    Aceitar pedido <ArrowRight size={15} />
+                    {!inTime ? "Prazo encerrado" : funded ? "Aceitar pedido" : "Aguardando verba"} <ArrowRight size={15} />
                   </button>
                 ) : order.status === "accepted" ? (
                   <button
@@ -690,7 +704,7 @@ function VillageOrders({ state }: { state: GameState }) {
                       !canDeliver ||
                       !inTime ||
                       !enough ||
-                      state.economy.civicFunds < order.reward
+                      !funded
                     }
                     onClick={() => act(`order-deliver:${order.id}`)}
                   >
@@ -706,9 +720,15 @@ function VillageOrders({ state }: { state: GameState }) {
                     unidades para a entrega.
                   </p>
                 ) : null}
-                {active && state.economy.civicFunds < order.reward ? (
+                {active && inTime && funded ? (
                   <p className="panel-hint">
-                    O fundo da vila não cobre esta recompensa.
+                    {money(order.reward)} ouro reservados para este pedido.
+                  </p>
+                ) : null}
+                {active && inTime && !funded ? (
+                  <p className="panel-hint">
+                    Este pedido aguarda verba. O tesouro ainda não cobre a
+                    recompensa de {money(order.reward)} ouro.
                   </p>
                 ) : null}
               </article>
@@ -1859,376 +1879,186 @@ const MAP_ROADS = [
   "M1882 896 1990 752 2116 548 2110 340",
   "M776 834 692 1004 616 1236 630 1518 816 1906",
 ];
-function WorldMap({
-  state,
-  onClose,
-}: {
-  state: GameState;
-  onClose: () => void;
-}) {
-  const [selectedId, setSelectedId] = useState("market");
+/** Keep unopened private doors off both maps; estate markers still identify the land. */
+export function mapObjectsForState(state: GameState) {
+  return objectsForZone(state.zone).filter(object => {
+    const room = entranceForObject(state.zone, object.id);
+    return object.kind !== "door" || !room || interiorAllowed(state, room);
+  });
+}
+
+const MAP_FURNITURE_NAMES: Record<string, string> = {
+  bed: "Cama", table: "Mesa", chair: "Cadeira", shelf: "Prateleira", counter: "Balcão",
+  oven: "Forno", anvil: "Bigorna", barrel: "Barril", crate: "Caixote", sack: "Saco",
+  rug: "Tapete", desk: "Escrivaninha", stove: "Fogão", altar: "Altar", bench: "Banco",
+  wardrobe: "Armário", plant: "Planta", basin: "Bacia", lantern: "Lanterna",
+  books: "Livros", wheel: "Roda do moinho", grain: "Grãos",
+};
+
+/** Shared top view of the authored world: furniture uses its rendered, rotated footprint. */
+export function LocalMapTerrain({ state, compact = false }: { state: GameState; compact?: boolean }) {
+  const region = regionForZone(state.zone);
+  const room = interiorForZone(state.zone);
+  if (room) return <>
+    <rect width="900" height="900" fill="#566052" />
+    <rect x="40" y="70" width="820" height="780" fill="#d3c2a0" />
+    <g fill="#8a7658" stroke="#655a45" strokeWidth={compact ? 3 : 2}>
+      <rect x="40" y="104" width="820" height="26" />
+      <rect x="41" y="120" width="24" height="690" />
+      <rect x="835" y="120" width="24" height="690" />
+      <rect x="70" y="813" width="350" height="22" />
+      <rect x="480" y="813" width="350" height="22" />
+    </g>
+    {[...room.furniture].sort((a, b) => Number(a.blocking !== false) - Number(b.blocking !== false)).map((furniture, index) => <g
+      key={`furniture-${index}`} transform={`translate(${furniture.x} ${furniture.y}) rotate(${(furniture.rotation ?? 0) * 180 / Math.PI})`}>
+      <rect x={-furniture.w / 2} y={-furniture.d / 2} width={furniture.w} height={furniture.d}
+        rx={furniture.kind === "barrel" || furniture.kind === "plant" ? Math.min(furniture.w, furniture.d) / 2 : 4}
+        fill={furniture.color === undefined ? furniture.blocking === false ? "#b5a383" : "#967750" : `#${furniture.color.toString(16).padStart(6, "0")}`}
+        fillOpacity={furniture.blocking === false ? .65 : 1} stroke={furniture.blocking === false ? "none" : "#66563d"} strokeWidth={compact ? 3 : 2} />
+      {furniture.kind === "bed" ? <rect x={-furniture.w / 2 + 8} y={-furniture.d / 2 + 8} width={furniture.w - 16} height={Math.min(28, furniture.d / 4)} rx="4" fill="#eee4c9" /> : null}
+      <title>{MAP_FURNITURE_NAMES[furniture.kind] || furniture.kind}</title>
+    </g>)}
+    <path d="M420 790h60v45h-60" fill="#c4b68d" stroke="#776e50" strokeWidth="3" />
+  </>;
+  if (state.zone === "dungeon") return <>
+    <rect width="900" height="900" fill="#596455" />
+    <rect x="56" y="64" width="788" height="772" fill="#d0cdbb" stroke="#8b917b" strokeWidth="28" />
+    <path d="M100 126h54v80h-54Zm648 0h54v80h-54ZM100 680h54v80h-54Zm648 0h54v80h-54Z" fill="#939980" />
+    <rect x="342" y="98" width="216" height="50" fill="#8d937b" stroke="#666f5d" strokeWidth="5" />
+    <rect x="400" y="790" width="100" height="46" fill="#52694e" />
+  </>;
+  return <>
+    <rect width={region.width} height={region.height} fill={state.zone === "mine" ? "#5b5b53" : state.zone === "highlands" ? "#d5ddca" : "#e8e8d3"} />
+    {state.zone === "mine" ? <g fill="#c7bea8" stroke="#a89b7e" strokeWidth="14">
+      {region.walkableAreas?.map((area, index) => <rect key={index} x={area.left} y={area.top} width={area.right - area.left} height={area.bottom - area.top} />)}
+    </g> : <>
+      {region.decor.filter((_, index) => !compact || index % 3 === 0).map((tree, index) => <circle key={`tree-${index}`} cx={tree.x} cy={tree.y - 36} r={46 * (tree.scale ?? 1)} fill="#a2b18c" opacity=".68" />)}
+      {state.zone === "village" ? <>
+        <path d="M-120 436 102 524 244 702 388 908 320 1130 274 1304 406 1554 300 1774 136 1980" fill="none" stroke="#b6c5c1" strokeWidth="130" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M285 893H485" fill="none" stroke="#a79674" strokeWidth="70" />
+        <path d="M285 893H485" fill="none" stroke="#dfcfac" strokeWidth="45" />
+        {MAP_ROADS.map((road, index) => <path key={road} d={road} fill="none" stroke="#d5c39a" strokeWidth={index === 2 ? 58 : 42} strokeLinecap="round" strokeLinejoin="round" />)}
+      </> : state.zone === "highlands" ? <>
+        {HIGHLAND_RIDGES.map((ridge, index) => <rect key={`ridge-${index}`} x={ridge.left} y={ridge.top} width={ridge.right - ridge.left} height={ridge.bottom - ridge.top} rx="24" fill="#879387" stroke="#b2ba9f" strokeWidth="18" />)}
+        {HIGHLAND_ROADS.map((road, index) => <polyline key={`road-${index}`} points={road.map(point => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round" />)}
+        {HIGHLAND_BUILDINGS.map(building => <rect key={building.id} x={building.footprint.left} y={building.footprint.top} width={building.footprint.right - building.footprint.left} height={building.footprint.bottom - building.footprint.top} fill="#8d8064" stroke="#f0e4ca" strokeWidth="8" />)}
+      </> : <>
+        <rect x="2280" y="1430" width="360" height="200" rx="75" fill="#a8c3c1" stroke="#c6d3c1" strokeWidth="28" />
+        {WILDERNESS_ROADS.map((road, index) => <polyline key={`road-${index}`} points={road.map(point => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round" />)}
+        {estateBuildings(state).map(id => { const solid = estateSolid(id); return <rect key={id} x={solid.left} y={solid.top} width={solid.right - solid.left} height={solid.bottom - solid.top} fill="#9b8059" stroke="#efe3c5" strokeWidth="8" />; })}
+      </>}
+    </>}
+  </>;
+}
+
+function MapRegionOverview({ state }: { state: GameState }) {
+  const room = interiorForZone(state.zone);
+  const parent = room?.entrance.zone ?? (state.zone === "dungeon" ? "village" : state.zone);
+  return <div className="panel-region-connections" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }} aria-label="Regiões conectadas">
+    {(["village", "wilderness", "highlands", "mine"] as const).map((zone, index) => <div key={zone} className={parent === zone ? "panel-region-current" : ""}>
+      <span>{index + 1}</span><strong>{regionForZone(zone).name}</strong>
+      <small>{parent === zone ? (room || state.zone === "dungeon" ? `Você está aqui · ${regionForZone(state.zone).name}` : "Você está aqui") : {
+        village: "Vila e oficinas", wilderness: "Floresta, ruínas e lago", highlands: "Serra, alojamento e capela", mine: "Galerias e recursos",
+      }[zone]}</small>
+    </div>)}
+  </div>;
+}
+
+function WorldMap({ state, onClose }: { state: GameState; onClose: () => void }) {
+  const [selectedId, setSelectedId] = useState("");
   const [mapFilter, setMapFilter] = useState("all");
-  const mapZone = state.zone === "orphanage" ? "village" : state.zone;
-  const region = regionForZone(mapZone);
-  const regionalResources = RESOURCE_NODES.filter(node => node.zone === mapZone);
-  const locations = region.objects.filter(object => {
+  const region = regionForZone(state.zone);
+  const room = interiorForZone(state.zone);
+  const local = !!room || state.zone === "dungeon";
+  const regionalResources = RESOURCE_NODES.filter(node => node.zone === state.zone);
+  const locations = mapObjectsForState(state).filter(object => {
     const node = resourceNode(object.id);
     return mapFilter === "all" || (mapFilter === "places" ? !node : node?.resource === mapFilter);
   });
-  const selected =
-    locations.find((object) => object.id === selectedId) || locations[0];
-  const selectedResource = RESOURCE_NODES.find((node) => node.id === selected.id);
-  const currentPosition =
-    state.zone === "orphanage"
-      ? OBJECTS.find((object) => object.id === "orphanage")!
-      : state.apostle;
-  const positionX = currentPosition.x;
-  const positionY = currentPosition.y;
+  const selected = locations.find(object => object.id === selectedId) || locations[0];
+  const selectedResource = selected ? resourceNode(selected.id) : undefined;
+  const currentNpcs = state.npcs.filter(npc => npc.zone === state.zone);
+  const { x: positionX, y: positionY } = state.apostle;
   const estates = estateBuildings(state);
   const estateSignature = estates.join(",");
+  useEffect(() => { setMapFilter("all"); setSelectedId(""); }, [state.zone]);
   const route = useMemo(() => {
-    if (state.zone === "orphanage" || state.zone === "dungeon") return null;
-    const context: NavigationContext = {
-      zone: state.zone,
-      building: state.property.building,
-      estates,
-    };
+    if (!selected) return null;
+    const context: NavigationContext = { zone: state.zone, building: state.property.building, estates };
     const origin = { x: positionX, y: positionY };
     const destination = objectApproach(selected.id, context);
-    const waypoints = findPath(origin, destination, context);
-    const arrived = Math.hypot(
-      positionX - destination.x,
-      positionY - destination.y,
-    ) <= 12;
+    const arrived = Math.hypot(positionX - destination.x, positionY - destination.y) <= 12;
+    const waypoints = arrived ? [] : findPath(origin, destination, context);
     if (!waypoints.length && !arrived) return null;
     const points = [origin, ...waypoints];
     let distance = 0;
-    for (let index = 1; index < points.length; index++) {
-      distance += Math.hypot(
-        points[index].x - points[index - 1].x,
-        points[index].y - points[index - 1].y,
-      );
-    }
+    for (let index = 1; index < points.length; index++) distance += Math.hypot(points[index].x - points[index - 1].x, points[index].y - points[index - 1].y);
     return { points, distance: Math.round(distance), arrived };
-  }, [positionX, positionY, selected.id, state.zone, state.property.building, estateSignature]);
-  const walkingSeconds = route
-    ? Math.ceil(route.distance / (state.apostle.age < 16 ? 130 : 170))
-    : null;
-  const direction =
-    `${selected.y < currentPosition.y - 100 ? "norte" : selected.y > currentPosition.y + 100 ? "sul" : ""}${Math.abs(selected.y - currentPosition.y) > 100 && Math.abs(selected.x - currentPosition.x) > 100 ? " / " : ""}${selected.x < currentPosition.x - 100 ? "oeste" : selected.x > currentPosition.x + 100 ? "leste" : ""}` ||
-    "perto de você";
-  if (state.zone === "dungeon")
-    return (
-      <>
-        <div className="panel-dungeon-map">
-          <svg
-            viewBox="0 0 900 900"
-            role="img"
-            aria-label="Mapa tático da cripta com sua posição e criaturas vivas"
-          >
-            <rect width="900" height="900" fill="#596455" />
-            <rect
-              x="56"
-              y="64"
-              width="788"
-              height="772"
-              fill="#d0cdbb"
-              stroke="#8b917b"
-              strokeWidth="28"
-            />
-            <path
-              d="M100 126h54v80h-54Zm648 0h54v80h-54ZM100 680h54v80h-54Zm648 0h54v80h-54Z"
-              fill="#939980"
-            />
-            <rect
-              x="342"
-              y="98"
-              width="216"
-              height="50"
-              fill="#8d937b"
-              stroke="#666f5d"
-              strokeWidth="5"
-            />
-            <rect x="400" y="790" width="100" height="76" fill="#52694e" />
-            {state.enemies
-              .filter((enemy) => enemy.alive)
-              .map((enemy) => (
-                <g
-                  key={enemy.id}
-                  transform={`translate(${enemy.x} ${enemy.y})`}
-                >
-                  <circle r="22" fill="#a47256" />
-                  <path
-                    d="m-9-9 18 18m0-18-18 18"
-                    stroke="#f5ebd5"
-                    strokeWidth="4"
-                  />
-                </g>
-              ))}
-            <circle
-              cx={state.apostle.x}
-              cy={state.apostle.y}
-              r="19"
-              fill="#b8985d"
-              stroke="#faf7ee"
-              strokeWidth="6"
-            />
-            <text
-              x="450"
-              y="882"
-              textAnchor="middle"
-              fill="#faf7ee"
-              fontSize="22"
-            >
-              Saída · X 450, Y 790
-            </text>
-          </svg>
-        </div>
-        <div className="panel-map-legend">
-          <span>
-            <i /> Você
-          </span>
-          <span>
-            <i className="panel-enemy-dot" /> Criatura viva
-          </span>
-        </div>
-        <p className="panel-prose">
-          Cripta das Raízes ·{" "}
-          {state.enemies.filter((enemy) => enemy.alive).length} criaturas vivas.
-          Sua posição: X {Math.round(state.apostle.x)}, Y{" "}
-          {Math.round(state.apostle.y)}.
-        </p>
-        <p className="panel-hint">
-          Use a saída ao sul para retornar a Valeverde. A cripta é uma área de
-          combate local, sem geração procedural nesta versão.
-        </p>
-      </>
-    );
-  return (
-    <>
-      <div className="panel-map-filter">
-        <label htmlFor="map-resource-filter">Mostrar no mapa</label>
-        <select id="map-resource-filter" value={mapFilter} onChange={event => {
-          setMapFilter(event.target.value);
-          setSelectedId("");
-        }}>
-          <option value="all">Tudo</option>
-          <option value="places">Locais e passagens</option>
-          {(["wood", "stone", "herb", "ore"] as const).filter(item => regionalResources.some(node => node.resource === item)).map(item =>
-            <option key={item} value={item}>{ITEMS[item].name}</option>)}
-        </select>
-        <small>{regionalResources.length} pontos de coleta nesta região</small>
-      </div>
-      <div className="panel-map-art">
-        <svg
-          viewBox={`0 0 ${region.width} ${region.height}`}
-          role="group"
-          aria-label={`Mapa de ${region.name}. Selecione um local para ver a rota de caminhada.`}
-        >
-          <rect width={region.width} height={region.height} fill={mapZone === "mine" ? "#5b5b53" : "#e8e8d3"} />
-          {mapZone === "village" ? <>
-          <path
-            d="M-120 436 102 524 244 702 388 908 320 1130 274 1304 406 1554 300 1774 136 1980"
-            fill="none"
-            stroke="#b6c5c1"
-            strokeWidth="130"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M285 893H485"
-            fill="none"
-            stroke="#a79674"
-            strokeWidth="70"
-          />
-          <path
-            d="M285 893H485"
-            fill="none"
-            stroke="#dfcfac"
-            strokeWidth="45"
-          />
-          {MAP_ROADS.map((road, index) => (
-            <path
-              key={road}
-              d={road}
-              fill="none"
-              stroke="#d5c39a"
-              strokeWidth={index === 2 ? 58 : 42}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
-          {[
-            [190, 270],
-            [320, 340],
-            [1810, 1550],
-            [2150, 1470],
-            [2310, 1580],
-            [2460, 520],
-            [170, 1610],
-            [640, 1620],
-            [820, 280],
-            [1580, 210],
-            [2270, 690],
-          ].map(([x, y], i) => (
-            <g key={i} fill="#aab993" opacity=".6">
-              <ellipse cx={x} cy={y} rx="120" ry="110" />
-              <ellipse cx={x + 70} cy={y - 45} rx="80" ry="90" />
-            </g>
-          ))}
-          </> : mapZone === "mine" ? (
-            <g fill="#c7bea8" stroke="#a89b7e" strokeWidth="14">
-              {region.walkableAreas?.map((area, index) => <rect key={index} x={area.left} y={area.top} width={area.right - area.left} height={area.bottom - area.top} />)}
-            </g>
-          ) : (
-            <>
-              {region.decor.map((tree, index) => <circle key={index} cx={tree.x} cy={tree.y - 36} r={46 * (tree.scale ?? 1)} fill="#a2b18c" opacity=".68" />)}
-              <rect x="2280" y="1430" width="360" height="200" rx="75" fill="#a8c3c1" stroke="#c6d3c1" strokeWidth="28" />
-              {WILDERNESS_ROADS.map((road, index) => <polyline key={index} points={road.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round" />)}
-              {estates.map((id) => { const solid = estateSolid(id); return <rect key={id} x={solid.left} y={solid.top} width={solid.right - solid.left} height={solid.bottom - solid.top} fill="#9b8059" stroke="#efe3c5" strokeWidth="8" />; })}
-            </>
-          )}
-          {route && !route.arrived ? (
-            <polyline
-              className="panel-map-route"
-              points={route.points
-                .map((point) => `${Math.round(point.x)},${Math.round(point.y)}`)
-                .join(" ")}
-              fill="none"
-              stroke="#9b7445"
-              strokeWidth="18"
-              strokeDasharray="34 24"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ) : null}
-          {locations.map((object) => (
-            <g
-              key={object.id}
-              role="button"
-              tabIndex={0}
-              aria-label={object.label}
-              className="panel-map-marker"
-              onClick={() => setSelectedId(object.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setSelectedId(object.id);
-                }
-              }}
-              transform={`translate(${object.x} ${object.y})`}
-            >
-              <circle
-                r={resourceNode(object.id) ? "56" : "85"}
-                fill={selected.id === object.id ? "#253d32" : "#faf7ee"}
-                stroke={selected.id === object.id ? "#b8985d" : "#b7ac8f"}
-                strokeWidth="8"
-              />
-              <path
-                d={
-                  MAP_SYMBOLS[object.kind] ||
-                  "M-42-7 0-40 42-7M-32-13V35h64v-48M-10 35V10h20v25"
-                }
-                fill="none"
-                transform={resourceNode(object.id) ? "scale(.7)" : undefined}
-                opacity={resourceNode(object.id) && state.frontier.resources[object.id]?.remaining === 0 ? .35 : 1}
-                stroke={selected.id === object.id ? "#f3ebd7" : "#56664d"}
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <title>{object.label}</title>
-            </g>
-          ))}
-          <circle
-            cx={currentPosition.x}
-            cy={currentPosition.y}
-            r="45"
-            fill="#b8985d"
-            stroke="#faf7ee"
-            strokeWidth="12"
-          />
-          <circle
-            cx={currentPosition.x}
-            cy={currentPosition.y}
-            r="13"
-            fill="#faf7ee"
-          />
-        </svg>
-        <span className="panel-map-north">
-          N <span>↑</span>
-        </span>
-        <span className="panel-map-scale">{region.name} · Reino de Auren</span>
-      </div>
-      <div className="panel-map-legend">
-        <span>
-          <i /> Você
-        </span>
-        <span>
-          <i /> Local selecionado
-        </span>
-        {route && !route.arrived ? (
-          <span>
-            <i className="panel-route-legend" /> Caminho
-          </span>
-        ) : null}
-      </div>
-      <div className="panel-section-heading">
-        <h3>{selected.label}</h3>
-        <MapPin size={18} />
-      </div>
-      <div className="panel-map-coordinates">
-        <span>
-          X {selected.x} · Y {selected.y}
-        </span>
-        <span>
-          {direction}
-        </span>
-      </div>
+  }, [positionX, positionY, selected?.id, state.zone, state.property.building, estateSignature]);
+  const walkingSeconds = route ? Math.ceil(route.distance / (state.apostle.age < 16 ? 130 : 170)) : null;
+  const direction = selected ? `${selected.y < positionY - 100 ? "norte" : selected.y > positionY + 100 ? "sul" : ""}${Math.abs(selected.y - positionY) > 100 && Math.abs(selected.x - positionX) > 100 ? " / " : ""}${selected.x < positionX - 100 ? "oeste" : selected.x > positionX + 100 ? "leste" : ""}` || "perto de você" : "";
+  const markerScale = local ? .38 : state.zone === "mine" ? .6 : 1;
+  return <>
+    <div className="panel-section-heading"><h3>{region.name}</h3><Compass size={18} /></div>
+    {room ? <p className="panel-prose">Interior · {regionForZone(room.entrance.zone).name}. A saída ao sul retorna à porta deste edifício.</p> : null}
+    {regionalResources.length ? <div className="panel-map-filter">
+      <label htmlFor="map-resource-filter">Mostrar no mapa</label>
+      <select id="map-resource-filter" value={mapFilter} onChange={event => { setMapFilter(event.target.value); setSelectedId(""); }}>
+        <option value="all">Tudo</option><option value="places">Locais e passagens</option>
+        {(["wood", "stone", "herb", "ore"] as const).filter(item => regionalResources.some(node => node.resource === item)).map(item => <option key={item} value={item}>{ITEMS[item].name}</option>)}
+      </select>
+      <small>{regionalResources.length} pontos de coleta nesta região</small>
+    </div> : null}
+    <div className="panel-map-art" style={{ aspectRatio: `${region.width} / ${region.height}` }}>
+      <svg viewBox={`0 0 ${region.width} ${region.height}`} role="group" aria-label={`Mapa de ${region.name}. Selecione um local para ver a rota de caminhada.`}>
+        <LocalMapTerrain state={state} />
+        {route && !route.arrived ? <polyline className="panel-map-route" points={route.points.map(point => `${Math.round(point.x)},${Math.round(point.y)}`).join(" ")} fill="none" stroke="#9b7445" strokeWidth={local ? 7 : 18} strokeDasharray={local ? "13 9" : "34 24"} strokeLinecap="round" strokeLinejoin="round" /> : null}
+        {locations.map(object => <g key={object.id} role="button" tabIndex={0} aria-label={object.label} aria-pressed={selected?.id === object.id} className="panel-map-marker"
+          onClick={() => setSelectedId(object.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(object.id); } }}
+          transform={`translate(${object.x} ${object.y}) scale(${markerScale})`}>
+          <circle r={resourceNode(object.id) ? 56 : 85} fill={selected?.id === object.id ? "#253d32" : "#faf7ee"} stroke={selected?.id === object.id ? "#b8985d" : "#b7ac8f"} strokeWidth="8" />
+          <path d={MAP_SYMBOLS[object.kind] || "M-42-7 0-40 42-7M-32-13V35h64v-48M-10 35V10h20v25"} fill="none" transform={resourceNode(object.id) ? "scale(.7)" : undefined}
+            opacity={resourceNode(object.id) && state.frontier.resources[object.id]?.remaining === 0 ? .35 : 1}
+            stroke={selected?.id === object.id ? "#f3ebd7" : "#56664d"} strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+          <title>{object.label}</title>
+        </g>)}
+        {currentNpcs.map(npc => <g key={npc.id}><circle cx={npc.x} cy={npc.y} r={local ? 14 : 24} fill="#66849b" stroke="#faf7ee" strokeWidth={local ? 4 : 7} /><title>{npc.name} · {npc.mood}</title></g>)}
+        {state.zone === "dungeon" ? state.enemies.filter(enemy => enemy.alive).map(enemy => <g key={enemy.id} transform={`translate(${enemy.x} ${enemy.y})`}><circle r="22" fill="#a47256" /><path d="m-9-9 18 18m0-18-18 18" stroke="#f5ebd5" strokeWidth="4" /><title>Criatura viva</title></g>) : null}
+        <circle cx={positionX} cy={positionY} r={local ? 19 : state.zone === "mine" ? 28 : 45} fill="#b8985d" stroke="#faf7ee" strokeWidth={local ? 6 : 12} />
+        <circle cx={positionX} cy={positionY} r={local ? 6 : 13} fill="#faf7ee" />
+      </svg>
+      <span className="panel-map-north">N <span>↑</span></span><span className="panel-map-scale">{region.name} · Reino de Auren</span>
+    </div>
+    <div className="panel-map-legend">
+      <span><i /> Você</span><span><i /> Local selecionado</span>
+      {currentNpcs.length ? <span><i style={{ background: "#66849b" }} /> Morador presente</span> : null}
+      {state.zone === "dungeon" ? <span><i className="panel-enemy-dot" /> Criatura viva</span> : null}
+      {route && !route.arrived ? <span><i className="panel-route-legend" /> Caminho</span> : null}
+    </div>
+    {room && currentNpcs.length ? <p className="panel-prose">Presentes: {currentNpcs.map(npc => npc.name).join(", ")}.</p> : null}
+    {state.zone === "dungeon" ? <p className="panel-prose">{state.enemies.filter(enemy => enemy.alive).length} criaturas vivas. Sua posição: X {Math.round(positionX)}, Y {Math.round(positionY)}.</p> : null}
+    {selected ? <>
+      <div className="panel-section-heading"><h3>{selected.label}</h3><MapPin size={18} /></div>
+      <div className="panel-map-coordinates"><span>X {selected.x} · Y {selected.y}</span><span>{direction}</span></div>
       <div className="panel-map-journey">
-        <div>
-          <Compass size={21} aria-hidden="true" />
-          <span>
-            <strong>
-              {state.zone === "orphanage"
-                ? "Sua jornada começa na saída do orfanato"
-                : route?.arrived
-                  ? "Você está junto a este local"
-                  : route
-                    ? `Cerca de ${walkingSeconds} s a pé`
-                    : "Nenhum caminho disponível até este local"}
-            </strong>
-            {route && !route.arrived ? (
-              <small>
-                Distância pela rota marcada:{" "}
-                {route.distance.toLocaleString("pt-BR")} passos
-              </small>
-            ) : null}
-          </span>
-        </div>
-        <button
-          className="panel-button panel-button-full"
-          disabled={
-            state.zone === "orphanage" ||
-            !route ||
-            route.arrived ||
-            state.phase !== "playing"
-          }
-          onClick={() => {
-            document.dispatchEvent(
-              new CustomEvent("kg-navigate", { detail: { id: selected.id } }),
-            );
-            onClose();
-          }}
-        >
-          <Compass size={15} aria-hidden="true" />
-          {route?.arrived ? "Você já está aqui" : "Caminhar até aqui"}
-        </button>
+        <div><Compass size={21} aria-hidden="true" /><span>
+          <strong>{route?.arrived ? "Você está junto a este local" : route ? `Cerca de ${walkingSeconds} s a pé` : "Nenhum caminho disponível até este local"}</strong>
+          {route && !route.arrived ? <small>Distância pela rota marcada: {route.distance.toLocaleString("pt-BR")} passos</small> : null}
+        </span></div>
+        <button className="panel-button panel-button-full" disabled={!route || route.arrived || state.phase !== "playing"} onClick={() => {
+          document.dispatchEvent(new CustomEvent("kg-navigate", { detail: { id: selected.id } })); onClose();
+        }}><Compass size={15} aria-hidden="true" />{route?.arrived ? "Você já está aqui" : "Caminhar até aqui"}</button>
       </div>
       {selectedResource ? <p className="panel-prose">{ITEMS[selectedResource.resource].name}: {state.frontier.resources[selected.id]?.remaining ?? selectedResource.capacity} trabalhos disponíveis. Cada trabalho dura {selectedResource.duration} s, usa {selectedResource.stamina} energia e rende {selectedResource.yield} unidades{selectedResource.tool ? ` com ${selectedResource.tool === "axe" ? "machado" : "picareta"}` : " sem ferramenta"}. O recurso se renova em {selectedResource.respawnDays} dias após esgotar.</p> : null}
-      <p className="panel-prose">
+      {room ? <p className="panel-prose">{selected.id === "exit" ? `Esta saída leva à porta de ${room.name}, em ${regionForZone(room.entrance.zone).name}.` : "Caminhe até esta estação para usar os serviços do edifício."}</p> : null}
+      {!room ? <p className="panel-prose">
         {(
           {
+            exit: "A saída ao sul retorna à entrada da Cripta das Raízes, em Valeverde.",
+            "wild-highlands": "O desfiladeiro liga os Ermos às Terras Altas de Brumavale. Siga pela passagem para alcançar as trilhas da serra.",
+            "highlands-wilderness": "Esta trilha desce aos Ermos de Alvor. A passagem retorna à entrada do desfiladeiro.",
+            "highland-ranger-lodge": "O alojamento dos guardas abriga camas, provisões e a mesa de patrulha. Entre pela porta dianteira.",
+            "highland-chapel": "A capela das Nuvens recebe viajantes da serra. Entre para conhecer o altar e os bancos dos peregrinos.",
             "wild-gate": "A trilha ao sudeste leva aos Ermos de Alvor. Atravesse a passagem para explorar a floresta e encontrar a mina.",
             "wild-village": "Retorne a Valeverde para negociar, cuidar da família e visitar as oficinas.",
             "wild-mine": "A Mina do Ferro Antigo tem galerias conectadas e veios de minério. Leve uma picareta e pão; não há combate obrigatório aqui.",
@@ -2266,52 +2096,32 @@ function WorldMap({
             sign:
               "Leia oportunidades e pedidos da vila. Aqui também funciona o registro de Auren, onde você pode quitar tributos dos Ermos e solicitar a Carta de Guardião de Alvor.",
           } as Record<string, string>
-        )[selected.id] || "Um local para descobrir durante a jornada."}
-      </p>
-      <div className="panel-location-list">
-        {locations.map((object) => (
-          <button
-            key={object.id}
-            className={
-              selected.id === object.id ? "panel-location-selected" : ""
-            }
-            onClick={() => setSelectedId(object.id)}
-          >
-            <MapPin size={14} />
-            <span>{object.label}</span>
-            {resourceNode(object.id) ? <small>{state.frontier.resources[object.id]?.remaining === 0
-              ? `Retorna no dia ${state.frontier.resources[object.id].readyDay}`
-              : `${state.frontier.resources[object.id]?.remaining ?? resourceNode(object.id)!.capacity} coletas`}</small> : null}
-            <ChevronRight size={14} />
-          </button>
-        ))}
-      </div>
-      <div className="panel-region-connections" aria-label="Regiões conectadas">
-        {["village", "wilderness", "mine"].map((zone, index) => <div key={zone} className={mapZone === zone ? "panel-region-current" : ""}><span>{index + 1}</span><strong>{regionForZone(zone as GameState["zone"]).name}</strong><small>{mapZone === zone ? "Você está aqui" : index === 0 ? "Vila e oficinas" : index === 1 ? "Floresta, ruínas e lago" : "Galerias e recursos"}</small></div>)}
-      </div>
-      <p className="panel-hint">
-        {state.zone === "orphanage"
-          ? "Você está dentro do orfanato. Receba seus pertences e use a saída ao sul para explorar Valeverde."
-          : "Selecione um destino e caminhe pela rota marcada. Use o teclado ou o joystick para interromper a caminhada. Você também pode tocar no chão do mundo para indicar outro destino."}
-      </p>
-    </>
-  );
+        )[selected?.id ?? ""] || "Um local para descobrir durante a jornada."}
+      </p> : null}
+    </> : <p className="panel-prose">Não há destinos para este filtro.</p>}
+    <div className="panel-location-list">
+      {locations.map(object => <button key={object.id} className={selected?.id === object.id ? "panel-location-selected" : ""} onClick={() => setSelectedId(object.id)}>
+        <MapPin size={14} /><span>{object.label}</span>
+        {resourceNode(object.id) ? <small>{state.frontier.resources[object.id]?.remaining === 0 ? `Retorna no dia ${state.frontier.resources[object.id].readyDay}` : `${state.frontier.resources[object.id]?.remaining ?? resourceNode(object.id)!.capacity} coletas`}</small> : null}
+        <ChevronRight size={14} />
+      </button>)}
+    </div>
+    <MapRegionOverview state={state} />
+    <p className="panel-hint">{state.zone === "orphanage" && state.intro ? "Converse com a matrona e receba seus pertences antes de usar a saída ao sul." : "Selecione um destino e caminhe pela rota marcada. Use o teclado ou o joystick para interromper a caminhada. Você também pode tocar no chão do mundo para indicar outro destino."}</p>
+  </>;
 }
 
 function Help({ state }: { state: GameState }) {
   const calendar = store.getCalendar();
-  const [rendererMode, updateRendererMode] = useState(getRendererMode);
   const [rendererStatus, setRendererStatus] = useState("");
   const [rendererLoading, setRendererLoading] = useState(false);
   useEffect(() => {
     const changed = () => {
-      updateRendererMode(getRendererMode());
       setRendererStatus("");
     };
     const status = (event: Event) => {
-      const detail = (event as CustomEvent<{ mode: "3d" | "2d"; loading?: boolean; message?: string }>).detail;
+      const detail = (event as CustomEvent<{ mode: "3d"; loading?: boolean; message?: string }>).detail;
       if (!detail) return;
-      updateRendererMode(detail.mode);
       setRendererLoading(!!detail.loading);
       setRendererStatus(detail.message || "");
     };
@@ -2335,15 +2145,12 @@ function Help({ state }: { state: GameState }) {
         <h3>Um novo olhar sobre o reino</h3>
         <Compass size={17} />
       </div>
-      <div className="renderer-choice" role="group" aria-label="Visual do mundo" aria-busy={rendererLoading}>
-        <button className="panel-button" aria-pressed={rendererMode === "3d"} onClick={() => setRendererMode("3d")}>Visual 3D</button>
-        <button className="panel-button" aria-pressed={rendererMode === "2d"} onClick={() => setRendererMode("2d")}>Visual 2D</button>
-      </div>
+      <p className="panel-prose" role="status" aria-busy={rendererLoading}>Visual 3D ativo.</p>
       <p className="panel-prose">
         O visual 3D usa cenários e personagens medievais estilizados, câmera elevada
-        e iluminação suave. Você joga a mesma campanha: trocar o visual mantém
-        inventário, terras, família e memórias. O visual 2D continua disponível
-        para aparelhos que precisem de uma opção mais leve.
+        e iluminação suave. O mundo usa exclusivamente o visual 3D. Se o navegador
+        interromper a renderização, sua campanha fica preservada e você pode
+        tentar carregar o mundo novamente.
       </p>
       {rendererStatus && <p className="renderer-help-status" role="status">{rendererStatus}</p>}
       <p className="panel-hint">
@@ -2457,6 +2264,26 @@ function Help({ state }: { state: GameState }) {
         materiais, sementes e ouro para sustentar sua produção.
       </p>
       <div className="panel-section-heading">
+        <h3>Portas e caminhos de Brumavale</h3>
+        <Compass size={17} />
+      </div>
+      <p className="panel-prose">
+        Aproxime-se da porta de um edifício e escolha Entrar. Dentro, caminhe
+        até o balcão, a oficina ou a saída; o mapa mostra móveis e destinos
+        locais. A saída devolve você à mesma porta. O celeiro e a casa da
+        parcela, assim como os prédios dos terrenos, exigem a aquisição e a
+        construção correspondentes. O mercado da praça continua sendo uma
+        barraca aberta; a estalagem também abriga um balcão de comércio.
+      </p>
+      <p className="panel-prose">
+        Nos Ermos, siga para o Desfiladeiro das Terras Altas, a leste. Brumavale
+        tem trilhas, reservas de madeira, pedra, ervas e ferro, além do
+        alojamento dos guardas e da capela, ambos exploráveis por dentro.
+        Moradores se deslocam entre trabalho, convivência e abrigo; à noite,
+        procure-os nos interiores. Ofertas aguardando verba ficam identificadas
+        no diário; as aceitas mantêm a recompensa reservada até o prazo.
+      </p>
+      <div className="panel-section-heading">
         <h3>Animais da paisagem</h3>
         <Compass size={17} />
       </div>
@@ -2479,12 +2306,12 @@ function Help({ state }: { state: GameState }) {
         <ScrollText size={17} />
       </div>
       <p className="panel-prose">
-        Kingdom Gods alpha 0.9 acrescenta árvores com copas variadas, grama,
+        Kingdom Gods alpha 0.10 oferece interiores acessíveis, Terras Altas de Brumavale e reservas garantidas de trabalho. O mundo inclui árvores com copas variadas, grama,
         flores, arbustos e vento suave, além de 22 animais com rotinas próprias.
         Coleta, caminhada e combate têm partículas; o mercado considera oferta,
         estações e pedidos, e a produção paga seus trabalhadores. Há 15 pontos
         de madeira, pedra e ervas em Valeverde, 36 nos Ermos e quatro recursos
-        na mina. Cada reserva se esgota e se renova com o calendário. Use o
+        na mina e 12 nas Terras Altas. Cada reserva se esgota e se renova com o calendário. Use o
         filtro do mapa para encontrar o material desejado. Inclui Valeverde,
         os Ermos de Alvor e a Mina do
         Ferro Antigo, além da cripta. Há ferramentas com desgaste, extração,

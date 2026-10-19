@@ -1,5 +1,6 @@
 import { objectsForZone, regionForZone, type Rectangle as RegionRectangle } from "./regions";
 import { ESTATE_DEFS, estateSolid } from "./territory-data";
+import { interiorForZone } from "./interiors";
 import type { EstateId, Zone } from "./types";
 
 export type Point = { x: number; y: number };
@@ -63,7 +64,7 @@ function bucketsFor(zone: Zone): Map<string, Solid[]> {
 
 function bounds(context: NavigationContext) {
   const region = regionForZone(context.zone);
-  return context.zone === "orphanage" || context.zone === "dungeon"
+  return interiorForZone(context.zone) || context.zone === "dungeon"
     ? { left: 72, right: 828, top: 135, bottom: 800 }
     : { left: 70, right: region.width - 70, top: 90, bottom: region.height - 70 };
 }
@@ -147,7 +148,9 @@ function withinGround(point: Point, zone: Zone, areas: RegionRectangle[]): boole
 export function isWalkable(point: Point, context: NavigationContext): boolean {
   if (!finite(point)) return false;
   const area = bounds(context);
-  if (point.x < area.left || point.x > area.right || point.y < area.top || point.y > area.bottom) return false;
+  // Swept steps can differ from an exact border endpoint by machine precision.
+  const epsilon = 1e-7;
+  if (point.x < area.left - epsilon || point.x > area.right + epsilon || point.y < area.top - epsilon || point.y > area.bottom + epsilon) return false;
   const ground = regionForZone(context.zone).walkableAreas;
   if (ground && !withinGround(point, context.zone, ground)) return false;
   if (context.zone === "village") {
@@ -358,13 +361,13 @@ export function findPath(from: Point, to: Point, context: NavigationContext): Po
 }
 
 export function objectApproach(id: string, context: NavigationContext): Point {
-  if (context.zone === "orphanage" || context.zone === "dungeon") {
-    return nearestWalkable(id === "exit" ? { x: 450, y: 775 } : { x: 450, y: 750 }, context);
+  if (id === "exit" && (interiorForZone(context.zone) || context.zone === "dungeon")) {
+    return nearestWalkable({ x: 450, y: 775 }, context);
   }
   const object = objectsForZone(context.zone).find((entry) => entry.id === id);
   if (!object) return nearestWalkable(fallbackFor(context.zone), context);
   // The property's gate is the entrance; other objects expose an open front.
-  const destination = id === "property"
+  const destination = id === "property" && context.zone === "village"
     ? { x: 1894, y: 906 }
     : { x: object.x, y: object.y + (object.kind === "estate" ? 15 : id === "dungeon" ? 60 : 28) };
   return nearestWalkable(destination, context);

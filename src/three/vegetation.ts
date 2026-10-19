@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { regionForZone, RESOURCE_NODES, WILDERNESS_ROADS } from "../regions";
+import { HIGHLAND_ROADS } from "../highlands";
 import { ESTATE_DEFS } from "../territory-data";
 import type { Point, Zone } from "../types";
 
@@ -50,10 +51,10 @@ function inRect(point: Point, left: number, top: number, right: number, bottom: 
 }
 
 /** Logical-space reservation includes the complete footprint, plus a wind allowance. */
-export function groundCoverAllowed(zone: "village" | "wilderness", point: Point, radius: number, kind: GroundCoverKind): boolean {
+export function groundCoverAllowed(zone: "village" | "wilderness" | "highlands", point: Point, radius: number, kind: GroundCoverKind): boolean {
   const region = regionForZone(zone), margin = radius + 5;
   if (point.x < 38 + margin || point.y < 85 + margin || point.x > region.width - 38 - margin || point.y > region.height - 30 - margin) return false;
-  const roads = zone === "village" ? VILLAGE_LANDSCAPE_PATHS : WILDERNESS_ROADS;
+  const roads = zone === "village" ? VILLAGE_LANDSCAPE_PATHS : zone === "highlands" ? HIGHLAND_ROADS : WILDERNESS_ROADS;
   if (distanceToPath(point, roads) < (zone === "village" ? 32 : 44) + margin) return false;
   if (region.solids.some(rect => inRect(point, rect.left, rect.top, rect.right, rect.bottom, margin + 8))) return false;
   // Work points and conversation fronts have a broad, clear apron even when a
@@ -68,13 +69,15 @@ export function groundCoverAllowed(zone: "village" | "wilderness", point: Point,
     const riverDistance = distanceToPath(point, [RIVER]);
     if (kind === "reeds") return riverDistance > 54 + margin && riverDistance < 110;
     if (riverDistance < 76 + margin) return false;
-  } else {
+  } else if (zone === "wilderness") {
     if (ESTATE_DEFS.some(estate => inRect(point, estate.x - estate.width / 2, estate.y - estate.height,
       estate.x + estate.width / 2, estate.y + 115, margin + 15))) return false;
     // Reserve the shoreline, leaving its south interaction point and the path open.
     if (kind === "reeds") return inRect(point, 2248, 1398, 2672, 1662, 0) &&
       !inRect(point, 2268, 1418, 2652, 1642, margin);
     if (inRect(point, 2248, 1398, 2672, 1662, margin)) return false;
+  } else if (kind === "reeds") {
+    return false;
   }
   return true;
 }
@@ -278,7 +281,7 @@ export class RegionVegetation {
   private readonly pineLeaves: THREE.MeshStandardMaterial;
   private disposed = false;
 
-  constructor(readonly zone: "village" | "wilderness") {
+  constructor(readonly zone: "village" | "wilderness" | "highlands") {
     this.group.name = "living-vegetation";
     this.group.userData.presentationOnly = true;
     this.crowns = { oak: this.geometry(crownGeometry("oak")), broadleaf: this.geometry(crownGeometry("broadleaf")),
@@ -374,7 +377,7 @@ export class RegionVegetation {
   }
 
   private meadows(): void {
-    const region = regionForZone(this.zone), random = randomFrom(this.zone === "village" ? 87321 : 100153);
+    const region = regionForZone(this.zone), random = randomFrom(this.zone === "village" ? 87321 : this.zone === "highlands" ? 729931 : 100153);
     const definitions: { kind: GroundCoverKind; geometry: () => THREE.BufferGeometry; budget: number; radius: number; amplitude: number }[] = [
       { kind: "grass", geometry: grassGeometry, budget: this.zone === "village" ? 2300 : 3400, radius: 10, amplitude: .075 },
       { kind: "flowers", geometry: flowersGeometry, budget: this.zone === "village" ? 340 : 440, radius: 9, amplitude: .045 },
@@ -384,6 +387,7 @@ export class RegionVegetation {
     ];
     const matrix = new THREE.Matrix4(), position = v3(0, 0, 0), rotation = new THREE.Quaternion(), scale = v3(1, 1, 1);
     for (const { kind, geometry, budget, radius, amplitude } of definitions) {
+      if (this.zone === "highlands" && kind === "reeds") continue;
       const material = this.material({ vertexColors: true, side: THREE.DoubleSide }, amplitude);
       const batch = this.batch(`meadow-${kind}`, this.geometry(geometry()), material, budget);
       batch.userData.groundCoverKind = kind;
@@ -471,5 +475,5 @@ export class RegionVegetation {
 }
 
 export function createRegionVegetation(zone: Zone): RegionVegetation | undefined {
-  return zone === "village" || zone === "wilderness" ? new RegionVegetation(zone) : undefined;
+  return zone === "village" || zone === "wilderness" || zone === "highlands" ? new RegionVegetation(zone) : undefined;
 }

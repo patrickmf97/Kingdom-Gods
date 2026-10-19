@@ -1,5 +1,6 @@
 import { ITEMS, OBJECTS } from "./data";
 import { MARKET_TARGETS } from "./market";
+import { civicBudget, villageOrderFunded } from "./civic-budget";
 import type {
   EconomyState,
   GameState,
@@ -119,10 +120,6 @@ const active = (order: VillageOrder) =>
   order.status === "available" || order.status === "accepted";
 const amounts = (items: Partial<Record<ItemId, number>>) =>
   Object.entries(items) as [ItemId, number][];
-const reservedFunds = (state: GameState) =>
-  state.economy.orders
-    .filter(active)
-    .reduce((sum, order) => sum + order.reward, 0);
 
 export function plantCrop(
   state: GameState,
@@ -378,7 +375,7 @@ export function executeEconomicAction(
         hooks.message("Este pedido já não está disponível.", "warning");
         return true;
       }
-      if (state.economy.civicFunds < order.reward) {
+      if (!villageOrderFunded(state, order.id)) {
         hooks.message("A vila não tem orçamento para este pedido.", "warning");
         return true;
       }
@@ -406,7 +403,7 @@ export function executeEconomicAction(
       }
       if (
         state.inventory[order.item] < order.quantity ||
-        state.economy.civicFunds < order.reward
+        !villageOrderFunded(state, order.id)
       ) {
         hooks.message(
           state.inventory[order.item] < order.quantity
@@ -580,7 +577,7 @@ function orderDay(state: GameState, hooks: EconomicHooks): void {
   ];
   const request = requests[index];
   const reward = Math.round(ITEMS[request.item].price * request.quantity * 1.4);
-  if (economy.civicFunds < reward) return;
+  if (civicBudget(state).available < reward) return;
   economy.orders.push({
     id: `order-${state.day}-${request.item}`,
     ...request,
@@ -676,10 +673,7 @@ function regionalProduction(state: GameState): void {
     production.push(`${recipe.name}: ${amounts(recipe.outputs)
       .map(([item, quantity]) => `${quantity * batches} ${ITEMS[item].name}`).join(", ")} · ${batches} coroas para ${worker.name}`);
   }
-  const availableFunds = Math.max(
-    0,
-    state.economy.civicFunds - reservedFunds(state),
-  );
+  const availableFunds = civicBudget(state).available;
   const bought = Math.min(
     3,
     stock.bread,

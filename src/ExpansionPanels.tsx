@@ -3,6 +3,7 @@ import type { EducationFocus, GameState, Npc, Person, ToolId } from "./types";
 import { ITEMS } from "./data";
 import { objectsForZone } from "./regions";
 import { TOOL_DEFS } from "./frontier";
+import { civicBudget } from "./civic-budget";
 import { availableGuardians, educationLabels } from "./life";
 import { store } from "./simulation";
 
@@ -14,7 +15,7 @@ const nearObject = (state: GameState, id: string) => {
     (id === "property" && state.zone === "village" && state.property.building &&
       Math.hypot(state.apostle.x - 2090, state.apostle.y - 815) <= 190));
 };
-const nearNpc = (state: GameState, npc: Npc) => state.zone === (npc.id === "matron" ? "orphanage" : "village") && Math.hypot(state.apostle.x - npc.x, state.apostle.y - npc.y) <= 180;
+const nearNpc = (state: GameState, npc: Npc) => state.zone === npc.zone && Math.hypot(state.apostle.x - npc.x, state.apostle.y - npc.y) <= 180;
 const familyLocation = (state: GameState) => {
   const spouse = state.npcs.find((npc) => npc.id === state.apostle.partnerId);
   return (state.property.owned && state.property.building && nearObject(state, "property")) || (!!spouse && nearNpc(state, spouse));
@@ -62,21 +63,25 @@ const LANDMARK_LABELS: Record<string, string> = { "wild-camp": "Acampamento dos 
 export function FrontierJobs({ state }: { state: GameState }) {
   const atBoard = playing(state) && (nearObject(state, "sign") || nearObject(state, "market"));
   const atCamp = playing(state) && nearObject(state, "wild-camp");
+  const budget = civicBudget(state);
   return <section className="panel-expansion-section">
     <div className="panel-section-heading"><h3>Caminhos além da vila</h3><Compass size={18} /></div>
     <p className="panel-prose">A exploração e o trabalho também deixam um legado. Aceite estas oportunidades no mural ou mercado; o reconhecimento das trilhas também pode começar no acampamento.</p>
+    <p className="panel-hint">Tesouro: {state.economy.civicFunds} ouro · {budget.available} ouro livres · {budget.reservedOrders} para pedidos do conselho · {budget.reservedFrontier} ouro reservados para ofertas · {budget.escrow} em recompensas aceitas. A verba livre cobre os gastos diários; aceitar transfere a recompensa para o fundo da tarefa.</p>
     <div className="panel-order-list">{state.frontier.jobs.map((job) => {
       const inTime = state.day < job.deadline;
-      const canAccept = (atBoard || (job.kind === "survey" && atCamp)) && inTime;
+      const funded = budget.financedJobIds.includes(job.id);
+      const atDesk = atBoard || (job.kind === "survey" && atCamp);
+      const canAccept = atDesk && inTime && funded;
       const objectivesDone = job.kind === "survey" ? job.targets.every((id) => state.frontier.discovered.includes(id)) : !!job.item && state.inventory[job.item] >= job.quantity;
       const accepted = job.status === "accepted" || job.status === "complete";
       return <article className="panel-order-card" key={job.id}>
-        <span className={`panel-status ${job.status === "claimed" || job.status === "complete" || job.status === "resolved" ? "panel-status-good" : ""}`}>{JOB_STATUS[job.status]}</span>
+        <span className={`panel-status ${job.status === "claimed" || job.status === "complete" || job.status === "resolved" ? "panel-status-good" : ""}`}>{job.status === "available" ? !inTime ? "Prazo encerrado" : funded ? JOB_STATUS.available : "Aguardando verba" : JOB_STATUS[job.status]}</span>
         <h3>{job.title}</h3><p>{job.description}</p>
         {job.kind === "survey" ? <ul className="panel-job-targets">{job.targets.map((id) => <li key={id}><span className={state.frontier.discovered.includes(id) ? "panel-target-discovered" : ""}>{state.frontier.discovered.includes(id) ? <Check size={15} /> : <Compass size={15} />}{LANDMARK_LABELS[id] || id}</span></li>)}</ul> : job.item ? <div className="panel-objective"><Package size={20} /><div><strong>{job.quantity} × {ITEMS[job.item].name}</strong><p>{state.inventory[job.item]} na mochila</p></div>{objectivesDone ? <Check size={19} /> : null}</div> : null}
         <div className="panel-order-reward"><Coins size={15} /> {job.reward} ouro · até o dia {job.deadline}</div>
-        {job.status === "available" ? <button className="panel-button panel-button-full" disabled={!canAccept} onClick={() => act(`frontier-accept:${job.id}`)}>Aceitar oportunidade <ArrowRight size={15} /></button> : accepted ? <button className="panel-button panel-button-full" disabled={!(atBoard || (job.kind === "survey" && atCamp)) || !inTime || !objectivesDone} onClick={() => act(`frontier-claim:${job.id}`)}>{job.kind === "survey" ? "Registrar descobertas" : "Entregar suprimentos"}<ArrowRight size={15} /></button> : null}
-        {accepted && inTime ? <p className="panel-hint">{job.kind === "survey" ? "Visite os locais e registre a caminhada no mural, mercado ou acampamento." : "Faça a entrega no mural ou mercado. Os materiais saem da mochila e abastecem a vila."} A recompensa está reservada no fundo da tarefa.</p> : job.status === "available" && !canAccept ? <p className="panel-hint">Procure o mural ou o mercado{job.kind === "survey" ? ", ou o acampamento nos Ermos" : ""} para aceitar.</p> : null}
+        {job.status === "available" ? <button className="panel-button panel-button-full" disabled={!canAccept} onClick={() => act(`frontier-accept:${job.id}`)}>{!inTime ? "Prazo encerrado" : funded ? "Aceitar oportunidade" : "Aguardando verba"} <ArrowRight size={15} /></button> : accepted ? <button className="panel-button panel-button-full" disabled={!(atBoard || (job.kind === "survey" && atCamp)) || !inTime || !objectivesDone} onClick={() => act(`frontier-claim:${job.id}`)}>{job.kind === "survey" ? "Registrar descobertas" : "Entregar suprimentos"}<ArrowRight size={15} /></button> : null}
+        {accepted && inTime ? <p className="panel-hint">{job.kind === "survey" ? "Visite os locais e registre a caminhada no mural, mercado ou acampamento." : "Faça a entrega no mural ou mercado. Os materiais saem da mochila e abastecem a vila."} A recompensa está reservada no fundo da tarefa.</p> : job.status === "available" && !inTime ? <p className="panel-hint">O prazo desta oportunidade terminou.</p> : job.status === "available" && !funded ? <p className="panel-hint">A recompensa de {job.reward} ouro ainda não tem verba. O tesouro tem {budget.available} ouro livres após as reservas; esta necessidade poderá ser aceita quando houver orçamento.</p> : job.status === "available" && !atDesk ? <p className="panel-hint">Procure o mural ou o mercado{job.kind === "survey" ? ", ou o acampamento nos Ermos" : ""} para aceitar.</p> : null}
       </article>;
     })}</div>
   </section>;
