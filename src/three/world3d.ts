@@ -8,6 +8,8 @@ import type { Dialog, Zone } from "../types";
 import { createCharacterModel, type ActorAppearance, type CharacterModel } from "./characters";
 import { createRegionEnvironment, type RegionEnvironment } from "./environment";
 import { WorldEffects } from "./effects";
+import { weatherFor } from "../weather";
+import { WeatherLayer, atmosphereFor } from "./weather";
 import { createWildlifeLayer } from "./wildlife";
 import { animalsForZone } from "../wildlife";
 import { cameraChange, DEFAULT_CAMERA_DISTANCE, DEFAULT_CAMERA_YAW, screenToMap, toMap, toWorld, WORLD_SCALE } from "./coordinates";
@@ -21,6 +23,7 @@ class ThreeWorld {
   private camera = new THREE.PerspectiveCamera(42, 1, .1, 230);
   private environment?: RegionEnvironment;
   private effects = new WorldEffects();
+  private weather = new WeatherLayer();
   private wildlife = createWildlifeLayer();
   private presentationTime = 0;
   private actors = new Map<string, Actor>();
@@ -84,7 +87,7 @@ class ThreeWorld {
     this.renderer.shadowMap.enabled = false;
     this.scene.background = new THREE.Color(0xb7c8b3);
     this.scene.fog = new THREE.Fog(0xb7c8b3, 65, 155);
-    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.wildlife.group);
+    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.wildlife.group);
     this.routeLine.frustumCulled = false;
     this.routeLine.renderOrder = 5;
     this.observer.observe(this.element);
@@ -400,12 +403,17 @@ class ThreeWorld {
     this.sunlight.position.set(this.focus.x - 22, 45, this.focus.z + 12);
     this.sunlight.target.position.copy(this.focus);
     const interior = this.zone !== "village" && this.zone !== "wilderness" && this.zone !== "highlands";
-    const sunlight = Math.max(.12, Math.sin((store.state.minutes - 360) / 1440 * Math.PI * 2));
-    this.ambient.intensity = interior ? 1.6 : 1.05 + sunlight * 1.0;
-    this.sunlight.intensity = interior ? .9 : .3 + sunlight * 2.0;
-    const backdrop = new THREE.Color(interior ? 0x40534b : 0xa8bda4).multiplyScalar(interior ? 1 : .55 + sunlight * .45);
+    const weather = weatherFor(store.state.day, store.state.minutes, this.zone ?? store.state.zone);
+    const atmosphere = atmosphereFor(store.state.minutes, weather);
+    this.ambient.intensity = interior ? 1.6 : atmosphere.ambientIntensity;
+    this.sunlight.intensity = interior ? .9 : atmosphere.sunIntensity;
+    this.ambient.color.copy(interior ? new THREE.Color(0xfff2d6) : atmosphere.ambient);
+    this.ambient.groundColor.copy(interior ? new THREE.Color(0x5c7558) : atmosphere.ground);
+    this.sunlight.color.copy(interior ? new THREE.Color(0xffebc0) : atmosphere.sun);
+    const backdrop = interior ? new THREE.Color(0x40534b) : atmosphere.sky;
     (this.scene.background as THREE.Color).copy(backdrop);
-    (this.scene.fog as THREE.Fog).color.copy(backdrop);
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.copy(backdrop); fog.near = interior ? 65 : atmosphere.fogNear; fog.far = interior ? 155 : atmosphere.fogFar;
   }
   private frame = (stamp: number) => {
     if (this.disposed) return;
@@ -435,6 +443,8 @@ class ThreeWorld {
     const time = stamp / 1000;
     this.syncActors(time);
     this.environment?.update(store.state, this.presentationTime);
+    this.weather.update(weatherFor(store.state.day, store.state.minutes, zone), this.presentationTime,
+      scenic ? { x: 1270, y: 880 } : store.state.apostle, store.state.minutes);
     this.wildlife.update(store.state, zone, this.presentationTime);
     this.updateCamera(Math.max(dt, .001));
     if (stamp - this.lastLabels > 45) { this.updateLabels(); this.lastLabels = stamp; }
@@ -450,6 +460,10 @@ class ThreeWorld {
       canvas.dataset.particleDrawCalls = String(this.effects.drawCalls);
       canvas.dataset.particleVersion = String(this.effects.version);
       canvas.dataset.particleKinds = JSON.stringify(this.effects.counts);
+      canvas.dataset.weatherKind = weatherFor(store.state.day, store.state.minutes, zone).kind;
+      canvas.dataset.weatherCount = String(this.weather.count);
+      canvas.dataset.weatherCapacity = String(this.weather.capacity);
+      canvas.dataset.weatherDrawCalls = String(this.weather.drawCalls);
       const animals = animalsForZone(store.state, zone);
       canvas.dataset.animalCount = String(animals.length);
       canvas.dataset.animals = JSON.stringify(animals.map(({ id, species, x, y, behavior, trust }) => ({ id, species, x, y, behavior, trust })));
@@ -481,6 +495,7 @@ class ThreeWorld {
     this.renderer.domElement.removeEventListener("webglcontextrestored", this.contextRestored);
     this.prompt.removeEventListener("click", this.promptClick);
     this.environment?.dispose();
+    this.weather.dispose();
     this.effects.dispose();
     this.wildlife.dispose();
     for (const actor of this.actors.values()) actor.model.dispose();

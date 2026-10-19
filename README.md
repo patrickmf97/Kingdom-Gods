@@ -1,4 +1,4 @@
-# KINGDOM GODS · alpha 0.10 · 3D
+# KINGDOM GODS · alpha 0.11 · 3D
 
 RPG sandbox medieval **3D, local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
@@ -24,7 +24,17 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-## Novidades da alpha 0.10
+## Novidades da alpha 0.11
+
+- **Clima e preparação:** céu limpo, nuvens, chuva e neblina derivados do calendário, com previsão de três dias. Chuva reduz o ritmo de coleta externa a 80% e a capacidade de reposição externa em uma unidade; minas e oficinas mantêm ritmo normal. O preço reage ao estoque real.
+- **Ambiente:** acabamento de solo, sombras de contato e atmosfera horária/climática, com camadas leves e orçamento fixo. Árvores, reservas, estradas e colisões mantêm suas posições.
+- **Produção em lotes:** as três receitas existentes aceitam de uma a dez execuções, com custos/saídas escalados e validação integral na oficina. A falta de ingredientes ou energia impede o lote inteiro.
+- **Lar e descanso:** cama funcional dentro da casa construída, com condição mínima de 25%; oito horas recuperam até 40 de vitalidade e toda a energia. Hospedagem transfere oito coroas ao caixa da estalagem. A prévia informa chegada, viradas e provisões; todos os descansos compartilham o processamento diário e param na morte.
+- **Compatibilidade:** o formato continua v7. Não há sorteio ao carregar, avanço offline ou alteração dos prazos/rendimentos das colheitas existentes.
+
+Esta etapa usa como referência princípios de [Stardew Valley](https://www.stardewvalley.net/about/), [Valheim](https://www.valheimgame.com/faq/) e [Medieval Dynasty](https://www.toplitz-productions.com/medieval-dynasty.html), com código e assets próprios. O clima é regional e diário, sem previsão meteorológica externa ou tempestades com dano. Irrigação e solo fértil continuam para uma etapa posterior.
+
+## Novidades da alpha 0.10 preservadas
 
 - **Apenas 3D:** Phaser e o modo 2D foram removidos. Falhas de WebGL pausam o visual e oferecem uma nova tentativa com o estado preservado.
 - **Interiores autorais:** 13 mapas de 900×900, com mobiliário 3D, colisões compartilhadas e estações funcionais. Há orfanato, estalagem, forja, moinho, padaria, casa de Mira, celeiro, casa da linhagem, construções dos dois terrenos, tenda, alojamento e capela. Prédios privados exigem aquisição/construção. Barraca de mercado, poço e ruínas abertas permanecem estruturas a céu aberto.
@@ -123,6 +133,7 @@ A política inicial limita-se a registro territorial, influência, carta e obrig
 - `frontier.ts`: ferramentas, trabalho, recursos finitos, descobertas, reservas e oportunidades.
 - `territory-data.ts`, `territory.ts`: parcelas, limites de posse, construções, depósitos, influência e obrigações.
 - `life.ts`, `npc-routines.ts`: necessidades, deslocamentos entre portas e interiores, tutores, educação, regência e registros familiares.
+- `weather.ts`, `rest.ts`: clima derivado do calendário, previsão e prévia de descanso sem alterar o estado.
 - `economy.ts`, `market.ts`, `civic-budget.ts`: produção financiada, cotações, lavouras, manutenção, salários, verbas reservadas e pedidos.
 - `interiors.ts`, `highlands.ts`: interiores, móveis, estações, acesso e dados das Terras Altas.
 - `persistence.ts`, `campaign-files.ts`: validação, migrações v1–v6 para v7, backups e intercâmbio de campanhas.
@@ -132,10 +143,11 @@ A política inicial limita-se a registro territorial, influência, carta e obrig
 - `three/horizon.ts`: céu, serras e transição atmosférica das regiões externas, sem alterar navegação.
 - `three/materials.ts`, `three/effects.ts`: texturas procedurais e partículas reutilizadas, com propriedade e descarte por instância.
 - `three/interiors.ts`, `three/highlands.ts`: mobiliário, arquitetura interna e paisagem das Terras Altas.
+- `three/landscape-finish.ts`, `three/weather.ts`: acabamento instanciado do solo/contato, precipitação, nuvens e paleta atmosférica.
 - `village-decor.ts`: posições de decoração compartilhadas por navegação e apresentação.
 - `App.tsx`, `Panels.tsx`, `ExpansionPanels.tsx`, `TerritoryPanels.tsx`: interface React responsiva e ações reais.
 - `transport.ts`: intenções serializáveis para a futura integração de servidor.
 
 ## Verificação
 
-As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo desta entrega fica em `docs/verification-alpha10.md`, com fluxos no navegador e limites da verificação. Os recibos anteriores permanecem no diretório `docs`.
+As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo desta entrega fica em `docs/verification-alpha11.md`, com fluxos no navegador e limites da verificação. Os recibos anteriores permanecem no diretório `docs`.

@@ -18,8 +18,17 @@ test("authored roofs, paths and mine floors carry finite UVs with visibly distin
   for (const zone of ["village", "wilderness", "mine"] as const) {
     const environment = createRegionEnvironment(zone, initialState());
     const textures = maps(environment.group);
-    assert.ok(textures.size >= (zone === "village" ? 7 : 3), `${zone} needs intentional surface details`);
-    assert.ok(textures.size <= 7, "one cached texture per surface keeps uploads bounded");
+    const surfaces = [...textures].filter(texture => texture.name.startsWith("region-surface-"));
+    const landscape = [...textures].filter(texture => !texture.name.startsWith("region-surface-"));
+    assert.ok(surfaces.length >= (zone === "village" ? 7 : 3), `${zone} needs intentional surface details`);
+    assert.ok(surfaces.length <= 7, "one cached texture per surface keeps uploads bounded");
+    assert.equal(landscape.length, zone === "mine" ? 0 : 1, "only one additional exterior ground map is permitted");
+    for (const texture of landscape) {
+      assert.equal(texture.name, "landscape-broad-ground-64");
+      assert.ok(texture instanceof THREE.DataTexture);
+      const image = texture.image as { width: number; height: number };
+      assert.ok(image.width <= 64 && image.height <= 64);
+    }
     for (const mesh of meshes(environment.group)) {
       const material = mesh.material as THREE.MeshStandardMaterial;
       if (!material.map) continue;

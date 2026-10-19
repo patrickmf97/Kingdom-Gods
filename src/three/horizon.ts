@@ -1,10 +1,12 @@
 import * as THREE from "three";
+import { weatherFor, type WeatherSnapshot } from "../weather";
+import { atmosphereFor } from "./weather";
 import { regionForZone } from "../regions";
 import type { Zone } from "../types";
 
 export interface RegionHorizon {
   group: THREE.Group;
-  update(minutes: number): void;
+  update(minutes: number, weather?: WeatherSnapshot): void;
   dispose(): void;
 }
 
@@ -109,10 +111,13 @@ export function createHorizon(zone: Zone): RegionHorizon | undefined {
   };
 
   return { group,
-    update(minutes) {
+    update(minutes, weather) {
       if (disposed) return;
-      const sunlight = Math.max(.12, Math.sin((minutes - 360) / 1440 * Math.PI * 2));
-      for (const material of materials) material.color.setScalar(.55 + sunlight * .45);
+      const profile = atmosphereFor(minutes, weather ?? weatherFor(1, minutes, zone));
+      const tint = new THREE.Color(0x536c94).lerp(new THREE.Color(0xffffff), Math.min(1, profile.daylight * 2.4));
+      tint.lerp(new THREE.Color(0xffc397), profile.twilight * .5);
+      tint.lerp(new THREE.Color(0xa9b8c0), (weather?.cloudiness ?? .1) * .18);
+      for (const material of materials) material.color.copy(tint);
     },
     dispose() {
       if (disposed) return;

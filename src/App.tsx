@@ -41,6 +41,8 @@ import { MAX_CAMPAIGN_BYTES, parseCampaign } from "./campaign-files";
 import { getRendererMode, mountWorld, worldInput } from "./world";
 import { GamePanel, ItemIcon, Portrait, LocalMapTerrain, mapObjectsForState } from "./Panels";
 import { interiorForZone } from "./interiors";
+import { WeatherChip } from "./WeatherPanel";
+import { weatherFor } from "./weather";
 import "./three.css";
 
 function Sigil({ size = 36 }: { size?: number }) {
@@ -369,6 +371,10 @@ export default function App() {
     (order) => order.status === "available" || order.status === "accepted",
   );
   const nearest = s.phase === "playing" ? store.getNearest() : null;
+  const workRemaining = s.frontier.work
+    ? Math.max(0, Math.ceil((s.frontier.work.duration - s.frontier.work.elapsed)
+      / weatherFor(s.day, s.minutes, s.zone).gatheringRate))
+    : 0;
   const animalEncounter = dialog?.options.some(option => option.action.startsWith("animal-"));
   return (
     <div
@@ -424,7 +430,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.10 · {rendererMode.toUpperCase()}</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.11 · {rendererMode.toUpperCase()}</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -630,12 +636,7 @@ export default function App() {
                   )}
                 </span>
               </div>
-              <div className="weather-chip">
-                <Sun size={16} />
-                <span>
-                  {calendar.temperature}° <i /> {calendar.season}
-                </span>
-              </div>
+              <WeatherChip state={s} season={calendar.season} onOpen={() => open("journal")} />
               {mobile && (
                 <div className="mobile-vitals">
                   <div>
@@ -662,7 +663,7 @@ export default function App() {
               )}
               {s.frontier.work && (
                 <div className="work-progress-hud" role="status" aria-live="polite">
-                  <div><strong>{resourceNode(s.frontier.work.nodeId)?.label || "Trabalhando"}</strong><span>{Math.max(0, Math.ceil(s.frontier.work.duration - s.frontier.work.elapsed))} s</span></div>
+                  <div><strong>{resourceNode(s.frontier.work.nodeId)?.label || "Trabalhando"}</strong><span>{workRemaining} s</span></div>
                   <progress aria-label="Progresso do trabalho" value={s.frontier.work.elapsed} max={s.frontier.work.duration} />
                   <button onClick={() => store.act("cancel-work")}>Interromper</button>
                 </div>
@@ -939,7 +940,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  ALPHA 0.10 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.11 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />

@@ -205,7 +205,8 @@ export function executeTerritoryAction(state: GameState, action: string, hooks: 
     }
     state.inventory.wood--;
     hooks.rest(4, 20);
-    hooks.message("A fogueira aqueceu o abrigo durante quatro horas de descanso.", "success");
+    if (state.phase === "playing" && state.apostle.alive)
+      hooks.message("A fogueira aqueceu o abrigo durante quatro horas de descanso.", "success");
   } else {
     const item = detail as ItemId;
     const amount = Number(quantity);

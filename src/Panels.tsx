@@ -47,6 +47,8 @@ import { TerritoryPanels } from "./TerritoryPanels";
 import { estateBuildings, estateSolid } from "./territory-data";
 import { entranceForObject, interiorAllowed, interiorForZone } from "./interiors";
 import { HIGHLAND_BUILDINGS, HIGHLAND_RIDGES, HIGHLAND_ROADS } from "./highlands";
+import { WeatherPanel } from "./WeatherPanel";
+import { weatherFor } from "./weather";
 import "./panels.css";
 
 const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -802,6 +804,7 @@ function Journal({ state }: { state: GameState }) {
     (nearObject(state, "sign") || (!!guard && nearNpc(state, guard)));
   return (
     <>
+      <WeatherPanel state={state} />
       <div className="panel-tabs" role="group" aria-label="Seções do diário">
         {["Missões", "Memórias", "Registros"].map((name) => (
           <button
@@ -1224,6 +1227,7 @@ function Family({ state }: { state: GameState }) {
 }
 
 function Crafting({ state }: { state: GameState }) {
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
   return (
     <>
       <div className="panel-summary">
@@ -1243,6 +1247,8 @@ function Crafting({ state }: { state: GameState }) {
       </p>
       <div className="panel-recipe-list">
         {RECIPES.map((recipe) => {
+          const quantity = quantities[recipe.id] ?? 1;
+          const energy = recipe.stamina * quantity;
           const inputs = Object.entries(recipe.inputs) as [ItemId, number][];
           const outputs = Object.entries(recipe.outputs) as [ItemId, number][];
           const station = OBJECTS.find(
@@ -1250,9 +1256,22 @@ function Crafting({ state }: { state: GameState }) {
           );
           const nearby = isPlaying(state) && nearObject(state, recipe.station);
           const enoughItems = inputs.every(
-            ([id, amount]) => state.inventory[id] >= amount,
+            ([id, amount]) => state.inventory[id] >= amount * quantity,
           );
-          const enoughEnergy = state.apostle.stamina >= recipe.stamina;
+          const enoughEnergy = state.apostle.stamina >= energy;
+          const maximum = Math.max(0, Math.min(10,
+            Math.floor(state.apostle.stamina / recipe.stamina),
+            ...inputs.map(([id, amount]) => Math.floor(state.inventory[id] / amount)),
+          ));
+          const reason = !isPlaying(state)
+            ? "A produção fica disponível durante a jornada de um apóstolo vivo."
+            : !nearby
+              ? `Aproxime-se de ${station?.label || recipe.station} para produzir.`
+              : !enoughItems
+                ? `Reúna os ingredientes indicados para ${quantity} ${quantity === 1 ? "receita" : "receitas"}.`
+                : !enoughEnergy
+                  ? `Você precisa de ${energy} de energia para este lote.`
+                  : "Você está na oficina e tem os recursos necessários.";
           return (
             <article className="panel-recipe-card" key={recipe.id}>
               <div className="panel-recipe-heading">
@@ -1267,16 +1286,24 @@ function Crafting({ state }: { state: GameState }) {
                 </div>
               </div>
               <p>{recipe.description}</p>
+              <div className="panel-recipe-quantity">
+                <label htmlFor={`quantity-${recipe.id}`}>Receitas no lote</label>
+                <select id={`quantity-${recipe.id}`} value={quantity}
+                  onChange={event => setQuantities(previous => ({ ...previous, [recipe.id]: Number(event.target.value) }))}>
+                  {Array.from({ length: 10 }, (_, index) => index + 1).map(count => <option key={count} value={count}>{count}</option>)}
+                </select>
+                <span>Recursos para até {maximum}</span>
+              </div>
               <div className="panel-resource-cost">
                 {inputs.map(([id, amount]) => (
                   <span
                     key={id}
                     className={
-                      state.inventory[id] >= amount ? "panel-cost-ready" : ""
+                      state.inventory[id] >= amount * quantity ? "panel-cost-ready" : ""
                     }
                   >
                     <ItemIcon id={id} size={27} /> {state.inventory[id]} /{" "}
-                    {amount} {ITEMS[id].name.toLowerCase()}
+                    {amount * quantity} {ITEMS[id].name.toLowerCase()}
                   </span>
                 ))}
               </div>
@@ -1284,12 +1311,12 @@ function Crafting({ state }: { state: GameState }) {
                 <ArrowRight size={15} />
                 <span>
                   {outputs
-                    .map(([id, amount]) => `${amount} × ${ITEMS[id].name}`)
+                    .map(([id, amount]) => `${amount * quantity} × ${ITEMS[id].name}`)
                     .join(" · ")}
                 </span>
               </div>
               <div className="panel-recipe-details">
-                <span>{recipe.stamina} energia</span>
+                <span>{energy} energia · {quantity} {quantity === 1 ? "receita" : "receitas"}</span>
                 <span>
                   Prática de{" "}
                   {SKILL_NAMES[recipe.skill]?.toLowerCase() || recipe.skill}
@@ -1298,21 +1325,12 @@ function Crafting({ state }: { state: GameState }) {
               <button
                 className="panel-button panel-button-full"
                 disabled={!nearby || !enoughItems || !enoughEnergy}
-                onClick={() => act(`craft:${recipe.id}`)}
+                aria-describedby={`craft-reason-${recipe.id}`}
+                onClick={() => act(`craft:${recipe.id}:${quantity}`)}
               >
                 <Hammer size={15} /> {recipe.name}
               </button>
-              <p className="panel-hint">
-                {!isPlaying(state)
-                  ? "A produção fica disponível durante a jornada de um apóstolo vivo."
-                  : !nearby
-                    ? `Aproxime-se de ${station?.label || recipe.station} para produzir.`
-                    : !enoughItems
-                      ? "Reúna os ingredientes indicados para esta receita."
-                      : !enoughEnergy
-                        ? `Você precisa de ${recipe.stamina} de energia para produzir.`
-                        : "Você está na oficina e tem os recursos necessários."}
-              </p>
+              <p className="panel-hint" id={`craft-reason-${recipe.id}`}>{reason}</p>
             </article>
           );
         })}
@@ -1428,6 +1446,11 @@ function PropertyPanel({ state }: { state: GameState }) {
               <b>{property.building ? "Construída" : "Terreno"}</b>
             </div>
           </div>
+          {property.building ? <Notice good={economy.condition >= 25}>
+            {economy.condition >= 25
+              ? "Cama disponível: entre na casa e aproxime-se da cama para descansar 8 horas sem taxa. As provisões diárias continuam necessárias."
+              : "A cama precisa de uma moradia com pelo menos 25 de condição. Repare a casa para voltar a descansar nela."}
+          </Notice> : null}
           <div className="panel-section-heading">
             <h3>Seu cultivo</h3>
             <Sprout size={18} />
@@ -1686,6 +1709,7 @@ function Market({ state }: { state: GameState }) {
   const [buying, setBuying] = useState(true);
   const [inspectedItem, setInspectedItem] = useState<ItemId>("bread");
   const nearby = atTradingPost(state);
+  const weather = weatherFor(state.day, state.minutes, "village");
   const inspected = marketQuote(state, inspectedItem, buying);
   const percent = (factor: number) => `${factor >= 1 ? "+" : "−"}${Math.abs(Math.round((factor - 1) * 100))}%`;
   const supplyText = { scarce: "Oferta baixa", balanced: "Oferta estável", abundant: "Oferta alta" };
@@ -1741,6 +1765,12 @@ function Market({ state }: { state: GameState }) {
         A produção usa insumos e paga os trabalhadores com o caixa do mercado.
         Estações, oferta e pedidos da vila influenciam os preços.
         Prosperidade: {state.economy.prosperity}/100.
+      </p>
+      <p className="panel-hint">
+        {weather.supplyPenalty > 0
+          ? "Chuva hoje: a reposição externa perde até 1 unidade de capacidade por produto. Oficinas internas mantêm a capacidade."
+          : "O clima de hoje mantém a capacidade normal de reposição externa."}
+        {" "}Consulte os próximos dias no diário; os preços acompanham o estoque real.
       </p>
       <button
         className="panel-button panel-button-outline panel-button-full"
@@ -2223,6 +2253,7 @@ function Help({ state }: { state: GameState }) {
         nos painéis. O plantio guarda o prazo e a colheita da estação; sua
         família e seus laços amadurecem com a convivência.
       </p>
+      <p className="panel-hint">Consulte a previsão de hoje e dos próximos dois dias no diário ou toque no clima no cenário. A chuva reduz a coleta externa a 80% e a capacidade de reposição externa em até 1 unidade por produto; o trabalho em minas e oficinas internas segue normal.</p>
       <div
         className="panel-season-table"
         role="table"
@@ -2257,6 +2288,7 @@ function Help({ state }: { state: GameState }) {
         viram 1 espada por 14 energia. Abra Produção no mercado ou na
         propriedade e vá à oficina correspondente para trabalhar.
       </p>
+      <p className="panel-hint">Escolha de 1 a 10 receitas por lote. Ingredientes, energia e resultados são mostrados para o lote inteiro; a produção exige todos os recursos na oficina.</p>
       <p className="panel-prose">
         Casas perdem 3 pontos de condição por dia. Reparos usam 2 madeira e 1
         pedra para restaurar 25 pontos. Lina trabalha na parcela construída por

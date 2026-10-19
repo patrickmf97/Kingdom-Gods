@@ -9,7 +9,7 @@ export const PARTICLE_KINDS = { dust: 0, wood: 1, spark: 2, leaf: 3, arc: 4, hit
 export type ParticleKind = keyof typeof PARTICLE_KINDS;
 const COLORS = [0xc9b28a, 0xd2a05c, 0xffce76, 0x9ebd79, 0xf6e6af, 0xe5b48a, 0xe1d6a5, 0xd4ed96]
   .map(hex => new THREE.Color(hex));
-const outside = (zone: Zone) => zone === "village" || zone === "wilderness";
+const outside = (zone: Zone) => zone === "village" || zone === "wilderness" || zone === "highlands";
 
 /** Dense, fixed arrays are shared with the GPU. Expired particles swap with the last live slot. */
 export class ParticlePool {

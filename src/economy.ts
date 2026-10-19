@@ -1,6 +1,7 @@
 import { ITEMS, OBJECTS } from "./data";
 import { MARKET_TARGETS } from "./market";
 import { civicBudget, villageOrderFunded } from "./civic-budget";
+import { weatherFor } from "./weather";
 import type {
   EconomyState,
   GameState,
@@ -206,8 +207,16 @@ export function executeEconomicAction(
   action: string,
   hooks: EconomicHooks,
 ): boolean {
-  const [verb, id] = action.split(":");
+  const parts = action.split(":");
+  const [verb, id] = parts;
   if (verb === "craft") {
+    if (state.phase !== "playing" || !state.apostle.alive || !(state.apostle.hp > 0)) return true;
+    const countText = parts.length === 2 ? "1" : parts[2];
+    if (parts.length > 3 || !/^(?:[1-9]|10)$/.test(countText || "")) {
+      hooks.message("Escolha um lote inteiro de 1 a 10.", "warning");
+      return true;
+    }
+    const count = Number(countText);
     const recipe = RECIPES.find((candidate) => candidate.id === id);
     if (!recipe) {
       hooks.message("Esta receita não existe.", "warning");
@@ -220,29 +229,39 @@ export function executeEconomicAction(
       );
       return true;
     }
-    if (state.apostle.stamina < recipe.stamina) {
+    const staminaCost = recipe.stamina * count;
+    if (!Number.isFinite(state.apostle.stamina) || !Number.isSafeInteger(staminaCost) || state.apostle.stamina < staminaCost) {
       hooks.message("Recupere energia antes de trabalhar.", "warning");
       return true;
     }
     if (
       amounts(recipe.inputs).some(
-        ([item, quantity]) => state.inventory[item] < quantity,
+        ([item, quantity]) => !Number.isSafeInteger(quantity * count) ||
+          !Number.isSafeInteger(state.inventory[item]) || state.inventory[item] < quantity * count,
       )
     ) {
       hooks.message("Faltam ingredientes para esta receita.", "warning");
       return true;
     }
+    // Validate every resulting stack before making the first debit.
+    if (amounts(recipe.outputs).some(([item, quantity]) =>
+      !Number.isSafeInteger(state.inventory[item]) || state.inventory[item] < 0 ||
+      !Number.isSafeInteger(quantity * count) ||
+      !Number.isSafeInteger(state.inventory[item] - (recipe.inputs[item] || 0) * count + quantity * count))) {
+      hooks.message("O estoque não pode receber este lote com segurança.", "warning");
+      return true;
+    }
     for (const [item, quantity] of amounts(recipe.inputs))
-      state.inventory[item] -= quantity;
+      state.inventory[item] -= quantity * count;
     for (const [item, quantity] of amounts(recipe.outputs))
-      state.inventory[item] += quantity;
-    state.apostle.stamina -= recipe.stamina;
-    hooks.practice(recipe.skill, 1);
+      state.inventory[item] += quantity * count;
+    state.apostle.stamina -= staminaCost;
+    hooks.practice(recipe.skill, count);
     record(
       state,
       "craft",
       `${recipe.name}: ${amounts(recipe.outputs)
-        .map(([item, quantity]) => `${quantity} ${ITEMS[item].name}`)
+        .map(([item, quantity]) => `${quantity * count} ${ITEMS[item].name}`)
         .join(", ")}.`,
     );
     hooks.message(`${recipe.name}: produção concluída.`, "success");
@@ -603,6 +622,7 @@ function regionalProduction(state: GameState): void {
   const stock = state.market;
   const season = cropProfile(state.day).season;
   const seasonIndex = ["Primavera", "Verão", "Outono", "Inverno"].indexOf(season);
+  const supplyPenalty = weatherFor(state.day, 720, "village").supplyPenalty;
   const supplies: { item: ItemId; npcId: string; capacity: number[]; unitCost: number }[] = [
     { item: "wheat", npcId: "farmer", capacity: [3, 4, 5, 1], unitCost: 2 },
     { item: "wood", npcId: "guard", capacity: [3, 3, 3, 2], unitCost: 1 },
@@ -623,9 +643,12 @@ function regionalProduction(state: GameState): void {
   for (const supply of supplies) {
     const gap = Math.max(0, MARKET_TARGETS[supply.item] - stock[supply.item]);
     if (!gap) continue;
-    const capacity = supply.capacity[seasonIndex];
+    const seasonalCapacity = supply.capacity[seasonIndex];
+    const capacity = Math.max(0, seasonalCapacity - supplyPenalty);
+    if (supplyPenalty && seasonalCapacity > capacity)
+      stalls.add(`${ITEMS[supply.item].name}: chuva limita a capacidade externa em ${seasonalCapacity - capacity}`);
     if (!capacity) {
-      stalls.add(`${ITEMS[supply.item].name}: sem coleta nesta estação`);
+      if (!seasonalCapacity) stalls.add(`${ITEMS[supply.item].name}: sem coleta nesta estação`);
       continue;
     }
     const worker = availableWorker(supply.npcId);

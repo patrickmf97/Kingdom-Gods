@@ -10,6 +10,8 @@ import { ESTATE_DEFS, estateBuildings } from "./territory-data";
 import { animalDialog, animalsForZone, createWildlifeState, executeWildlifeAction, updateWildlife } from "./wildlife";
 import { animalDefinition } from "./wildlife-data";
 import { entranceForObject, interiorAllowed, interiorForZone } from "./interiors";
+import { formatRestPreview } from "./rest";
+import { weatherFor } from "./weather";
 import {
   findPath,
   isWalkable,
@@ -336,9 +338,7 @@ export function getCalendar(state: GameState): {
     month: MONTHS[monthIndex],
     year: Math.floor((state.day - 1) / 360) + 1,
     season: SEASONS[Math.floor(monthIndex / 3)],
-    temperature:
-      [17, 28, 13, 5][Math.floor(monthIndex / 3)] +
-      Math.round(Math.sin((state.minutes / 1440) * Math.PI * 2) * 3),
+    temperature: weatherFor(state.day, state.minutes, state.zone).temperature,
   };
 }
 
@@ -495,20 +495,7 @@ export class GameStore {
       practice: (skill, amount) => this.practice(skill, amount),
       nearObject: (id) => this.nearObject(id),
       nearNpc: (id) => !!this.nearNpc(id),
-      rest: (hours, healing) => {
-        cancelWork(this.state);
-        this.state.minutes += hours * 60;
-        while (this.state.minutes >= 1440 && this.playing()) {
-          this.state.minutes -= 1440;
-          this.state.day++;
-          this.newDay();
-        }
-        if (this.playing()) {
-          this.state.apostle.hp = Math.min(this.state.apostle.maxHp, this.state.apostle.hp + healing);
-          this.state.apostle.stamina = this.state.apostle.maxStamina;
-        }
-        this.activeDialog = null;
-      },
+      rest: (hours, healing) => this.rest(hours, healing),
     };
   }
 
@@ -571,13 +558,8 @@ export class GameStore {
       apostle.maxStamina,
       apostle.stamina + deltaSeconds * (apostle.blessing === "vigor" ? 9 : 7),
     );
-    this.state.minutes += deltaSeconds * this.state.timeScale;
-    while (this.state.minutes >= 1440 && this.playing()) {
-      this.state.minutes -= 1440;
-      this.state.day++;
-      this.newDay();
-    }
-    if (!this.playing()) this.state.minutes %= 1440;
+    this.advanceTime(deltaSeconds * this.state.timeScale);
+    if (!this.playing()) return;
     this.updateNpcs(deltaSeconds);
     updateWildlife(this.state, deltaSeconds);
     updateLifeNeeds(this.state, this.economicHooks());
@@ -601,6 +583,36 @@ export class GameStore {
       this.announceAccumulator = 0;
       this.notify();
     }
+  }
+  /** Tick and every kind of rest share the same midnight boundary. */
+  private advanceTime(minutes: number): void {
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    let remaining = minutes;
+    while (remaining > 0 && this.playing()) {
+      const untilMidnight = 1440 - this.state.minutes;
+      if (remaining < untilMidnight) {
+        this.state.minutes += remaining;
+        return;
+      }
+      remaining -= untilMidnight;
+      this.state.minutes = 0;
+      this.state.day++;
+      this.newDay();
+    }
+  }
+  private rest(hours: number, healing: number | null): void {
+    cancelWork(this.state);
+    this.advanceTime(hours * 60);
+    if (this.playing()) {
+      const apostle = this.state.apostle;
+      apostle.hp = healing === null ? apostle.maxHp : Math.min(apostle.maxHp, apostle.hp + healing);
+      apostle.stamina = apostle.maxStamina;
+    }
+    this.activeDialog = null;
+  }
+  private canRestAtHome(): boolean {
+    return this.state.zone === "farmhouse-room" && this.nearObject("home-bed", 110) &&
+      this.state.property.owned && this.state.property.building && this.state.economy.condition >= 25;
   }
   private newDay(): void {
     const { apostle, inventory, property, market } = this.state;
@@ -1097,12 +1109,12 @@ export class GameStore {
     if (node && node.zone === this.state.zone) {
       const resource = this.state.frontier.resources[id];
       return { name: node.label, role: "Trabalho por prática",
-        text: `${resource.remaining} cargas disponíveis. O trabalho leva ${node.duration} segundos e exige ${node.stamina} de energia.${node.tool ? ` Use ${node.tool === "pickaxe" ? "uma picareta" : "um machado"} em bom estado.` : " Pode ser recolhido à mão."}`,
+        text: `${resource.remaining} cargas disponíveis. O trabalho leva ${(node.duration / weatherFor(this.state.day, this.state.minutes, this.state.zone).gatheringRate).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} segundos no tempo atual e exige ${node.stamina} de energia.${weatherFor(this.state.day, this.state.minutes, this.state.zone).gatheringRate < 1 ? " A chuva reduz o ritmo da coleta externa a 80%; minas e oficinas continuam abrigadas." : ""}${node.tool ? ` Use ${node.tool === "pickaxe" ? "uma picareta" : "um machado"} em bom estado.` : " Pode ser recolhido à mão."}`,
         options: [{ label: node.resource === "ore" ? "Extrair minério" : node.resource === "wood" ? "Recolher madeira" : node.resource === "stone" ? "Extrair pedra" : "Colher ervas", action: `start-work:${id}`, disabled: resource.remaining <= 0 }, { label: "Voltar", action: "close" }] };
     }
     if (id === "wild-camp") return {
       name: "Acampamento dos viajantes", role: "Abrigo no vale",
-      text: "Uma fogueira e abrigos marcam a passagem dos viajantes. Acampe usando duas madeiras para descansar quatro horas ou registre trabalhos do vale no diário.",
+      text: `Uma fogueira e abrigos marcam a passagem dos viajantes. Acampar usa duas madeiras e recupera até 20 de vitalidade e toda a energia. ${formatRestPreview(this.state, 4)}`,
       options: [{ label: "Acampar · 2 madeiras", action: "camp-rest", disabled: this.state.inventory.wood < 2 },
         { label: "Ver trabalhos do vale", action: "open-journal" }, { label: "Voltar", action: "close" }],
     };
@@ -1136,16 +1148,21 @@ export class GameStore {
         ],
       };
     if (id === "property") return this.propertyDialog();
+    if (id === "home-bed") return {
+      name: "Cama da linhagem", role: "Um lugar para chamar de lar",
+      text: `Sua casa oferece oito horas de repouso, até 40 de vitalidade e toda a energia, sem taxa de hospedagem. Condição da casa: ${this.state.economy.condition}%; exige ao menos 25%. ${formatRestPreview(this.state, 8)}`,
+      options: [{ label: "Dormir em casa · 8 horas", action: "home-rest", disabled: !this.canRestAtHome() }, { label: "Voltar", action: "close" }],
+    };
     if (id === "inn")
       return {
         name: "Estalagem do Carvalho",
         role: "Descanso",
-        text: "Uma cama e uma refeição custam 8 ouro. Dormir avança oito horas e recupera vitalidade e energia.",
+        text: `Uma cama e cuidados custam 8 coroas, pagas ao caixa da estalagem. Recupera vitalidade e energia. ${formatRestPreview(this.state, 8)}`,
         options: [
           {
             label: "Descansar · 8 ouro",
             action: "rest",
-            disabled: this.state.gold < 8,
+            disabled: this.state.gold < 8 || !Number.isSafeInteger(this.state.merchantGold + 8),
           },
           { label: "Voltar", action: "close" },
         ],
@@ -1463,15 +1480,17 @@ export class GameStore {
     if (action === "camp-rest") {
       if (this.nearObject("wild-camp", 140) && this.state.inventory.wood >= 2) {
         this.state.inventory.wood -= 2;
-        cancelWork(this.state);
-        this.state.minutes += 240;
-        while (this.state.minutes >= 1440 && this.playing()) {
-          this.state.minutes -= 1440; this.state.day++; this.newDay();
-        }
-        if (this.playing()) { this.state.apostle.hp = Math.min(this.state.apostle.maxHp, this.state.apostle.hp + 20); this.state.apostle.stamina = this.state.apostle.maxStamina; }
-        this.message("O abrigo e a fogueira permitiram quatro horas de descanso.", "success");
-        this.activeDialog = null;
+        this.rest(4, 20);
+        if (this.playing()) this.message("O abrigo e a fogueira permitiram quatro horas de descanso.", "success");
       } else this.message("Aproxime-se do acampamento com duas madeiras.", "warning");
+      this.scheduleAutoSave(); this.notify(); return;
+    }
+    if (action === "home-rest") {
+      if (!this.canRestAtHome()) this.message("Procure a cama dentro de sua casa construída e com pelo menos 25% de condição.", "warning");
+      else {
+        this.rest(8, 40);
+        if (this.playing()) this.message("Oito horas de repouso na casa da sua linhagem.", "success");
+      }
       this.scheduleAutoSave(); this.notify(); return;
     }
     if (executeEconomicAction(this.state, action, this.economicHooks())) {
@@ -1639,20 +1658,17 @@ export class GameStore {
       }
       if (this.state.gold < 8)
         this.message("A estalagem custa 8 ouro.", "warning");
+      else if (!Number.isSafeInteger(this.state.merchantGold + 8))
+        this.message("O caixa da estalagem não pode receber o pagamento agora.", "warning");
       else {
         this.state.gold -= 8;
-        this.state.minutes += 480;
-        while (this.state.minutes >= 1440 && this.playing()) {
-          this.state.minutes -= 1440;
-          this.state.day++;
-          this.newDay();
-        }
+        this.state.merchantGold += 8;
+        this.state.economy.ledger.push({ day: this.state.day, type: "hospitality", text: "Hospedagem: 8 coroas transferidas ao caixa da estalagem por oito horas de repouso.", goldDelta: -8 });
+        if (this.state.economy.ledger.length > 30) this.state.economy.ledger.shift();
+        this.rest(8, null);
         if (this.playing()) {
-          this.state.apostle.hp = this.state.apostle.maxHp;
-          this.state.apostle.stamina = this.state.apostle.maxStamina;
           this.message("Você descansou oito horas.", "success");
         }
-        this.activeDialog = null;
       }
     } else if (action === "quest-accept" || action === "quest-claim") {
       if (!this.nearObject("sign") && !this.nearNpc("guard")) {

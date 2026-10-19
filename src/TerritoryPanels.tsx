@@ -8,6 +8,7 @@ import { estateActionReason } from "./territory";
 import { ESTATE_BUILDINGS, ESTATE_DEFS, ESTATE_STORAGE_CAPACITY, estateLimit, estateStorageWeight } from "./territory-data";
 import { store } from "./simulation";
 import { interiorForZone } from "./interiors";
+import { formatRestPreview } from "./rest";
 import "./territory.css";
 
 const ITEM_IDS = Object.keys(ITEMS) as ItemId[];
@@ -95,6 +96,7 @@ function EstateCard({ state, id, onClose }: { state: GameState; id: EstateId; on
         <TerritoryAction state={state} action={`estate-repair:${id}`} outline><Hammer size={15} /> Reparar construção</TerritoryAction>
         {holding.building === "warehouse" ? <EstateStorage state={state} id={id} /> : <>
           <p className="panel-prose">O abrigo permite descansar por 4 horas, recuperando vitalidade e energia com 1 madeira para o fogo. O relógio e as obrigações continuam avançando.</p>
+          <p className="panel-hint">{formatRestPreview(state, 4)}</p>
           <TerritoryAction state={state} action={`estate-rest:${id}`}><House size={15} /> Descansar no abrigo · 1 madeira</TerritoryAction>
         </>}
       </>}

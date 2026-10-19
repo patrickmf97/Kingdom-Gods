@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { weatherFor } from "../weather";
+import { createLandscapeFinish } from "./landscape-finish";
 import { interiorForZone } from "../interiors";
 import { createInteriorLayer } from "./interiors";
 import { createHighlandsLayer } from "./highlands";
@@ -763,7 +765,7 @@ class EnvironmentBuilder {
 
   update(state: GameState, timeSeconds: number): void {
     if (this.disposed) return;
-    this.horizon?.update(state.minutes);
+    this.horizon?.update(state.minutes, weatherFor(state.day, state.minutes, this.zone));
     this.vegetation?.update(timeSeconds);
     this.updateDynamic(state);
     for (const node of this.nodes) {
@@ -815,7 +817,7 @@ class EnvironmentBuilder {
   }
 }
 
-export function createRegionEnvironment(zone: Zone, state: GameState): RegionEnvironment {
+function createBaseEnvironment(zone: Zone, state: GameState): RegionEnvironment {
   if (zone === "highlands") return createHighlandsLayer(state);
   const room = interiorForZone(zone);
   if (room) return createInteriorLayer(room, state);
@@ -831,4 +833,20 @@ export function createRegionEnvironment(zone: Zone, state: GameState): RegionEnv
   return { group: builder.group,
     update: (nextState, timeSeconds) => builder.update(nextState, timeSeconds),
     dispose: () => builder.dispose() };
+}
+
+/** The finish owns its batches; remove it before the legacy region traversal disposes its own instances. */
+export function createRegionEnvironment(zone: Zone, state: GameState): RegionEnvironment {
+  const environment = createBaseEnvironment(zone, state);
+  const finish = createLandscapeFinish(zone, state);
+  if (!finish) return environment;
+  environment.group.add(finish.group);
+  let disposed = false;
+  return { group: environment.group,
+    update(next, time) { if (!disposed) { environment.update(next, time); finish.update(next, time); } },
+    dispose() {
+      if (disposed) return; disposed = true;
+      environment.group.remove(finish.group); finish.dispose(); environment.dispose();
+    },
+  };
 }

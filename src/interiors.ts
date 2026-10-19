@@ -151,6 +151,7 @@ export const INTERIORS: InteriorDefinition[] = [
   room("farmhouse-room", "Moradia da linhagem", "farmhouse",
     { zone: "village", objectId: "farmhouse", x: 2090, y: 815 }, "property", [
       station("property", "farm", 255, 390, "Escrivaninha da propriedade"),
+      station("home-bed", "house", 630, 350, "Cama da linhagem"),
     ], [
       prop("bed", 730, 285, 110, 175, { color: 0x938060 }),
       prop("wardrobe", 730, 160, 120, 45), prop("stove", 150, 200, 95, 100),

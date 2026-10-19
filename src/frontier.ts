@@ -1,6 +1,7 @@
 import { ITEMS } from "./data";
 import { civicBudget, frontierJobFunded } from "./civic-budget";
 import { RESOURCE_NODES, objectsForZone, resourceNode } from "./regions";
+import { weatherFor } from "./weather";
 import type {
   ExpansionHooks,
   FrontierJob,
@@ -213,7 +214,8 @@ export function updateFrontierWork(state: GameState, deltaSeconds: number, hooks
     cancelWork(state, hooks, "O trabalho foi interrompido antes da coleta.");
     return;
   }
-  work.elapsed = Math.min(node.duration, work.elapsed + deltaSeconds);
+  const rate = weatherFor(state.day, state.minutes, node.zone).gatheringRate;
+  work.elapsed = Math.min(node.duration, work.elapsed + deltaSeconds * rate);
   if (work.elapsed < node.duration - 1e-7) return;
   const resource = state.frontier.resources[node.id];
   if (!resource || resource.remaining < 1 || !fitsYield(state, node)) {
