@@ -633,6 +633,8 @@ function regionalProduction(state: GameState): void {
   const availableWorker = (id: string) => state.npcs.find((npc) =>
     npc.id === id && id !== state.apostle.id && state.economy.worker?.npcId !== id &&
     !state.family.some((person) => person.id === id && !person.alive));
+  const specialist = (id: string, fallback: string) =>
+    state.worldLife?.residents.includes(id) && availableWorker(id) ? id : fallback;
   const pay = (id: string, coins: number) => {
     state.merchantGold -= coins;
     state.economy.npcSavings[id] = (state.economy.npcSavings[id] || 0) + coins;
@@ -671,8 +673,8 @@ function regionalProduction(state: GameState): void {
   // The same physical recipes as the apostle's workshops, with one crown of
   // merchant-paid labor per batch. A private estate contract occupies Lina.
   for (const workshop of [
-    { recipe: RECIPES[0], npcId: "farmer", capacity: 3 },
-    { recipe: RECIPES[1], npcId: "matron", capacity: 4 },
+    { recipe: RECIPES[0], npcId: specialist("alpha12-miller", "farmer"), capacity: 3 },
+    { recipe: RECIPES[1], npcId: specialist("alpha12-baker", "matron"), capacity: 4 },
   ]) {
     const { recipe } = workshop;
     const headroom = Math.min(...amounts(recipe.outputs).map(([item, quantity]) =>

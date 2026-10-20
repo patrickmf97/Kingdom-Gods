@@ -7,23 +7,9 @@ import type { Point, Zone } from "../types";
 const SCALE = 1 / 24;
 const TAU = Math.PI * 2;
 
-/** These are also the actual painted paths: vegetation and roads share one source. */
-export const VILLAGE_LANDSCAPE_PATHS: Point[][] = [
-  [[1260, 476], [1258, 630], [1256, 842]],
-  [[1230, 1456], [1306, 1396], [1456, 1290]],
-  [[408, 912], [580, 876], [776, 834], [1020, 828], [1256, 842], [1478, 872], [1882, 896]],
-  [[710, 620], [730, 696], [776, 834]],
-  [[1000, 1080], [1016, 952], [1020, 828]],
-  [[1564, 660], [1510, 764], [1478, 872]],
-  [[1640, 1100], [1606, 984], [1478, 872]],
-  [[1282, 826], [1284, 940], [1392, 1090], [1456, 1290], [1698, 1446], [1950, 1570], [2170, 1660]],
-  [[1882, 896], [1990, 752], [2116, 548], [2110, 340]],
-  [[776, 834], [692, 1004], [616, 1236], [630, 1518], [816, 1906]],
-  [[1900, 900], [1980, 840], [2090, 815]],
-].map(path => path.map(([x, y]) => ({ x, y })));
-
-const RIVER: Point[] = [[-120, 436], [102, 524], [244, 702], [388, 908], [320, 1130],
-  [274, 1304], [406, 1554], [300, 1774], [136, 1980]].map(([x, y]) => ({ x, y }));
+export { VILLAGE_LANDSCAPE_PATHS } from "../landscape-paths";
+import { VILLAGE_LANDSCAPE_PATHS } from "../landscape-paths";
+import { RIVER_CENTERLINE as RIVER, LAKE_OUTLINE, lakeEdgeDistance, pointInPolygon, shorelinePoint } from "../water";
 
 export type GroundCoverKind = "grass" | "flowers" | "ferns" | "shrubs" | "reeds";
 type TreeKind = "oak" | "broadleaf" | "pine" | "willow";
@@ -73,9 +59,9 @@ export function groundCoverAllowed(zone: "village" | "wilderness" | "highlands",
     if (ESTATE_DEFS.some(estate => inRect(point, estate.x - estate.width / 2, estate.y - estate.height,
       estate.x + estate.width / 2, estate.y + 115, margin + 15))) return false;
     // Reserve the shoreline, leaving its south interaction point and the path open.
-    if (kind === "reeds") return inRect(point, 2248, 1398, 2672, 1662, 0) &&
-      !inRect(point, 2268, 1418, 2652, 1642, margin);
-    if (inRect(point, 2248, 1398, 2672, 1662, margin)) return false;
+    const shoreDistance = lakeEdgeDistance(point);
+    if (kind === "reeds") return !pointInPolygon(point, LAKE_OUTLINE) && shoreDistance > margin + 4 && shoreDistance < 48;
+    if (pointInPolygon(point, LAKE_OUTLINE) || shoreDistance < margin + 30) return false;
   } else if (kind === "reeds") {
     return false;
   }
@@ -407,9 +393,7 @@ export class RegionVegetation {
           point = { x: a.x + (b.x - a.x) * fraction - (b.y - a.y) / length * distance * side,
             y: a.y + (b.y - a.y) * fraction + (b.x - a.x) / length * distance * side };
         } else if (kind === "reeds") {
-          const side = Math.floor(random() * 4);
-          point = side < 2 ? { x: 2248 + random() * 424, y: side ? 1660 : 1400 }
-            : { x: side === 2 ? 2250 : 2670, y: 1398 + random() * 264 };
+          point = shorelinePoint(random(), 26 + random() * 15);
         } else {
           const angle = random() * TAU, distance = Math.sqrt(random()) * center!.radius;
           point = { x: center!.x + Math.cos(angle) * distance, y: center!.y + Math.sin(angle) * distance };

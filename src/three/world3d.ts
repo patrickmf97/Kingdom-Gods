@@ -10,6 +10,8 @@ import { createRegionEnvironment, type RegionEnvironment } from "./environment";
 import { WorldEffects } from "./effects";
 import { weatherFor } from "../weather";
 import { WeatherLayer, atmosphereFor } from "./weather";
+import { LightningLayer } from "./lightning";
+import { populationRole } from "../population";
 import { createWildlifeLayer } from "./wildlife";
 import { animalsForZone } from "../wildlife";
 import { cameraChange, DEFAULT_CAMERA_DISTANCE, DEFAULT_CAMERA_YAW, screenToMap, toMap, toWorld, WORLD_SCALE } from "./coordinates";
@@ -24,6 +26,7 @@ class ThreeWorld {
   private environment?: RegionEnvironment;
   private effects = new WorldEffects();
   private weather = new WeatherLayer();
+  private lightning = new LightningLayer();
   private wildlife = createWildlifeLayer();
   private presentationTime = 0;
   private actors = new Map<string, Actor>();
@@ -87,7 +90,7 @@ class ThreeWorld {
     this.renderer.shadowMap.enabled = false;
     this.scene.background = new THREE.Color(0xb7c8b3);
     this.scene.fog = new THREE.Fog(0xb7c8b3, 65, 155);
-    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.wildlife.group);
+    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.lightning.group, this.wildlife.group);
     this.routeLine.frustumCulled = false;
     this.routeLine.renderOrder = 5;
     this.observer.observe(this.element);
@@ -310,10 +313,10 @@ class ThreeWorld {
     this.renderer.domElement.dataset.region = zone;
     const point = toWorld(scenic ? { x: 1270, y: 880 } : store.state.apostle);
     this.focus.set(point.x, .7, point.z);
-    this.syncActors(performance.now() / 1000);
+    this.syncActors(this.presentationTime);
   }
   private actor(id: string, appearance: ActorAppearance, kind: "human" | "skeleton" = "human"): Actor {
-    const signature = `${appearance.skin}:${appearance.hair}:${appearance.eyes}:${appearance.outfit}:${kind}`;
+    const signature = `${appearance.skin}:${appearance.hair}:${appearance.eyes}:${appearance.outfit}:${kind}:${appearance.role ?? ""}:${appearance.sex ?? ""}:${appearance.age ?? ""}:${appearance.variant ?? ""}`;
     let actor = this.actors.get(id);
     if (actor && actor.appearance !== signature) { this.scene.remove(actor.model.group); actor.model.dispose(); actor.label.remove(); this.actors.delete(id); actor = undefined; }
     if (!actor) {
@@ -351,13 +354,18 @@ class ThreeWorld {
     const state = store.state;
     const living = new Set<string>();
     if (!this.scenic && state.apostle.alive) {
-      this.placeActor("player", state.apostle, state.apostle, state.apostle.name, time, "human", state.apostle.equipment === "sword"); living.add("player");
+      this.placeActor("player", state.apostle, { ...state.apostle, role: "apostle", variant: state.apostle.id }, state.apostle.name, time, "human", state.apostle.equipment === "sword"); living.add("player");
     }
     const npcs = state.npcs.filter(npc => npc.zone === this.zone);
     for (const npc of npcs) {
       const relative = state.family.find(person => person.id === npc.id);
       if (relative?.alive === false || (!this.scenic && npc.id === state.apostle.id)) continue;
-      const appearance = relative || { skin: "#c9936f", hair: npc.id === "matron" ? "#938775" : "#57402e", eyes: "#566d59", outfit: npc.color };
+      const seed = [...npc.id].reduce((sum, letter) => (sum * 31 + letter.charCodeAt(0)) >>> 0, 0);
+      const role = populationRole(state, npc.id) ?? ({ matron: "matron", merchant: "merchant", mira: "farmer", aldric: "smith", guard: "guard", farmer: "farmer" } as Record<string, string>)[npc.id] ?? "traveler";
+      const appearance: ActorAppearance = { ...(relative || { skin: ["#d3a17b", "#b77d59", "#edc7a6", "#8b5b42"][seed % 4],
+        hair: npc.id === "matron" ? "#938775" : ["#57402e", "#31271f", "#a17649", "#614c3d"][seed % 4], eyes: "#566d59", outfit: npc.color }),
+        role, variant: npc.id, age: relative?.age ?? (npc.id === "matron" ? 64 : 24 + seed % 25),
+        sex: relative?.sex ?? (["matron", "mira", "farmer", "alpha12-baker", "alpha12-innkeeper", "alpha12-ranger", "alpha12-merchant-trail", "alpha12-pilgrim"].includes(npc.id) ? "female" : "male") };
       this.placeActor(npc.id, npc, appearance, npc.name, time); living.add(npc.id);
     }
     if (this.zone === "dungeon") for (const enemy of state.enemies.filter(enemy => enemy.alive)) {
@@ -373,14 +381,34 @@ class ThreeWorld {
   }
   private updateLabels(): void {
     const active = !this.scenic && store.state.phase === "playing" && !blockedWorldInput();
-    for (const [id, actor] of this.actors) {
+    const nearest = active ? store.getNearest() : null;
+    const occupied: { left: number; right: number; top: number; bottom: number }[] = [];
+    // Keep the apostle and the interaction target readable when a crowd meets.
+    const actors = [...this.actors].sort(([aId, a], [bId, b]) => {
+      const priority = (id: string, actor: Actor) => id === "player" ? -2 :
+        id === nearest?.id ? -1 : distance(actor, store.state.apostle);
+      return priority(aId, a) - priority(bId, b);
+    });
+    for (const [id, actor] of actors) {
       const point = actor.model.group.position.clone(); point.y += 2.55;
       const screen = this.project(point);
       const close = id === "player" || distance(actor, store.state.apostle) < 430;
       actor.label.hidden = !active || !screen.visible || !close;
-      actor.label.style.transform = `translate(${screen.x}px,${screen.y}px) translate(-50%,-100%)`;
+      if (actor.label.hidden) continue;
+      // Estimate text width without synchronous layout reads in the render loop.
+      const halfWidth = Math.min(145, (actor.label.textContent?.length ?? 0) * 6 + 16) / 2;
+      let labelY = screen.y, placed = false;
+      for (let row = 0; row < 3; row++) {
+        labelY = screen.y - row * 21;
+        const box = { left: screen.x - halfWidth - 3, right: screen.x + halfWidth + 3,
+          top: labelY - 20, bottom: labelY + 2 };
+        if (box.top < 0 || occupied.some(other => box.left < other.right && box.right > other.left &&
+          box.top < other.bottom && box.bottom > other.top)) continue;
+        occupied.push(box); placed = true; break;
+      }
+      actor.label.hidden = !placed;
+      actor.label.style.transform = `translate(${screen.x}px,${labelY}px) translate(-50%,-100%)`;
     }
-    const nearest = active ? store.getNearest() : null;
     this.prompt.hidden = !nearest || nearest.distance > 150;
     if (nearest && !this.prompt.hidden) {
       const world = toWorld(nearest);
@@ -407,6 +435,7 @@ class ThreeWorld {
     const atmosphere = atmosphereFor(store.state.minutes, weather);
     this.ambient.intensity = interior ? 1.6 : atmosphere.ambientIntensity;
     this.sunlight.intensity = interior ? .9 : atmosphere.sunIntensity;
+    if (!interior) { this.ambient.intensity += this.lightning.flash; this.sunlight.intensity += this.lightning.flash; }
     this.ambient.color.copy(interior ? new THREE.Color(0xfff2d6) : atmosphere.ambient);
     this.ambient.groundColor.copy(interior ? new THREE.Color(0x5c7558) : atmosphere.ground);
     this.sunlight.color.copy(interior ? new THREE.Color(0xffebc0) : atmosphere.sun);
@@ -440,11 +469,11 @@ class ThreeWorld {
     } else this.release();
     this.effects.update(store.state, active ? dt : 0);
     if (active || (scenic && !document.hidden)) this.presentationTime += dt;
-    const time = stamp / 1000;
-    this.syncActors(time);
+    this.syncActors(this.presentationTime);
     this.environment?.update(store.state, this.presentationTime);
     this.weather.update(weatherFor(store.state.day, store.state.minutes, zone), this.presentationTime,
       scenic ? { x: 1270, y: 880 } : store.state.apostle, store.state.minutes);
+    this.lightning.update(store.state, zone, this.presentationTime);
     this.wildlife.update(store.state, zone, this.presentationTime);
     this.updateCamera(Math.max(dt, .001));
     if (stamp - this.lastLabels > 45) { this.updateLabels(); this.lastLabels = stamp; }
@@ -464,6 +493,11 @@ class ThreeWorld {
       canvas.dataset.weatherCount = String(this.weather.count);
       canvas.dataset.weatherCapacity = String(this.weather.capacity);
       canvas.dataset.weatherDrawCalls = String(this.weather.drawCalls);
+      canvas.dataset.lightningWarning = JSON.stringify(store.state.worldLife.storm.warning);
+      canvas.dataset.lightningImpact = JSON.stringify(store.state.worldLife.storm.impact);
+      canvas.dataset.npcCount = String(store.state.npcs.length);
+      canvas.dataset.visibleNpcCount = String(store.state.npcs.filter(npc => npc.zone === zone).length);
+      canvas.dataset.npcs = JSON.stringify(store.state.npcs.filter(npc => npc.zone === zone).map(({ id, name, x, y, role }) => ({ id, name, x, y, role })));
       const animals = animalsForZone(store.state, zone);
       canvas.dataset.animalCount = String(animals.length);
       canvas.dataset.animals = JSON.stringify(animals.map(({ id, species, x, y, behavior, trust }) => ({ id, species, x, y, behavior, trust })));
@@ -496,6 +530,7 @@ class ThreeWorld {
     this.prompt.removeEventListener("click", this.promptClick);
     this.environment?.dispose();
     this.weather.dispose();
+    this.lightning.dispose();
     this.effects.dispose();
     this.wildlife.dispose();
     for (const actor of this.actors.values()) actor.model.dispose();

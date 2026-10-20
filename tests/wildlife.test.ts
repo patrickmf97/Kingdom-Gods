@@ -31,7 +31,7 @@ const separation = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
 test("new campaigns author exactly 22 named animals with stable legal habitats", () => {
   const { state } = game();
-  assert.equal(state.version, 7);
+  assert.equal(state.version, 8);
   assert.equal(ANIMAL_DEFS.length, 22);
   assert.equal(new Set(ANIMAL_DEFS.map(animal => animal.id)).size, 22);
   assert.equal(new Set(ANIMAL_DEFS.map(animal => animal.name)).size, 22);

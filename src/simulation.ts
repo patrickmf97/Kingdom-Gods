@@ -12,6 +12,9 @@ import { animalDefinition } from "./wildlife-data";
 import { entranceForObject, interiorAllowed, interiorForZone } from "./interiors";
 import { formatRestPreview } from "./rest";
 import { weatherFor } from "./weather";
+import { createStormState, updateStorms, clearStormExposure } from "./storms";
+import { initializePopulation, isVisitor, populationDefinition } from "./population";
+import { executeTravelerAction, travelerDialog } from "./travelers";
 import {
   findPath,
   isWalkable,
@@ -260,8 +263,8 @@ function newEnemies(): Enemy[] {
 export function initialState(): PersistentGameState {
   const npcs = newNpcs();
   const apostle = newApostle();
-  return {
-    version: 7,
+  const state: PersistentGameState = {
+    version: 8,
     started: false,
     intro: true,
     phase: "title",
@@ -310,6 +313,7 @@ export function initialState(): PersistentGameState {
     life: createLifeState(npcs, [], apostle),
     territory: createTerritoryState(1),
     wildlife: createWildlifeState(1),
+    worldLife: { residents: [], travelers: {}, storm: createStormState() },
     simulation: {
       marriedAt: {},
       gathering: {},
@@ -317,6 +321,8 @@ export function initialState(): PersistentGameState {
       lastChildDay: -100,
     },
   };
+  initializePopulation(state);
+  return state;
 }
 
 export function getCalendar(state: GameState): {
@@ -566,6 +572,15 @@ export class GameStore {
     const wasWorking = !!this.state.frontier.work;
     updateFrontierWork(this.state, deltaSeconds, this.economicHooks());
     if (wasWorking && !this.state.frontier.work) this.scheduleAutoSave();
+    const stormSequence = this.state.worldLife.storm.sequence;
+    const stormWarning = this.state.worldLife.storm.warning?.id;
+    updateStorms(this.state, deltaSeconds, {
+      damage: amount => this.damage(amount), message: (text, type) => this.message(text, type),
+      remember: (title, text, emotion, intensity) => this.remember(title, text, emotion, intensity),
+    });
+    if (stormSequence !== this.state.worldLife.storm.sequence || stormWarning !== this.state.worldLife.storm.warning?.id)
+      this.scheduleAutoSave();
+    if (!this.playing()) return;
     if (this.state.zone === "wilderness" || this.state.zone === "mine") {
       for (const object of objectsForZone(this.state.zone))
         if (distance(apostle, object) <= 130)
@@ -602,6 +617,7 @@ export class GameStore {
   }
   private rest(hours: number, healing: number | null): void {
     cancelWork(this.state);
+    clearStormExposure(this.state);
     this.advanceTime(hours * 60);
     if (this.playing()) {
       const apostle = this.state.apostle;
@@ -997,6 +1013,7 @@ export class GameStore {
       const friend = this.state.npcs.find(
         (npc) =>
           npc.id !== "matron" &&
+          !isVisitor(this.state, npc.id) &&
           npc.id !== this.state.economy.worker?.npcId &&
           npc.trust >= 65 &&
           npc.relation >= 60 &&
@@ -1108,8 +1125,9 @@ export class GameStore {
     const node = resourceNode(id);
     if (node && node.zone === this.state.zone) {
       const resource = this.state.frontier.resources[id];
+      const weather = weatherFor(this.state.day, this.state.minutes, this.state.zone);
       return { name: node.label, role: "Trabalho por prática",
-        text: `${resource.remaining} cargas disponíveis. O trabalho leva ${(node.duration / weatherFor(this.state.day, this.state.minutes, this.state.zone).gatheringRate).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} segundos no tempo atual e exige ${node.stamina} de energia.${weatherFor(this.state.day, this.state.minutes, this.state.zone).gatheringRate < 1 ? " A chuva reduz o ritmo da coleta externa a 80%; minas e oficinas continuam abrigadas." : ""}${node.tool ? ` Use ${node.tool === "pickaxe" ? "uma picareta" : "um machado"} em bom estado.` : " Pode ser recolhido à mão."}`,
+        text: `${resource.remaining} cargas disponíveis. O trabalho leva ${(node.duration / weather.gatheringRate).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} segundos no tempo atual e exige ${node.stamina} de energia.${weather.gatheringRate < 1 ? ` ${weather.kind === "storm" ? "A tempestade" : "A chuva"} reduz o ritmo da coleta externa a ${Math.round(weather.gatheringRate * 100)}%; minas e oficinas continuam abrigadas.` : ""}${node.tool ? ` Use ${node.tool === "pickaxe" ? "uma picareta" : "um machado"} em bom estado.` : " Pode ser recolhido à mão."}`,
         options: [{ label: node.resource === "ore" ? "Extrair minério" : node.resource === "wood" ? "Recolher madeira" : node.resource === "stone" ? "Extrair pedra" : "Colher ervas", action: `start-work:${id}`, disabled: resource.remaining <= 0 }, { label: "Voltar", action: "close" }] };
     }
     if (id === "wild-camp") return {
@@ -1182,6 +1200,15 @@ export class GameStore {
     };
   }
   private npcDialog(npc: Npc): Dialog {
+    if (isVisitor(this.state, npc.id)) {
+      const visit = travelerDialog(this.state, npc.id)!;
+      return { ...visit, options: [
+        { label: "Conversar sobre a viagem", action: `socialize:${npc.id}` },
+        ...(populationDefinition(this.state, npc.id)?.role === "merchant"
+          ? [{ label: "Negociar com as caravanas", action: "open-travelers" }] : []),
+        { label: "Voltar", action: "close" },
+      ] };
+    }
     if (npc.id === "matron")
       return {
         name: npc.name,
@@ -1422,6 +1449,9 @@ export class GameStore {
       return;
     }
     if (!this.playing()) return;
+    if (executeTravelerAction(this.state, action, this.economicHooks())) {
+      this.scheduleAutoSave(); this.notify(); return;
+    }
     if (executeWildlifeAction(this.state, action, this.economicHooks())) {
       this.scheduleAutoSave(); this.notify(); return;
     }
@@ -1726,6 +1756,10 @@ export class GameStore {
       this.message("Aproxime-se da pessoa para conversar.", "warning");
       return;
     }
+    if (verb !== "socialize" && isVisitor(this.state, id)) {
+      this.message("Este viajante segue sua própria jornada. Você pode conversar e negociar durante a passagem.", "warning");
+      return;
+    }
     if (verb === "marry") {
       if (
         this.state.apostle.age < 16 ||
@@ -1752,7 +1786,8 @@ export class GameStore {
         id,
         name: npc.name,
         surname: this.state.apostle.surname,
-        sex: id === "mira" || id === "farmer" ? "female" : "male",
+        sex: id === "mira" || id === "farmer" || (populationDefinition(this.state, id) &&
+          ["alpha12-baker", "alpha12-innkeeper", "alpha12-ranger"].includes(id)) ? "female" : "male",
         skin: "#cba282",
         hair: "#4d3930",
         eyes: "#90a193",

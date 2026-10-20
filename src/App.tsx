@@ -41,7 +41,7 @@ import { MAX_CAMPAIGN_BYTES, parseCampaign } from "./campaign-files";
 import { getRendererMode, mountWorld, worldInput } from "./world";
 import { GamePanel, ItemIcon, Portrait, LocalMapTerrain, mapObjectsForState } from "./Panels";
 import { interiorForZone } from "./interiors";
-import { WeatherChip } from "./WeatherPanel";
+import { StormWarning, WeatherChip } from "./WeatherPanel";
 import { weatherFor } from "./weather";
 import "./three.css";
 
@@ -183,7 +183,7 @@ export default function App() {
     };
     const panelListener = (e: Event) => {
       const requested = (e as CustomEvent<Panel>).detail;
-      if (requested === "crafting" && store.state.phase === "playing") {
+      if ((requested === "crafting" || requested === "travelers") && store.state.phase === "playing") {
         setDialog(null);
         setPanel(requested);
         setPaused(false);
@@ -363,6 +363,8 @@ export default function App() {
     } else if (action === "open-journal") {
       setDialog(null);
       setPanel("journal");
+    } else if (action === "open-travelers") {
+      open("travelers");
     }
   };
   const calendar = store.getCalendar();
@@ -430,7 +432,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.11 · {rendererMode.toUpperCase()}</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.12 · {rendererMode.toUpperCase()}</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -598,7 +600,7 @@ export default function App() {
             </div>
           </aside>
         )}
-        <main className={`world-area ${cameraOpen ? "camera-open" : ""}`}>
+        <main className={`world-area ${cameraOpen ? "camera-open" : ""} ${s.worldLife?.storm.warning?.zone === s.zone ? "has-storm-warning" : ""}`}>
           <div
             className="world-canvas"
             ref={worldEl}
@@ -637,6 +639,7 @@ export default function App() {
                 </span>
               </div>
               <WeatherChip state={s} season={calendar.season} onOpen={() => open("journal")} />
+              <StormWarning state={s} />
               {mobile && (
                 <div className="mobile-vitals">
                   <div>
@@ -940,7 +943,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  ALPHA 0.11 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.12 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />

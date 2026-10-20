@@ -42,7 +42,7 @@ function livedV5(): Record<string, any> {
 function currentCampaign(): GameState {
   const state = migrateState(livedV5());
   assert.ok(state, "a valid v5 campaign migrates");
-  assert.equal(state.version, 7);
+  assert.equal(state.version, 8);
   return state;
 }
 
@@ -51,7 +51,7 @@ test("v5 migration adds wildlife, NPC regions and highland reserves and preserve
   const before = structuredClone(old);
   const migrated = migrateState(old);
   assert.ok(migrated);
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.equal(validateState(migrated), true);
   assert.equal(Object.keys(migrated.wildlife.animals).length, 22);
   assert.deepEqual(Object.keys(migrated.wildlife.animals).sort(), ANIMAL_DEFS.map(def => def.id).sort());
@@ -98,7 +98,7 @@ test("v5 snapshots with a conflicting wildlife extension are rejected without ov
   }
 });
 
-test("v7 requires every wildlife field and the complete authored animal catalog", () => {
+test("v8 requires every wildlife field and the complete authored animal catalog", () => {
   const valid = currentCampaign();
   const mutations: ((state: GameState) => void)[] = [
     state => { delete (state as Partial<GameState>).wildlife; },
@@ -126,7 +126,7 @@ test("v7 requires every wildlife field and the complete authored animal catalog"
   }
 });
 
-test("v7 validates identity, behavior, bounds, timers, trust, feeding dates and random seed", () => {
+test("v8 validates identity, behavior, bounds, timers, trust, feeding dates and random seed", () => {
   const valid = currentCampaign();
   const animal = valid.wildlife.animals["chicken-1"];
   const invalidFields: Record<string, unknown[]> = {
@@ -159,7 +159,7 @@ test("v7 validates identity, behavior, bounds, timers, trust, feeding dates and 
   }
 });
 
-test("v7 wildlife round trip preserves movement, feeding, observations and paused world time", async () => {
+test("v8 wildlife round trip preserves movement, feeding, observations and paused world time", async () => {
   await clearSavedGame();
   try {
     const state = currentCampaign();
@@ -178,7 +178,7 @@ test("v7 wildlife round trip preserves movement, feeding, observations and pause
     await saveGame(state);
     const loaded = await loadGame();
     assert.ok(loaded);
-    assert.equal(loaded.version, 7);
+    assert.equal(loaded.version, 8);
     assert.equal(loaded.day, state.day);
     assert.equal(loaded.minutes, state.minutes);
     assert.deepEqual(loaded.wildlife, state.wildlife);

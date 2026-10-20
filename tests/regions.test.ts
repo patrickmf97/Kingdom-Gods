@@ -1,3 +1,4 @@
+import { lakeContainsFeet } from "../src/water";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findPath, isWalkable, moveWithCollisions, objectApproach } from "../src/navigation";
@@ -83,7 +84,9 @@ test("landmarks form a traversable open-world route while the lake and tent rema
   assert.equal(isWalkable({ x: 2460, y: 1510 }, context("wilderness")), false);
   assert.equal(isWalkable({ x: 1070, y: 1400 }, context("wilderness")), false);
   const bank = moveWithCollisions({ x: 2460, y: 1690 }, { x: 0, y: -400 }, context("wilderness"));
-  assert.ok(bank.y >= 1639 && bank.y < 1690, "a dodge cannot tunnel through lake water");
+  assert.ok(bank.y > 1600 && bank.y < 1690, "a dodge reaches the natural south shore");
+  assert.equal(lakeContainsFeet(bank), false, "feet stop outside the polygon clearance");
+  assert.equal(lakeContainsFeet({ ...bank, y: bank.y - 4 }), true, "the next swept step meets visible water");
 });
 
 test("mine wall edges include feet radius without introducing walls at overlapping chamber joins", () => {

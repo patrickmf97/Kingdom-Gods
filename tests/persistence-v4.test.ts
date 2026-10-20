@@ -63,7 +63,7 @@ test("upgrades a strict v3 snapshot without moving time, resources, memories or 
   const before = structuredClone(old);
   const result = migrateState(old);
   assert.ok(result);
-  assert.equal(result.version, 7);
+  assert.equal(result.version, 8);
   assert.equal(validateState(result), true);
   assert.deepEqual(result.territory, emptyTerritory(old.day));
   assert.deepEqual(historicalProjection(result, 3), before);
@@ -104,7 +104,7 @@ test("damaged v3 frontier, life or economics cannot be concealed by territory de
   }
 });
 
-test("v7 requires every territory field and each authored parcel instead of repairing current data", () => {
+test("v8 requires every territory field and each authored parcel instead of repairing current data", () => {
   const valid = currentCampaign();
   assert.equal(validateState(valid), true);
   const absent = structuredClone(valid) as unknown as Record<string, any>;
@@ -123,7 +123,7 @@ test("v7 requires every territory field and each authored parcel instead of repa
   }
 });
 
-test("v7 parcel ownership, construction, dates and warehouse stock satisfy legal and physical limits", () => {
+test("v8 parcel ownership, construction, dates and warehouse stock satisfy legal and physical limits", () => {
   const valid = estateCampaign();
   assert.equal(validateState(valid), true);
   const mutations: ((state: GameState) => void)[] = [
@@ -229,7 +229,7 @@ test("a damaged v5 current record recovers a historical v3 backup without modify
   } });
   try {
     const restored = await loadGame();
-    assert.equal(restored?.version, 7);
+    assert.equal(restored?.version, 8);
     assert.equal(restored?.gold, 93);
     assert.match(getPersistenceError() ?? "", /backup/);
     assert.equal(values.get("kingdom-gods:save"), JSON.stringify(invalid));

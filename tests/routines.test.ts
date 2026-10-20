@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { POPULATION_DEFINITIONS } from "../src/population";
 import { GameStore, initialState } from "../src/simulation";
 import { updateLifeNeeds, processLifeDay } from "../src/life";
 import type { ExpansionHooks } from "../src/types";
@@ -13,7 +14,8 @@ function game() {
 }
 
 test("each initial resident has an explicit physical region", () => {
-  for (const npc of initialState().npcs) assert.equal(npc.zone, npc.id === "matron" ? "orphanage" : "village");
+  for (const npc of initialState().npcs) assert.equal(npc.zone,
+    POPULATION_DEFINITIONS.find(profile => profile.id === npc.id)?.npc.zone ?? (npc.id === "matron" ? "orphanage" : "village"));
 });
 
 test("indoor coordinate coincidence cannot buy food or recover fatigue in another region", () => {

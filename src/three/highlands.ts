@@ -232,7 +232,7 @@ export function createHighlandsLayer(state: GameState): HighlandsLayer {
 
   function update(next: GameState, timeSeconds: number): void {
     if (disposed) return;
-    vegetation.update(timeSeconds); horizon?.update(next.minutes, weatherFor(next.day, next.minutes, "highlands"));
+    vegetation.update(timeSeconds); horizon?.update(next.minutes, weatherFor(next.day, next.minutes, "highlands"), timeSeconds);
     for (const node of nodes) {
       const live = (next.frontier.resources[node.id]?.remaining ?? 1) > 0;
       node.available.visible = live; node.depleted.visible = !live;

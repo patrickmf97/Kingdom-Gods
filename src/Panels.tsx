@@ -41,13 +41,17 @@ import { marketQuote } from "./market";
 import { civicBudget } from "./civic-budget";
 import { findPath, objectApproach } from "./navigation";
 import type { NavigationContext } from "./navigation";
-import { objectsForZone, regionForZone, resourceNode, RESOURCE_NODES, WILDERNESS_ROADS } from "./regions";
+import { objectsForZone, regionForZone, resourceNode, RESOURCE_NODES } from "./regions";
 import { ToolsPanel, FrontierJobs, FamilyEducation, FamilyHistory, NpcNeeds, CampaignTransfer } from "./ExpansionPanels";
 import { TerritoryPanels } from "./TerritoryPanels";
 import { estateBuildings, estateSolid } from "./territory-data";
 import { entranceForObject, interiorAllowed, interiorForZone } from "./interiors";
 import { HIGHLAND_BUILDINGS, HIGHLAND_RIDGES, HIGHLAND_ROADS } from "./highlands";
 import { WeatherPanel } from "./WeatherPanel";
+import { TravelerPanel } from "./TravelerPanel";
+import { isVisitor, populationDefinition, VISITOR_DEFINITIONS } from "./population";
+import { LAKE_OUTLINE } from "./water";
+import { VILLAGE_LANDSCAPE_PATHS, WILDERNESS_ROADS } from "./landscape-paths";
 import { weatherFor } from "./weather";
 import "./panels.css";
 
@@ -98,6 +102,11 @@ const PANEL_META = {
     title: "Mercado de Valeverde",
     eyebrow: "Comércio & provisões",
     icon: ShoppingBasket,
+  },
+  travelers: {
+    title: "Viajantes e caravanas",
+    eyebrow: "Encontros pelas estradas",
+    icon: Compass,
   },
   crafting: {
     title: "Produção de Valeverde",
@@ -805,6 +814,9 @@ function Journal({ state }: { state: GameState }) {
   return (
     <>
       <WeatherPanel state={state} />
+      <button className="panel-travelers-entry" onClick={() => document.dispatchEvent(new CustomEvent("kg-panel", { detail: "travelers" }))}>
+        <Compass size={22} aria-hidden="true" /><span><strong>Viajantes e caravanas</strong><small>{VISITOR_DEFINITIONS.filter(definition => populationDefinition(state, definition.id) && state.npcs.some(npc => npc.id === definition.id)).length} viajantes nesta campanha · estoques e encontros</small></span><ChevronRight size={18} aria-hidden="true" />
+      </button>
       <div className="panel-tabs" role="group" aria-label="Seções do diário">
         {["Missões", "Memórias", "Registros"].map((name) => (
           <button
@@ -941,6 +953,7 @@ function Relations({ state }: { state: GameState }) {
   const nearby = isPlaying(state) && nearNpc(state, npc);
   const spouse = state.apostle.partnerId;
   const partner = npc.id !== "matron" && npc.id !== state.apostle.id;
+  const romance = partner && !isVisitor(state, npc.id);
   const simulation = (state as PersistentGameState).simulation;
   const now = (state.day - 1) * 1440 + state.minutes;
   const cooldown = Math.max(
@@ -1014,7 +1027,7 @@ function Relations({ state }: { state: GameState }) {
               <Users size={15} /> Conversar
             </button>
           ) : null}
-          {partner ? (
+          {romance ? (
             <>
               <button
                 className="panel-button panel-button-outline"
@@ -1054,7 +1067,7 @@ function Relations({ state }: { state: GameState }) {
             {partner
               ? cooldown > 0
                 ? "Este encontro está recente. Feche o painel e viva alguns instantes antes de conversar novamente."
-                : "Cortejo: 25 de afeto e 1 pão. Casamento: 80 de afeto, 55 de confiança e idade adulta."
+                : romance ? "Cortejo: 25 de afeto e 1 pão. Casamento: 80 de afeto, 55 de confiança e idade adulta." : "Viajantes guardam os laços e as memórias dos encontros. Procure as caravanas no diário para negociar."
               : "A matrona orienta seus primeiros passos. Use E perto dela para ouvir sua história."}
           </p>
         )}
@@ -1897,18 +1910,6 @@ const MAP_SYMBOLS: Record<string, string> = {
   ruins: "M-35 38V-30h22v16h24v-16h22v68M-35 2h70M-9 38V15h18v23",
   lake: "M-42-18c14-14 28 14 42 0s28 14 42 0M-42 3c14-14 28 14 42 0s28 14 42 0M-42 24c14-14 28 14 42 0s28 14 42 0",
 };
-const MAP_ROADS = [
-  "M1260 476 1258 630 1256 842",
-  "M1230 1456 1306 1396 1456 1290",
-  "M408 912 580 876 776 834 1020 828 1256 842 1478 872 1882 896",
-  "M710 620 730 696 776 834",
-  "M1000 1080 1016 952 1020 828",
-  "M1564 660 1510 764 1478 872",
-  "M1640 1100 1606 984 1478 872",
-  "M1282 826 1284 940 1392 1090 1456 1290 1698 1446",
-  "M1882 896 1990 752 2116 548 2110 340",
-  "M776 834 692 1004 616 1236 630 1518 816 1906",
-];
 /** Keep unopened private doors off both maps; estate markers still identify the land. */
 export function mapObjectsForState(state: GameState) {
   return objectsForZone(state.zone).filter(object => {
@@ -1967,13 +1968,13 @@ export function LocalMapTerrain({ state, compact = false }: { state: GameState; 
         <path d="M-120 436 102 524 244 702 388 908 320 1130 274 1304 406 1554 300 1774 136 1980" fill="none" stroke="#b6c5c1" strokeWidth="130" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M285 893H485" fill="none" stroke="#a79674" strokeWidth="70" />
         <path d="M285 893H485" fill="none" stroke="#dfcfac" strokeWidth="45" />
-        {MAP_ROADS.map((road, index) => <path key={road} d={road} fill="none" stroke="#d5c39a" strokeWidth={index === 2 ? 58 : 42} strokeLinecap="round" strokeLinejoin="round" />)}
+        {VILLAGE_LANDSCAPE_PATHS.map((road, index) => <polyline key={`road-${index}`} points={road.map(point => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth={index === 2 ? 58 : 42} strokeLinecap="round" strokeLinejoin="round" />)}
       </> : state.zone === "highlands" ? <>
         {HIGHLAND_RIDGES.map((ridge, index) => <rect key={`ridge-${index}`} x={ridge.left} y={ridge.top} width={ridge.right - ridge.left} height={ridge.bottom - ridge.top} rx="24" fill="#879387" stroke="#b2ba9f" strokeWidth="18" />)}
         {HIGHLAND_ROADS.map((road, index) => <polyline key={`road-${index}`} points={road.map(point => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round" />)}
         {HIGHLAND_BUILDINGS.map(building => <rect key={building.id} x={building.footprint.left} y={building.footprint.top} width={building.footprint.right - building.footprint.left} height={building.footprint.bottom - building.footprint.top} fill="#8d8064" stroke="#f0e4ca" strokeWidth="8" />)}
       </> : <>
-        <rect x="2280" y="1430" width="360" height="200" rx="75" fill="#a8c3c1" stroke="#c6d3c1" strokeWidth="28" />
+        <polygon points={LAKE_OUTLINE.map(point => `${point.x},${point.y}`).join(" ")} fill="#a8c3c1" stroke="#c6d3c1" strokeWidth="28" strokeLinejoin="round" />
         {WILDERNESS_ROADS.map((road, index) => <polyline key={`road-${index}`} points={road.map(point => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round" />)}
         {estateBuildings(state).map(id => { const solid = estateSolid(id); return <rect key={id} x={solid.left} y={solid.top} width={solid.right - solid.left} height={solid.bottom - solid.top} fill="#9b8059" stroke="#efe3c5" strokeWidth="8" />; })}
       </>}
@@ -2487,6 +2488,8 @@ export function GamePanel({
             <><TerritoryPanels state={state} onClose={onClose} /><PropertyPanel state={state} /></>
           ) : panel === "market" ? (
             <Market state={state} />
+          ) : panel === "travelers" ? (
+            <TravelerPanel state={state} onAction={act} />
           ) : panel === "crafting" ? (
             <Crafting state={state} />
           ) : panel === "map" ? (

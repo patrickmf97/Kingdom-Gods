@@ -1,3 +1,5 @@
+import { isVisitor } from './population';
+import { travelerShelter } from './travelers';
 import { ITEMS, OBJECTS } from "./data";
 import { civicBudget } from "./civic-budget";
 import { interiorForZone } from "./interiors";
@@ -25,12 +27,12 @@ const familyMember = (state: GameState, id: string) => state.family.find(person 
 export function availableGuardians(state: GameState): { id: string; name: string }[] {
   const choices = new Map<string, { id: string; name: string }>();
   for (const person of state.family) {
-    if (person.alive && person.age >= 16 && person.id !== state.apostle.id)
+    if (!isVisitor(state, person.id) && person.alive && person.age >= 16 && person.id !== state.apostle.id)
       choices.set(person.id, { id: person.id, name: `${person.name} ${person.surname}` });
   }
   for (const npc of state.npcs) {
     const person = familyMember(state, npc.id);
-    if (npc.id !== state.apostle.id && (!person || (person.alive && person.age >= 16)))
+    if (!isVisitor(state, npc.id) && npc.id !== state.apostle.id && (!person || (person.alive && person.age >= 16)))
       choices.set(npc.id, { id: npc.id, name: person ? `${person.name} ${person.surname}` : npc.name });
   }
   return [...choices.values()];
@@ -189,6 +191,10 @@ export function npcGoalDestination(state: GameState, npc: Npc): NpcDestination |
   if (npc.id === "matron") return null;
   const needs = state.life.needs[npc.id];
   if (!needs) return null;
+  if (isVisitor(state, npc.id)) {
+    if (needs.hunger >= 70 || needs.fatigue >= 75) { needs.goal = needs.hunger >= 70 ? 'eat' : 'rest'; return travelerShelter(npc); }
+    needs.goal = 'work'; return null;
+  }
   if (needs.hunger >= 70) { needs.goal = "eat"; return npcServiceDestination("market"); }
   if (needs.fatigue >= 75) { needs.goal = "rest"; return npcServiceDestination("inn"); }
   needs.goal = "work";
@@ -201,6 +207,15 @@ export function updateLifeNeeds(state: GameState, _hooks: ExpansionHooks): void 
   for (const npc of state.npcs) {
     const needs = state.life.needs[npc.id];
     if (!needs || npc.id === "matron" || familyMember(state, npc.id)?.alive === false) continue;
+    if (isVisitor(state, npc.id)) {
+      const shelter = travelerShelter(npc), traveler = state.worldLife.travelers[npc.id];
+      if (npc.zone === shelter.zone && distance(npc, shelter) <= 150) {
+        if (needs.hunger >= 70 && traveler.stock.bread > 0) { traveler.stock.bread--; needs.hunger = bound(needs.hunger - 40); npc.mood = 'Alimentado com as provisões da viagem'; }
+        if (needs.fatigue >= 75) { needs.fatigue = bound(needs.fatigue - 30); npc.mood = 'Descansado no abrigo da estrada'; }
+      }
+      npcGoalDestination(state, npc);
+      continue;
+    }
     const market = npcServiceDestination("market"), inn = npcServiceDestination("inn");
     if (needs.hunger >= 70 && npc.zone === market.zone && distance(npc, market) <= 150) {
       const price = Math.max(1, Math.round(ITEMS.bread.price * (1 + Math.max(0, 8 - state.market.bread) * 0.03)));

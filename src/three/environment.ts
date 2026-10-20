@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { isWalkable } from "../navigation";
+import { LAKE_OUTLINE, RIVER_CENTERLINE, RIVER_WIDTH } from "../water";
 import { weatherFor } from "../weather";
 import { createLandscapeFinish } from "./landscape-finish";
 import { interiorForZone } from "../interiors";
@@ -51,6 +53,8 @@ class EnvironmentBuilder {
   readonly roofGeometry: THREE.BufferGeometry;
   readonly dynamic = new THREE.Group();
   private horizon?: RegionHorizon;
+  private waterTime = { value: 0 };
+  private presentationTime = 0;
   private vegetation?: RegionVegetation;
   private dynamicSignature = "";
   private disposed = false;
@@ -160,7 +164,7 @@ class EnvironmentBuilder {
   }
 
   /** One merged mesh for an entire path network, with rounded joins. */
-  ribbon(paths: Point[][], width: number, color: THREE.ColorRepresentation, height = .005, surface?: SurfaceTexture): THREE.Mesh {
+  ribbon(paths: Point[][], width: number, color: THREE.ColorRepresentation, height = .005, surface?: SurfaceTexture, safeRoad = false): THREE.Mesh {
     const vertices: number[] = [];
     const tri = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number) => {
       vertices.push(ax * SCALE, height, az * SCALE, bx * SCALE, height, bz * SCALE, cx * SCALE, height, cz * SCALE);
@@ -169,15 +173,33 @@ class EnvironmentBuilder {
       for (let i = 1; i < path.length; i++) {
         const a = path[i - 1], b = path[i], length = Math.hypot(b.x - a.x, b.y - a.y);
         if (!length) continue;
-        const nx = -(b.y - a.y) / length * width / 2, nz = (b.x - a.x) / length * width / 2;
-        tri(a.x + nx, a.y + nz, b.x + nx, b.y + nz, b.x - nx, b.y - nz);
-        tri(a.x + nx, a.y + nz, b.x - nx, b.y - nz, a.x - nx, a.y - nz);
+        const nx = -(b.y - a.y) / length, nz = (b.x - a.x) / length;
+        const context = { zone: this.zone, building: true, estates: ESTATE_DEFS.map(estate => estate.id) };
+        const edge = (point: Point, side: number): Point => {
+          let radius = width / 2;
+          if (safeRoad) for (let distance = 1; distance <= width / 2; distance += 1) {
+            if (!isWalkable({ x: point.x + nx * distance * side, y: point.y + nz * distance * side }, context)) { radius = Math.max(0, distance - 2); break; }
+          }
+          return { x: point.x + nx * radius * side, y: point.y + nz * radius * side };
+        };
+        const count = safeRoad ? Math.ceil(length / 8) : 1;
+        for (let j = 0; j < count; j++) {
+          const from = { x: a.x + (b.x - a.x) * j / count, y: a.y + (b.y - a.y) * j / count };
+          const to = { x: a.x + (b.x - a.x) * (j + 1) / count, y: a.y + (b.y - a.y) * (j + 1) / count };
+          const l = edge(from, 1), r = edge(from, -1), l2 = edge(to, 1), r2 = edge(to, -1);
+          tri(l.x, l.y, l2.x, l2.y, r2.x, r2.y); tri(l.x, l.y, r2.x, r2.y, r.x, r.y);
+        }
       }
+      // A small rounded join fits inside the existing nine-pixel feet clearance.
       for (const p of path) {
+        let radius = safeRoad ? Math.min(7, width / 2) : width / 2;
+        if (safeRoad) for (let angle = 0; angle < 24; angle++) {
+          for (let distance = 1; distance <= radius; distance++) if (!isWalkable({ x: p.x + Math.cos(angle / 24 * Math.PI * 2) * distance, y: p.y + Math.sin(angle / 24 * Math.PI * 2) * distance }, { zone: this.zone, building: true, estates: ESTATE_DEFS.map(estate => estate.id) })) { radius = Math.max(0, distance - 2); break; }
+        }
         for (let i = 0; i < 12; i++) {
-          const a = i * Math.PI / 6, b = (i + 1) * Math.PI / 6;
-          tri(p.x, p.y, p.x + Math.cos(a) * width / 2, p.y + Math.sin(a) * width / 2,
-            p.x + Math.cos(b) * width / 2, p.y + Math.sin(b) * width / 2);
+          const a = i / 12 * Math.PI * 2, b = (i + 1) / 12 * Math.PI * 2;
+          tri(p.x, p.y, p.x + Math.cos(a) * radius, p.y + Math.sin(a) * radius,
+            p.x + Math.cos(b) * radius, p.y + Math.sin(b) * radius);
         }
       }
     }
@@ -189,6 +211,7 @@ class EnvironmentBuilder {
     const mesh = this.mesh(geometry, this.material(color, { side: THREE.DoubleSide,
       ...(surface ? { map: this.surfaces.get(surface) } : {}) }));
     mesh.castShadow = false;
+    if (safeRoad) { mesh.userData.paintedRoad = true; mesh.raycast = () => {}; }
     return mesh;
   }
 
@@ -339,16 +362,15 @@ class EnvironmentBuilder {
   }
 
   village(): void {
-    this.ribbon(VILLAGE_LANDSCAPE_PATHS, 54, PALETTE.roadEdge, .003);
-    this.ribbon(VILLAGE_LANDSCAPE_PATHS, 44, PALETTE.road, .012, "path");
+    this.ribbon(VILLAGE_LANDSCAPE_PATHS, 54, PALETTE.roadEdge, .003, undefined, true);
+    this.ribbon(VILLAGE_LANDSCAPE_PATHS, 44, PALETTE.road, .012, "path", true);
     // The village plaza is traversable paving, not a raised obstacle.
     const plaza = this.cylinder(1156, 812, 215, .025, 0xbdb498, .005);
     plaza.scale.z *= .4;
     this.paving({ left: 950, right: 1360, top: 740, bottom: 880 }, 36, 24, 0xc9c1a8, true);
-    const river = [[-120, 436], [102, 524], [244, 702], [388, 908], [320, 1130],
-      [274, 1304], [406, 1554], [300, 1774], [136, 1980]].map(([x, y]) => ({ x, y }));
+    const river = RIVER_CENTERLINE;
     this.ribbon([river], 126, 0xb6b08d, .021);
-    const water = this.ribbon([river], 94, PALETTE.water, .029);
+    const water = this.ribbon([river], RIVER_WIDTH, PALETTE.water, .029);
     const waterMat = water.material as THREE.MeshStandardMaterial;
     waterMat.roughness = .35; waterMat.metalness = .15; this.waters.push(waterMat);
     this.bridge();
@@ -533,13 +555,44 @@ class EnvironmentBuilder {
     }
   }
 
+  naturalLake(): void {
+    const positions: number[] = [], colors: number[] = [], depths: number[] = [], banks: number[] = [];
+    const center = { x: 2460, y: 1530 }, deep = new THREE.Color(0x4a8288), shallow = new THREE.Color(0x82a49a);
+    for (let i = 0; i < LAKE_OUTLINE.length; i++) {
+      const a = LAKE_OUTLINE[i], b = LAKE_OUTLINE[(i + 1) % LAKE_OUTLINE.length];
+      for (const [point, depth] of [[a, 0], [center, 1], [b, 0]] as const) {
+        positions.push(point.x * SCALE, .045, point.y * SCALE);
+        const color = depth ? deep : shallow; colors.push(color.r, color.g, color.b); depths.push(depth);
+      }
+      const outer = (p: Point) => { const dx = p.x - center.x, dy = p.y - center.y, length = Math.hypot(dx, dy); return { x: p.x + dx / length * 15, y: p.y + dy / length * 15 }; };
+      const c = outer(a), d = outer(b);
+      for (const p of [a, b, d, a, d, c]) banks.push(p.x * SCALE, .022, p.y * SCALE);
+    }
+    const geometry = this.geometry(new THREE.BufferGeometry());
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    geometry.setAttribute("aWaterDepth", new THREE.Float32BufferAttribute(depths, 1)); geometry.computeVertexNormals();
+    const material = this.material(0xffffff, { roughness: .36, metalness: .12, vertexColors: true, side: THREE.DoubleSide, forceSinglePass: true });
+    material.onBeforeCompile = shader => {
+      shader.uniforms.uWaterTime = this.waterTime;
+      shader.vertexShader = `attribute float aWaterDepth; varying vec3 vWater;\n${shader.vertexShader}`.replace("#include <begin_vertex>", "vWater = vec3(position.xz, aWaterDepth);\n#include <begin_vertex>");
+      shader.fragmentShader = `uniform float uWaterTime; varying vec3 vWater;\n${shader.fragmentShader}`.replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+        float ripple = sin(vWater.x * 11.0 + vWater.y * 6.0 + uWaterTime * 0.9) * sin(vWater.y * 17.0 - uWaterTime * 0.65);
+        float glint = smoothstep(0.74, 0.98, ripple) * smoothstep(0.0, 0.18, vWater.z);
+        totalEmissiveRadiance += vec3(0.10, 0.15, 0.13) * glint;`);
+    };
+    material.customProgramCacheKey = () => "natural-lake-ripples-v1";
+    const lake = this.mesh(geometry, material); lake.name = "natural-lake-water"; lake.raycast = () => {}; lake.castShadow = false;
+    this.waters.push(material);
+    const bankGeometry = this.geometry(new THREE.BufferGeometry()); bankGeometry.setAttribute("position", new THREE.Float32BufferAttribute(banks, 3)); bankGeometry.computeVertexNormals();
+    const bank = this.mesh(bankGeometry, this.material(0xb5ad86, { side: THREE.DoubleSide, forceSinglePass: true }));
+    bank.name = "natural-lake-bank"; bank.raycast = () => {}; bank.castShadow = false;
+  }
+
   wilderness(): void {
-    this.ribbon(WILDERNESS_ROADS, 78, 0xa79c77, .005);
-    this.ribbon(WILDERNESS_ROADS, 62, 0xc2b28b, .015, "path");
-    this.floorRect({ left: 2268, right: 2652, top: 1418, bottom: 1642 }, 0xbeb38b, .019);
-    const lake = this.box(2460, 1530, 360, 200, .025,
-      this.material(PALETTE.water, { roughness: .3, metalness: .15 }), .025);
-    this.waters.push(lake.material as THREE.MeshStandardMaterial);
+    this.ribbon(WILDERNESS_ROADS, 78, 0xa79c77, .005, undefined, true);
+    this.ribbon(WILDERNESS_ROADS, 62, 0xc2b28b, .015, "path", true);
+    this.naturalLake();
     // The mine mouth occupies the existing northern rock rectangle.
     const cave = regionForZone("wilderness").solids[0];
     this.box(2250, 377, cave.right - cave.left, cave.bottom - cave.top, 3.4, PALETTE.stoneDark);
@@ -765,7 +818,10 @@ class EnvironmentBuilder {
 
   update(state: GameState, timeSeconds: number): void {
     if (this.disposed) return;
-    this.horizon?.update(state.minutes, weatherFor(state.day, state.minutes, this.zone));
+    if (Number.isFinite(timeSeconds)) this.presentationTime = Math.max(0, timeSeconds);
+    timeSeconds = this.presentationTime;
+    this.horizon?.update(state.minutes, weatherFor(state.day, state.minutes, this.zone), timeSeconds);
+    this.waterTime.value = timeSeconds;
     this.vegetation?.update(timeSeconds);
     this.updateDynamic(state);
     for (const node of this.nodes) {

@@ -1,3 +1,6 @@
+import { populationDefinition, isVisitor } from './population';
+import { travelerDestination, updateTravelerRoutes } from './travelers';
+import { weatherFor } from './weather';
 import { interiorForZone } from "./interiors";
 import { npcGoalDestination, type NpcDestination } from "./life";
 import { findPath, isWalkable, moveWithCollisions, nearestWalkable, type NavigationContext } from "./navigation";
@@ -28,13 +31,24 @@ const sleep: Record<string, NpcDestination> = {
 /** A routine expresses the final region; crossing it always uses authored doors below. */
 export function npcRoutineDestination(state: GameState, npc: Npc): NpcDestination | null {
   if (npc.id === "matron") return null;
+  if (isVisitor(state, npc.id)) return travelerDestination(state, npc);
+  const profile = populationDefinition(state, npc.id);
+  if (weatherFor(state.day, state.minutes, npc.zone).kind === 'storm') {
+    if (interiorForZone(npc.zone)) return room(npc.zone, npc);
+    return profile?.shelter ?? sleep[npc.id] ?? room('inn-room', { x: 450, y: 550 });
+  }
   const need = npcGoalDestination(state, npc);
   if (need) return need;
   const hour = ((state.minutes % 1440) + 1440) % 1440 / 60;
   if (hour >= 22 || hour < 6) {
     if (npc.id === state.apostle.partnerId && state.property.owned && state.property.building)
       return room("farmhouse-room", { x: 550, y: 650 });
+    if (profile) return profile.shelter;
     return sleep[npc.id] ?? room("inn-room", { x: 450, y: 550 });
+  }
+  if (profile) {
+    if (hour < 7 || hour >= 18) return { zone: profile.npc.zone, x: npc.homeX, y: npc.homeY };
+    return profile.work;
   }
   if (hour < 7) return outdoors({ x: npc.homeX, y: npc.homeY });
   if (hour >= 18) return evening[npc.id] ? outdoors(evening[npc.id]) : null;
@@ -70,7 +84,7 @@ export function updateNpcRoutines(state: GameState, delta: number, cache: NpcRou
   const estates = estateBuildings(state);
   for (const npc of state.npcs) {
     if (npc.id === "matron" || state.family.find(person => person.id === npc.id)?.alive === false) continue;
-    const companion = npc.id === options.companionId && npc.zone === state.zone;
+    const companion = !isVisitor(state, npc.id) && npc.id === options.companionId && npc.zone === state.zone;
     const context: NavigationContext = { zone: npc.zone, building: state.property.building, estates };
     if (!isWalkable(npc, context)) { Object.assign(npc, nearestWalkable(npc, context)); cache.delete(npc.id); }
     const destination = companion ? { zone: npc.zone, ...nearestWalkable({ x: state.apostle.x + 40, y: state.apostle.y + 35 }, context) }
@@ -120,4 +134,5 @@ export function updateNpcRoutines(state: GameState, delta: number, cache: NpcRou
       npc.mood = "Descansando em abrigo";
     }
   }
+  updateTravelerRoutes(state, delta);
 }

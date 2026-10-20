@@ -10,6 +10,7 @@ export type Panel =
   | "family"
   | "property"
   | "market"
+  | "travelers"
   | "crafting"
   | "map"
   | "help"
@@ -163,6 +164,34 @@ export interface GameState {
   life: LifeState;
   territory: TerritoryState;
   wildlife: WildlifeState;
+  worldLife: WorldLifeState;
+}
+
+export interface TravelerState {
+  routeIndex: number;
+  wait: number;
+  stock: Record<ItemId, number>;
+  gold: number;
+}
+export interface LightningWarning {
+  id: number;
+  zone: OutdoorZone;
+  x: number;
+  y: number;
+  remaining: number;
+}
+export interface LightningImpact extends LightningWarning {}
+export interface StormState {
+  sequence: number;
+  cooldown: number;
+  warning: LightningWarning | null;
+  impact: LightningImpact | null;
+}
+export interface WorldLifeState {
+  residents: string[];
+  travelers: Record<string, TravelerState>;
+  storm: StormState;
+  legacyExtension?: unknown;
 }
 
 export type EstateId = "oak-hollow" | "stone-rise";

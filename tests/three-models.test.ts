@@ -8,18 +8,31 @@ async function create(kind: "human" | "skeleton" = "human") {
   assert.ok(models, "real 3D character models must be available without a DOM or WebGL context");
   return models.createCharacterModel(appearance, kind);
 }
-function materialColor(object: THREE.Object3D | undefined) {
-  assert.ok(object instanceof THREE.Mesh);
-  assert.ok(object.material instanceof THREE.MeshStandardMaterial);
-  return `#${object.material.color.getHexString()}`;
+function surfaceColor(root: THREE.Object3D, name: string) {
+  let result: string | undefined;
+  root.traverse(object => {
+    if (!(object instanceof THREE.Mesh)) return;
+    const range = object.geometry.userData.parts?.[name];
+    if (!range) return;
+    const colors = object.geometry.getAttribute("color");
+    assert.ok(colors, "batched anatomy carries the saved palette in real vertex colours");
+    const first = new THREE.Color().fromBufferAttribute(colors, range.start);
+    for (let i = range.start; i < range.start + range.count; i++) {
+      const value = new THREE.Color().fromBufferAttribute(colors, i);
+      assert.ok(Math.abs(value.r - first.r) < .000001 && Math.abs(value.g - first.g) < .000001 && Math.abs(value.b - first.b) < .000001);
+    }
+    result = `#${first.getHexString()}`;
+  });
+  assert.ok(result, `rendered surface ${name} must exist`);
+  return result;
 }
 
 test("human characters preserve the saved appearance and stand with their feet at ground height", async () => {
   const model = await create();
-  assert.equal(materialColor(model.group.getObjectByName("head")), appearance.skin);
-  assert.equal(materialColor(model.group.getObjectByName("hair")), appearance.hair);
-  assert.equal(materialColor(model.group.getObjectByName("iris-left")), appearance.eyes);
-  assert.equal(materialColor(model.group.getObjectByName("tunic")), appearance.outfit);
+  assert.equal(surfaceColor(model.group, "head"), appearance.skin);
+  assert.equal(surfaceColor(model.group, "hair"), appearance.hair);
+  assert.equal(surfaceColor(model.group, "iris-left"), appearance.eyes);
+  assert.equal(surfaceColor(model.group, "tunic"), appearance.outfit);
   const bounds = new THREE.Box3().setFromObject(model.group);
   assert.ok(bounds.min.y >= -0.01 && bounds.min.y <= 0.01, `ground is ${bounds.min.y}`);
   assert.ok(bounds.max.y > 1.8 && bounds.max.y < 2.3, `height is ${bounds.max.y}`);

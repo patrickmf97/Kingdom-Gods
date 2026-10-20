@@ -1,3 +1,4 @@
+import { lakeContainsFeet, RIVER_CENTERLINE, RIVER_WIDTH, RIVER_BRIDGE } from "./water";
 import { objectsForZone, regionForZone, type Rectangle as RegionRectangle } from "./regions";
 import { ESTATE_DEFS, estateSolid } from "./territory-data";
 import { interiorForZone } from "./interiors";
@@ -10,10 +11,6 @@ const FEET_RADIUS = 9;
 const STEP = 4;
 const GRID = 24;
 const BUCKET = 128;
-const RIVER = [
-  [-120, 436], [102, 524], [244, 702], [388, 908], [320, 1130],
-  [274, 1304], [406, 1554], [300, 1774], [136, 1980],
-];
 type Rectangle = { kind: "rectangle"; left: number; top: number; right: number; bottom: number };
 type Circle = { kind: "circle"; x: number; y: number; radius: number };
 type Solid = Rectangle | Circle;
@@ -87,9 +84,9 @@ function touchesSolid(point: Point, solid: Solid): boolean {
 
 function riverDistanceSquared(point: Point): number {
   let result = Infinity;
-  for (let index = 0; index < RIVER.length - 1; index++) {
-    const [ax, ay] = RIVER[index];
-    const [bx, by] = RIVER[index + 1];
+  for (let index = 0; index < RIVER_CENTERLINE.length - 1; index++) {
+    const { x: ax, y: ay } = RIVER_CENTERLINE[index];
+    const { x: bx, y: by } = RIVER_CENTERLINE[index + 1];
     const dx = bx - ax, dy = by - ay;
     const along = Math.max(0, Math.min(1, ((point.x - ax) * dx + (point.y - ay) * dy) / (dx * dx + dy * dy)));
     result = Math.min(result, (point.x - ax - along * dx) ** 2 + (point.y - ay - along * dy) ** 2);
@@ -155,9 +152,10 @@ export function isWalkable(point: Point, context: NavigationContext): boolean {
   if (ground && !withinGround(point, context.zone, ground)) return false;
   if (context.zone === "village") {
     // The bridge joins dry banks horizontally; feet stay within its rails.
-    const bridge = point.x >= 285 && point.x <= 485 && point.y >= 856 + FEET_RADIUS && point.y <= 930 - FEET_RADIUS;
-    if (!bridge && riverDistanceSquared(point) < (47 + FEET_RADIUS) ** 2) return false;
+    const bridge = point.x >= RIVER_BRIDGE.left && point.x <= RIVER_BRIDGE.right && point.y >= RIVER_BRIDGE.top + FEET_RADIUS && point.y <= RIVER_BRIDGE.bottom - FEET_RADIUS;
+    if (!bridge && riverDistanceSquared(point) < (RIVER_WIDTH / 2 + FEET_RADIUS) ** 2) return false;
   }
+  if (context.zone === "wilderness" && lakeContainsFeet(point, FEET_RADIUS)) return false;
   const nearby = bucketsFor(context.zone).get(`${Math.floor(point.x / BUCKET)},${Math.floor(point.y / BUCKET)}`) ?? [];
   if (nearby.some((solid) => touchesSolid(point, solid))) return false;
   if (context.zone === "wilderness" && context.estates?.some((id) => {

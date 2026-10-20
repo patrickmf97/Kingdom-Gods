@@ -1850,3 +1850,34 @@
   .panel-region-connections > div { flex-direction: row; align-items: center; flex-wrap: wrap; }
   .panel-region-connections small { flex-basis: 100%; padding-left: 29px; }
 }
+
+.panel-travelers-entry {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 68px;
+  padding: 14px; margin: 0 0 22px; border: 1px solid #c5ceb3; border-radius: 5px;
+  color: #354d3e; background: #edf0df; text-align: left; touch-action: manipulation;
+}
+.panel-travelers-entry > span { flex: 1; }
+.panel-travelers-entry strong, .panel-travelers-entry small { display: block; }
+.panel-travelers-entry strong { font-size: 14px; }
+.panel-travelers-entry small { margin-top: 5px; color: #59694d; font-size: 11px; line-height: 1.5; }
+.panel-traveler-list { display: grid; gap: 8px; margin: 18px 0 24px; }
+.panel-traveler-list button { display: flex; gap: 12px; align-items: center; min-height: 62px; padding: 12px; text-align: left; border: 1px solid #d3d6c4; border-radius: 4px; color: #40583f; background: #f8f6eb; touch-action: manipulation; }
+.panel-traveler-list button[aria-pressed="true"] { border-color: #6d835b; background: #e9eedc; box-shadow: inset 3px 0 #6d835b; }
+.panel-traveler-list strong, .panel-traveler-list small { display: block; }
+.panel-traveler-list small { margin-top: 5px; line-height: 1.4; font-size: 11px; color: #5d6b53; }
+.panel-traveler-detail { padding: 17px; border: 1px solid #d3d5c1; border-radius: 5px; background: #fbf8ed; }
+.panel-traveler-balances { margin: 15px 0; font-size: 12px; }
+.panel-traveler-balances div { display: flex; gap: 12px; justify-content: space-between; padding: 6px 0; }
+.panel-traveler-balances dt { color: #63705b; }
+.panel-traveler-balances dd { margin: 0; font-weight: 600; color: #354d3e; text-align: right; }
+.panel-traveler-item { display: grid; gap: 8px; margin: 18px 0; font-size: 12px; color: #4e6048; }
+.panel-traveler-item select { min-height: 44px; width: 100%; padding: 10px; background: #fffdf5; color: #354d3e; border: 1px solid #bec7ad; border-radius: 3px; font: inherit; }
+.panel-traveler-quotes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; border-top: 1px solid #d9dcc9; padding-top: 15px; margin: 15px 0; }
+.panel-traveler-quotes span, .panel-traveler-quotes strong { display: block; }
+.panel-traveler-quotes span { font-size: 11px; color: #63705b; margin-bottom: 5px; }
+.panel-traveler-quotes strong { font-size: 16px; color: #354d3e; }
+.panel-traveler-detail .panel-actions { display: flex; flex-wrap: wrap; }
+.panel-traveler-detail .panel-button { flex: 1; min-height: 44px; }
+.panel-weather-risk { display: flex; gap: 9px; padding: 11px; color: #704f2a; border: 1px solid #d0b98b; background: #f4e8ce; font-size: 11px; line-height: 1.6; border-radius: 3px; }
+.panel-weather-risk svg { flex-shrink: 0; margin-top: 2px; }
+.panel-travelers-entry:focus-visible, .panel-traveler-list button:focus-visible, .panel-traveler-item select:focus-visible { outline: 3px solid #8d743d; outline-offset: 3px; }

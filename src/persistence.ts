@@ -8,6 +8,7 @@ import { createTerritoryState, syncTerritoryDeeds } from "./territory";
 import { territoryDeedValue, territoryInfluence } from "./territory-data";
 import { ANIMAL_DEFS } from "./wildlife-data";
 import { createWildlifeState, isAnimalHabitatPoint } from "./wildlife";
+import { initializePopulation, RESIDENT_DEFINITIONS, VISITOR_DEFINITIONS } from "./population";
 
 const DATABASE = "kingdom-gods";
 const STORE = "snapshots";
@@ -566,8 +567,8 @@ function wildlife(state: GameState): boolean {
   return true;
 }
 
-/** Current snapshots are complete v7 states; missing fields are never repaired. */
-export function validateState(value: unknown): value is GameState {
+/** Frozen complete v7 contract, checked before any v8 defaults are introduced. */
+export function validateV7State(value: unknown): value is GameState {
   try {
     return (
       baseState(value, ITEMS, SKILLS, ZONES, currentNpc) &&
@@ -582,6 +583,68 @@ export function validateState(value: unknown): value is GameState {
     );
   } catch {
     // Unknown input can contain getters or proxies; validation must never crash loading.
+    return false;
+  }
+}
+
+/** Reserved archived extensions must retain their exact JSON meaning on export. */
+function portableJson(value: unknown, ancestors = new Set<object>()): boolean {
+  if (value === null || string(value) || boolean(value)) return true;
+  if (number(value)) return true;
+  if (typeof value !== "object" || ancestors.has(value)) return false;
+  if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype &&
+    Object.getPrototypeOf(value) !== null) return false;
+  ancestors.add(value);
+  const valid = Array.isArray(value)
+    ? Array.from(value).every(entry => portableJson(entry, ancestors))
+    : Object.values(value).every(entry => portableJson(entry, ancestors));
+  ancestors.delete(value);
+  return valid;
+}
+
+function worldLife(state: GameState): boolean {
+  const value: unknown = state.worldLife;
+  if (!object(value) || !Array.isArray(value.residents) || !object(value.travelers) ||
+    !object(value.storm) ||
+    !Array.from(value.residents).every(id => string(id) &&
+      RESIDENT_DEFINITIONS.some(definition => definition.id === id) &&
+      (state.npcs.some(npc => npc.id === id) || state.family.some(person => person.id === id) || state.apostle.id === id)) ||
+    new Set(value.residents).size !== value.residents.length ||
+    (Object.hasOwn(value, "legacyExtension") && !portableJson(value.legacyExtension))) return false;
+  for (const [id, traveler] of Object.entries(value.travelers)) {
+    const definition = VISITOR_DEFINITIONS.find(definition => definition.id === id);
+    if (!definition || !state.npcs.some(npc => npc.id === id) || !object(traveler) ||
+      !count(traveler.routeIndex) || traveler.routeIndex >= definition.route.length ||
+      !nonnegative(traveler.wait) || traveler.wait > Math.max(...definition.route.map(stop => stop.wait)) ||
+      !numericRecord(traveler.stock, ITEMS, true) || !object(traveler.stock) ||
+      Object.keys(traveler.stock).length !== ITEMS.length || !count(traveler.gold)) return false;
+  }
+  const storm = value.storm;
+  if (!count(storm.sequence) || !nonnegative(storm.cooldown) || storm.cooldown > 50) return false;
+  const event = (entry: unknown, duration: number) => {
+    if (entry === null) return true;
+    if (!object(entry) || !count(entry.id) || entry.id === 0 || entry.id > (storm.sequence as number) ||
+      !choice(entry.zone, ["village", "wilderness", "highlands"]) || !number(entry.x) || !number(entry.y) ||
+      !nonnegative(entry.remaining) || entry.remaining > duration) return false;
+    const region = REGIONS[entry.zone as "village" | "wilderness" | "highlands"];
+    // A saved target stays fixed if construction subsequently blocks its ground.
+    return entry.x >= 9 && entry.y >= 9 && entry.x <= region.width - 9 && entry.y <= region.height - 9;
+  };
+  if (!event(storm.warning, 3.5) || !event(storm.impact, 1.2) ||
+    (object(storm.warning) && object(storm.impact) &&
+      (storm.warning === storm.impact || storm.warning.id === storm.impact.id))) return false;
+  const holdings = [state.gold, state.merchantGold, state.economy.civicFunds,
+    state.frontier.escrow, ...Object.values(state.economy.npcSavings),
+    ...Object.values(value.travelers).map(traveler => (traveler as ObjectValue).gold as number)];
+  return holdings.every(count) && count(holdings.reduce((sum, coins) => sum + coins, 0));
+}
+
+/** Current snapshots are complete v8 states; missing fields are never repaired. */
+export function validateState(value: unknown): value is GameState {
+  try {
+    return object(value) && value.version === 8 &&
+      validateV7State({ ...value, version: 7 }) && worldLife(value as unknown as GameState);
+  } catch {
     return false;
   }
 }
@@ -646,9 +709,22 @@ function npcRegions(state: GameState): boolean {
 export function migrateState(value: unknown): GameState | null {
   try {
     if (!object(value)) return null;
-    if (value.version === 7) {
+    if (value.version === 8) {
       if (!validateState(value)) return null;
       const snapshot: unknown = structuredClone(value);
+      return validateState(snapshot) ? snapshot : null;
+    }
+    if (value.version === 7) {
+      if (!validateV7State(value)) return null;
+      const snapshot = structuredClone(value) as GameState;
+      const legacyExtension = snapshot.worldLife;
+      snapshot.version = 8;
+      snapshot.worldLife = {
+        residents: [], travelers: {},
+        storm: { sequence: 0, cooldown: 12, warning: null, impact: null },
+        ...(Object.hasOwn(value, "worldLife") ? { legacyExtension } : {}),
+      };
+      initializePopulation(snapshot);
       return validateState(snapshot) ? snapshot : null;
     }
     if (value.version === 6) {
@@ -666,7 +742,7 @@ export function migrateState(value: unknown): GameState | null {
           snapshot.frontier.resources[node.id] = { remaining: node.capacity, readyDay: null };
         }
       }
-      return validateState(snapshot) ? snapshot : null;
+      return validateV7State(snapshot) ? migrateState(snapshot) : null;
     }
     if (value.version === 5) {
       if (!validateV5State(value)) return null;

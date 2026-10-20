@@ -10,7 +10,8 @@ const hooks: EconomicHooks = { message() {}, remember() {}, rememberNpc() {}, pr
   nearObject: () => false, nearNpc: () => false };
 function money(state: GameState): number {
   return state.gold + state.merchantGold + state.economy.civicFunds + state.frontier.escrow +
-    Object.values(state.economy.npcSavings).reduce((sum, value) => sum + value, 0);
+    Object.values(state.economy.npcSavings).reduce((sum, value) => sum + value, 0) +
+    Object.values(state.worldLife.travelers).reduce((sum, traveler) => sum + traveler.gold, 0);
 }
 function emptyMarket(): GameState {
   const state = initialState();
@@ -37,8 +38,10 @@ test("regional goods and recipe labor transfer finite merchant coins to actual w
   assert.equal(state.market.seed, 2);
   assert.equal(state.market.herb, 1);
   assert.ok(state.merchantGold < cash, "regional goods require merchant procurement and wages");
-  assert.equal(state.economy.npcSavings.farmer, 9, "six wheat coins, two seed coins, one milling wage");
-  assert.equal(state.economy.npcSavings.matron, 1, "one paid baking batch");
+  assert.equal(state.economy.npcSavings.farmer, 8, "six wheat coins and two seed coins");
+  assert.equal(state.economy.npcSavings["alpha12-miller"], 1, "one wage goes to the actual miller");
+  assert.equal(state.economy.npcSavings["alpha12-baker"], 1, "one wage goes to the actual baker");
+  assert.equal(state.economy.npcSavings.matron || 0, 0, "the matron does not duplicate the specialist’s paid work");
   assert.equal(money(state), total);
   assert.ok(state.economy.ledger.some((entry) => entry.type === "procurement" && /coroas/.test(entry.text)));
   assert.ok(state.economy.ledger.some((entry) => entry.type === "production" && /farinha|pães/.test(entry.text)));
@@ -73,6 +76,7 @@ test("paid processing requires both physical recipe inputs and an available real
   const state = emptyMarket();
   // Remove procurement actors so these recipe inputs are the complete supply.
   state.npcs = state.npcs.filter((npc) => npc.id === "farmer" || npc.id === "matron");
+  state.worldLife.residents = []; state.worldLife.travelers = {}; // legacy population without specialist registrations
   state.property.owned = true;
   state.property.building = true;
   state.economy.worker = { npcId: "farmer", wage: 5, hiredDay: 1, loyalty: 50, unpaidDays: 0 };
@@ -89,7 +93,7 @@ test("paid processing requires both physical recipe inputs and an available real
   assert.equal(state.economy.npcSavings.farmer, 5, "a contracted farmer cannot also supply or mill for the merchant");
   assert.equal(state.merchantGold, merchant - 1);
   assert.equal(money(state), total);
-  assert.equal(validateState(state), true, "the worker fixture and resulting estate remain valid v5 campaigns");
+  assert.equal(validateState(state), true, "the worker fixture and resulting estate remain valid current campaigns");
   for (const missing of ["flour", "wood"] as const) {
     const inputless = emptyMarket();
     inputless.npcs = inputless.npcs.filter((npc) => npc.id === "matron");

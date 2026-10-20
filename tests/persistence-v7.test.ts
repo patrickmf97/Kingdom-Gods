@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { initialState } from "../src/simulation";
-import { migrateState, validateState, saveGame, loadGame, clearSavedGame } from "../src/persistence";
+import { migrateState, validateState, validateV7State, saveGame, loadGame, clearSavedGame } from "../src/persistence";
 import { RESOURCE_NODES, V5_RESOURCE_NODES, REGIONS } from "../src/regions";
 import { ANIMAL_DEFS } from "../src/wildlife-data";
 import type { GameState, Zone } from "../src/types";
@@ -15,16 +15,16 @@ function historicalV6(): Record<string, any> {
 function migrated(state: unknown): GameState {
   const result = migrateState(state);
   assert.ok(result);
-  assert.equal(result.version, 7);
+  assert.equal(result.version, 8);
   assert.equal(validateState(result), true);
   return result;
 }
 
 const addedNodes = RESOURCE_NODES.filter(node => !V5_RESOURCE_NODES.some(old => old.id === node.id));
 
-test("new v7 campaigns persist all NPC regions, 67 resources and the original 22 animals", () => {
+test("new v8 campaigns persist all NPC regions, 67 resources and the original 22 animals", () => {
   const state = initialState();
-  assert.equal(state.version, 7);
+  assert.equal(state.version, 8);
   assert.equal(validateState(state), true);
   assert.equal(RESOURCE_NODES.length, 67);
   assert.equal(V5_RESOURCE_NODES.length, 55);
@@ -57,7 +57,8 @@ test("v6 migration adds only NPC regions and the 12 finite highland reserves", (
   for (const node of addedNodes) {
     assert.deepEqual(result.frontier.resources[node.id], { remaining: node.capacity, readyDay: null });
   }
-  assert.ok(result.npcs.every(npc => npc.zone === (npc.id === "matron" ? "orphanage" : "village")));
+  assert.ok(result.npcs.filter(npc => old.npcs.some((entry: { id: string }) => entry.id === npc.id))
+    .every(npc => npc.zone === (npc.id === "matron" ? "orphanage" : "village")));
   result.frontier.resources["wild-oak"].readyDay = 99;
   result.wildlife.animals["chicken-1"].trust = 80;
   result.npcs[0].name = "Changed";
@@ -72,7 +73,8 @@ test("the historical companion alone retains the dungeon context during migratio
   const result = migrated(old);
   assert.equal(result.npcs.find(npc => npc.id === friend.id)?.zone, "dungeon");
   assert.equal(result.npcs.find(npc => npc.id === "matron")?.zone, "orphanage");
-  assert.ok(result.npcs.filter(npc => npc.id !== friend.id && npc.id !== "matron").every(npc => npc.zone === "village"));
+  assert.ok(result.npcs.filter(npc => old.npcs.some((entry: { id: string }) => entry.id === npc.id) &&
+    npc.id !== friend.id && npc.id !== "matron").every(npc => npc.zone === "village"));
   assert.deepEqual(historicalProjection(result, 6), old);
 });
 
@@ -99,7 +101,7 @@ test("v6 validates its 55-resource, original-zone contract before adding default
   }
 });
 
-test("v7 requires each NPC zone and guards matron and dungeon companion contexts", () => {
+test("v8 retains required NPC zones and guards matron and dungeon companion contexts", () => {
   const valid = initialState();
   const mutations: ((state: GameState) => void)[] = [
     state => { delete (state.npcs[0] as unknown as Record<string, unknown>).zone; },
@@ -122,7 +124,7 @@ test("v7 requires each NPC zone and guards matron and dungeon companion contexts
   assert.equal(validateState(valid), false);
 });
 
-test("v7 accepts all authored player zones and keeps known NPC room and outdoor regions", () => {
+test("v8 accepts all authored player zones and keeps known NPC room and outdoor regions", () => {
   const state = initialState();
   const friend = state.npcs.find(npc => npc.id !== "matron")!;
   for (const zone of Object.keys(REGIONS) as Zone[]) {
@@ -133,7 +135,7 @@ test("v7 accepts all authored player zones and keeps known NPC room and outdoor 
   }
 });
 
-test("v7 preserves partial work and discoveries at the new highland resources", () => {
+test("v8 preserves partial work and discoveries at the new highland resources", () => {
   for (const node of addedNodes) {
     const state = initialState();
     state.started = true; state.phase = "playing"; state.intro = false;
@@ -163,7 +165,8 @@ test("an earned v6 campaign preserves feeding, observation, movement and all fau
 
 test("a v7 fixture and durable round trip retain NPC rooms without advancing saved time", async () => {
   const fixture = JSON.parse(readFileSync(new URL("./fixtures/v7-baseline-campaign.json", import.meta.url), "utf8"));
-  assert.equal(validateState(fixture), true);
+  assert.equal(validateV7State(fixture), true);
+  assert.equal(validateState(fixture), false, "historical v7 must migrate before current validation");
   const state = migrated(fixture);
   const friend = state.npcs.find(npc => npc.id !== "matron")!;
   friend.zone = "inn-room";

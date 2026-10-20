@@ -141,5 +141,5 @@ test("quotes and trading retain current fields and preserve an existing campaign
   assert.deepEqual(migrateState(legacy), before);
   assert.deepEqual(parseCampaign(exportCampaign(legacy)), before);
   assert.deepEqual(legacy, before);
-  assert.equal(legacy.version, 7);
+  assert.equal(legacy.version, 8);
 });

@@ -16,15 +16,17 @@ export function atmosphereFor(minutes: number, weather: WeatherSnapshot) {
   const twilight = Math.max(0, 1 - Math.min(Math.abs(hour - 390), Math.abs(hour - 1050)) / 115);
   const dayBlend = Math.min(1, daylight * 2.4);
   const cover = weather.outdoors ? weather.cloudiness : 0;
+  const storm = weather.kind === "storm";
   const sky = blend(0x172c4d, 0xa8cbd0, dayBlend).lerp(new THREE.Color(0xe5b795), twilight * .44);
   sky.lerp(new THREE.Color(daylight > .1 ? 0x9cacae : 0x283e58), cover * .45);
+  if (storm) sky.lerp(new THREE.Color(0x627786), .5);
   return {
     sky, sun: blend(0xa0b9ef, 0xffedce, dayBlend).lerp(new THREE.Color(0xffaa65), twilight * .85),
     ambient: blend(0x91b1e0, 0xfff0d8, dayBlend), ground: blend(0x344968, 0x697b55, dayBlend),
-    ambientIntensity: .76 + daylight * 1.23 - cover * .14,
-    sunIntensity: .24 + daylight * 2.05 * (1 - cover * .42) + twilight * .35,
-    fogNear: weather.kind === "fog" ? 20 : weather.kind === "rain" ? 42 : 65,
-    fogFar: weather.kind === "fog" ? 77 : weather.kind === "rain" ? 116 : 155,
+    ambientIntensity: .98 + daylight * (storm ? .8 : 1.02) - cover * .14,
+    sunIntensity: .28 + daylight * 2.05 * (1 - cover * .42) * (storm ? .55 : 1) + twilight * .35,
+    fogNear: weather.kind === "fog" ? 20 : storm ? 35 : weather.kind === "rain" ? 42 : 65,
+    fogFar: weather.kind === "fog" ? 77 : storm ? 100 : weather.kind === "rain" ? 116 : 155,
     daylight, twilight,
   };
 }
@@ -85,9 +87,9 @@ export class WeatherLayer {
     const time = Number.isFinite(presentationTime) ? Math.max(0, presentationTime) : 0;
     const profile = atmosphereFor(minutes, weather);
     const [rain, clouds, fog] = this.batches;
-    rain.count = weather.kind === "rain" ? Math.round(160 + Math.min(1, weather.precipitation) * 96) : 0;
+    rain.count = weather.kind === "rain" || weather.kind === "storm" ? Math.round(160 + Math.min(1, weather.precipitation) * 96) : 0;
     clouds.count = weather.cloudiness > .04 ? Math.ceil(5 + Math.min(1, weather.cloudiness) * 11) : 0;
-    fog.count = weather.kind === "fog" ? 24 : weather.kind === "rain" ? 8 : 0;
+    fog.count = weather.kind === "fog" ? 24 : weather.kind === "rain" || weather.kind === "storm" ? 8 : 0;
     this.materials[0].uniforms.opacity.value = .48;
     this.materials[1].uniforms.opacity.value = .1 + weather.cloudiness * .2;
     this.materials[2].uniforms.opacity.value = weather.kind === "fog" ? .21 : .07;

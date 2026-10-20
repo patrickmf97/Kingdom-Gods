@@ -46,3 +46,35 @@ test("weather chip is an accessible forecast action with the live weather label"
   assert.match(html, /Abrir previsão no diário/);
   assert.match(html, /lucide/);
 });
+
+test("storm warnings show the saved countdown only in the exposed current zone", async () => {
+  const { StormWarning } = await import("../src/WeatherPanel");
+  const state = initialState();
+  state.worldLife ??= { residents: [], travelers: {}, storm: { sequence: 0, cooldown: 12, warning: null, impact: null } };
+  state.phase = "playing";
+  state.zone = "village";
+  state.worldLife.storm.warning = { id: 12, zone: "village", x: 1000, y: 1100, remaining: 2.3 };
+  const render = () => renderToStaticMarkup(createElement(StormWarning, { state }));
+  assert.match(render(), /3 s/);
+  assert.match(render(), /Saia da área marcada ou procure abrigo/);
+  assert.match(render(), /procure abrigo/);
+  state.zone = "inn-room";
+  assert.equal(render(), "");
+  state.zone = "highlands";
+  assert.equal(render(), "");
+  state.zone = "village";
+  state.apostle.alive = false;
+  assert.equal(render(), "");
+});
+
+test("storm forecast names lightning risk and the 65 percent exterior gathering rate", () => {
+  const state = initialState();
+  state.day = Array.from({ length: 360 }, (_, i) => i + 2).find(day => weatherFor(day, 720, "village").kind === "storm")!;
+  assert.ok(state.day);
+  state.zone = "village";
+  const html = renderToStaticMarkup(createElement(WeatherPanel, { state }));
+  assert.match(html, /65% do ritmo/);
+  assert.match(html, /raios/i);
+  state.zone = "inn-room";
+  assert.match(renderToStaticMarkup(createElement(WeatherPanel, { state })), /100% do ritmo/);
+});

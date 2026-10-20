@@ -57,9 +57,9 @@ function livedV4(): PersistentGameState & { futureExtension: { routes: string[] 
   return { ...state, futureExtension: { routes: ["wild-mine", "mine-exit"] } };
 }
 
-test("new campaigns use complete v7 reserves for all 67 authored resources", () => {
+test("new campaigns use complete v8 reserves for all 67 authored resources", () => {
   const state = initialState();
-  assert.equal(state.version, 7);
+  assert.equal(state.version, 8);
   assert.equal(RESOURCE_NODES.length, 67);
   assert.equal(Object.keys(state.frontier.resources).length, 67);
   for (const node of RESOURCE_NODES) {
@@ -73,7 +73,7 @@ test("v4 adds only new reserves while preserving depleted nodes, partial work an
   const before = structuredClone(old);
   const migrated = migrateState(old);
   assert.ok(migrated);
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.equal(validateState(migrated), true);
   assert.equal(Object.keys(migrated.frontier.resources).length, 67);
   const added = RESOURCE_NODES.filter((node) => !originalIds.has(node.id));
@@ -98,7 +98,7 @@ test("v3 chains territory and reserve migrations without advancing an overdue re
   const before = structuredClone(old);
   const migrated = migrateState(old);
   assert.ok(migrated);
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.equal(validateState(migrated), true);
   assert.equal(Object.keys(migrated.frontier.resources).length, 67);
   assert.deepEqual(migrated.frontier.resources["wild-oak"], { remaining: 0, readyDay: 17 });
@@ -109,7 +109,7 @@ test("v3 chains territory and reserve migrations without advancing an overdue re
   assert.deepEqual(old, before);
 });
 
-test("v1 and v2 migrate through the historical ten-node schema into complete v7 reserves", () => {
+test("v1 and v2 migrate through the historical ten-node schema into complete v8 reserves", () => {
   for (const version of [1, 2]) {
     const old = historicalV4() as unknown as Record<string, any>;
     old.version = version;
@@ -131,7 +131,7 @@ test("v1 and v2 migrate through the historical ten-node schema into complete v7 
     const before = structuredClone(old);
     const migrated = migrateState(old);
     assert.ok(migrated, `v${version}`);
-    assert.equal(migrated.version, 7);
+    assert.equal(migrated.version, 8);
     assert.equal(validateState(migrated), true);
     assert.equal(Object.keys(migrated.frontier.resources).length, 67);
     assert.equal(migrated.day, old.day);

@@ -1,3 +1,5 @@
+import { LEGACY_WILDERNESS_ROADS } from "./landscape-paths";
+export { WILDERNESS_ROADS } from "./landscape-paths";
 import { villageDecor, type VillageDecoration } from "./village-decor";
 import { INTERIORS, interiorRegion } from "./interiors";
 import { HIGHLANDS_REGION, HIGHLAND_RESOURCE_NODES, WILDERNESS_HIGHLANDS_PORTAL } from "./highlands";
@@ -128,13 +130,6 @@ const dungeonPortals: Portal[] = [
   { id: "exit", kind: "portal", x: 450, y: 790, label: "Sair da cripta", to: "village", spawn: { x: 2110, y: 470 } },
 ];
 
-/** Painted roads are also reserved when placing trees, so all approaches stay clear. */
-export const WILDERNESS_ROADS: Point[][] = [
-  [{ x: 400, y: 1820 }, { x: 700, y: 1580 }, { x: 1100, y: 1450 }, { x: 1480, y: 1220 }, { x: 1700, y: 1000 }, { x: 1980, y: 750 }, { x: 2250, y: 450 }],
-  [{ x: 1100, y: 1450 }, { x: 900, y: 1300 }, { x: 760, y: 1260 }],
-  [{ x: 1700, y: 1000 }, { x: 1530, y: 820 }, { x: 1370, y: 700 }],
-  [{ x: 1700, y: 1000 }, { x: 2030, y: 1090 }, { x: 2190, y: 1300 }, { x: 2210, y: 1740 }, { x: 2460, y: 1690 }],
-];
 function segmentDistance(point: Point, a: Point, b: Point): number {
   const dx = b.x - a.x, dy = b.y - a.y;
   const fraction = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy)));
@@ -165,7 +160,7 @@ for (let row = 0; row < 17; row++) {
   for (let column = 0; column < 25; column++) {
     const x = 120 + column * 115 + (forestRandom() - 0.5) * 72;
     const y = 190 + row * 117 + (forestRandom() - 0.5) * 66;
-    const clearRoad = WILDERNESS_ROADS.some((road) => road.some((a, index) => index > 0 && segmentDistance({ x, y }, road[index - 1], a) < 90));
+    const clearRoad = LEGACY_WILDERNESS_ROADS.some((road) => road.some((a, index) => index > 0 && segmentDistance({ x, y }, road[index - 1], a) < 90));
     const clearLandmark = originalWildernessObjects.some((object) => Math.abs(x - object.x) < (object.w ?? 100) / 2 + 110 && Math.abs(y - object.y + (object.h ?? 100) / 2) < (object.h ?? 100) / 2 + 100);
     if (clearRoad || clearLandmark || (x > 2150 && x < 2740 && y > 1320 && y < 1760)) continue;
     wildernessDecor.push({ x: Math.round(x), y: Math.round(y), key: (row + column) % 4 === 0 ? "pine" : (row + column) % 3 === 0 ? "tree2" : "tree1", scale: 0.85 + forestRandom() * 0.35 });
@@ -217,7 +212,6 @@ export const REGIONS: Record<Zone, RegionDefinition> = {
     objects: wildernessObjects, portals: wildernessPortals, decor: wildernessDecor,
     solids: [rect(2168, 330, 2332, 424), rect(1035, 1372, 1115, 1418),
       rect(1610, 864, 1630, 958), rect(1770, 864, 1790, 958), rect(1610, 864, 1790, 886),
-      rect(2280, 1430, 2640, 1630),
       ...RESOURCE_NODES.filter((node) => node.zone === "wilderness" && node.kind !== "herb").map(nodeFootprint),
       ...wildernessDecor.map((item) => { const scale = item.scale ?? 1; return rect(item.x - 6 * scale, item.y - 19 * scale, item.x + 8 * scale, item.y - 5 * scale); }),
     ] },

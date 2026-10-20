@@ -1,4 +1,4 @@
-# KINGDOM GODS · alpha 0.11 · 3D
+# KINGDOM GODS · alpha 0.12 · 3D
 
 RPG sandbox medieval **3D, local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
@@ -24,7 +24,18 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-## Novidades da alpha 0.11
+## Novidades da alpha 0.12
+
+- **Personagens:** rostos, cabelos, proporções, roupas e acessórios próprios de cada ofício, com texturas originais e articulações mescladas para reduzir as chamadas de desenho. As paletas da criação e os equipamentos continuam funcionais.
+- **Mundo habitado:** dez novos NPCs, somando 16 na campanha inicial: padeira, moleiro, estalajadeira, carregador, guarda-florestal, pescador e quatro viajantes. Visitantes percorrem estradas, portas e regiões, fazem pausas e procuram abrigo à noite ou em tempestades. Os 22 animais anteriores permanecem.
+- **Comércio itinerante:** Gaspar e Samira negociam presencialmente com estoque e caixa próprios. Comprar e vender transfere itens e moedas uma única vez; recarregar não repõe mercadorias. Procure **Viajantes e caravanas** no diário ou converse com um comerciante na estrada. Visitantes podem formar amizades, mas ainda não entram na família, tutela ou expedição à cripta.
+- **Paisagem:** caminhos redesenhados onde atravessavam obstáculos; lago de contorno irregular, margens e vegetação alinhadas com a colisão e o mapa. Céu com nuvens em movimento, sol, lua e estrelas; névoa e serras suavizam as bordas.
+- **Tempestades:** após um intervalo inicial, um círculo fixo avisa por 3,5 segundos onde o raio cairá. A descarga pode causar 28 de dano em um raio de 64 pixels, interromper trabalho e matar. Saia da marca, esquive no momento certo ou entre num interior. O próximo aviso tem intervalo de 36–50 segundos. Coleta externa ocorre a 65%; minas e oficinas permanecem abrigadas.
+- **Persistência v8:** migrações v1–v7 acrescentam população e tempestades sem avançar o relógio nem substituir bens, família, recursos e fauna. Estoques, caixas, progresso de viagem e avisos de raio ficam salvos. Não há dano offline nem enquanto um painel pausa a simulação.
+
+O conteúdo usa código, modelos e texturas procedurais próprios. O céu e as descargas são efeitos visuais; não há trovão sonoro nesta etapa. A população é autoral e limitada, sem geração infinita de comerciantes ou mercadorias. Os novos ofícios de padeira e moleiro recebem os pagamentos das oficinas existentes, sem duplicar sua capacidade de produção.
+
+## Novidades da alpha 0.11 preservadas
 
 - **Clima e preparação:** céu limpo, nuvens, chuva e neblina derivados do calendário, com previsão de três dias. Chuva reduz o ritmo de coleta externa a 80% e a capacidade de reposição externa em uma unidade; minas e oficinas mantêm ritmo normal. O preço reage ao estoque real.
 - **Ambiente:** acabamento de solo, sombras de contato e atmosfera horária/climática, com camadas leves e orçamento fixo. Árvores, reservas, estradas e colisões mantêm suas posições.
@@ -32,7 +43,7 @@ Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverd
 - **Lar e descanso:** cama funcional dentro da casa construída, com condição mínima de 25%; oito horas recuperam até 40 de vitalidade e toda a energia. Hospedagem transfere oito coroas ao caixa da estalagem. A prévia informa chegada, viradas e provisões; todos os descansos compartilham o processamento diário e param na morte.
 - **Compatibilidade:** o formato continua v7. Não há sorteio ao carregar, avanço offline ou alteração dos prazos/rendimentos das colheitas existentes.
 
-Esta etapa usa como referência princípios de [Stardew Valley](https://www.stardewvalley.net/about/), [Valheim](https://www.valheimgame.com/faq/) e [Medieval Dynasty](https://www.toplitz-productions.com/medieval-dynasty.html), com código e assets próprios. O clima é regional e diário, sem previsão meteorológica externa ou tempestades com dano. Irrigação e solo fértil continuam para uma etapa posterior.
+Esta etapa usa como referência princípios de [Stardew Valley](https://www.stardewvalley.net/about/), [Valheim](https://www.valheimgame.com/faq/) e [Medieval Dynasty](https://www.toplitz-productions.com/medieval-dynasty.html), com código e assets próprios. O clima é regional e diário, sem previsão meteorológica externa. Irrigação e solo fértil continuam para uma etapa posterior.
 
 ## Novidades da alpha 0.10 preservadas
 
@@ -133,16 +144,19 @@ A política inicial limita-se a registro territorial, influência, carta e obrig
 - `frontier.ts`: ferramentas, trabalho, recursos finitos, descobertas, reservas e oportunidades.
 - `territory-data.ts`, `territory.ts`: parcelas, limites de posse, construções, depósitos, influência e obrigações.
 - `life.ts`, `npc-routines.ts`: necessidades, deslocamentos entre portas e interiores, tutores, educação, regência e registros familiares.
-- `weather.ts`, `rest.ts`: clima derivado do calendário, previsão e prévia de descanso sem alterar o estado.
+- `weather.ts`, `rest.ts`, `storms.ts`: clima derivado do calendário, previsão, descanso e descargas persistentes com dano autoritativo.
+- `population.ts`, `travelers.ts`: identidades, itinerários, abrigos, estoques e comércio dos visitantes.
+- `water.ts`, `landscape-paths.ts`: contornos e caminhos compartilhados entre renderização, mapa e navegação.
 - `economy.ts`, `market.ts`, `civic-budget.ts`: produção financiada, cotações, lavouras, manutenção, salários, verbas reservadas e pedidos.
 - `interiors.ts`, `highlands.ts`: interiores, móveis, estações, acesso e dados das Terras Altas.
-- `persistence.ts`, `campaign-files.ts`: validação, migrações v1–v6 para v7, backups e intercâmbio de campanhas.
+- `persistence.ts`, `campaign-files.ts`: validação, migrações v1–v7 para v8, backups e intercâmbio de campanhas.
 - `world.ts`, `world-input.ts`: carregamento 3D sob demanda, recuperação de WebGL, ciclo de vida e entrada compartilhada.
 - `three/world3d.ts`, `three/coordinates.ts`: Three.js, câmera, seleção por raio, rotas e apresentação da simulação.
 - `three/environment.ts`, `three/characters.ts`: cenários e personagens tridimensionais, animações e descarte de recursos.
 - `three/horizon.ts`: céu, serras e transição atmosférica das regiões externas, sem alterar navegação.
 - `three/materials.ts`, `three/effects.ts`: texturas procedurais e partículas reutilizadas, com propriedade e descarte por instância.
 - `three/interiors.ts`, `three/highlands.ts`: mobiliário, arquitetura interna e paisagem das Terras Altas.
+- `three/lightning.ts`: aviso fixo, descarga e clarão a partir dos eventos já decididos pela simulação.
 - `three/landscape-finish.ts`, `three/weather.ts`: acabamento instanciado do solo/contato, precipitação, nuvens e paleta atmosférica.
 - `village-decor.ts`: posições de decoração compartilhadas por navegação e apresentação.
 - `App.tsx`, `Panels.tsx`, `ExpansionPanels.tsx`, `TerritoryPanels.tsx`: interface React responsiva e ações reais.
@@ -150,4 +164,4 @@ A política inicial limita-se a registro territorial, influência, carta e obrig
 
 ## Verificação
 
-As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo desta entrega fica em `docs/verification-alpha11.md`, com fluxos no navegador e limites da verificação. Os recibos anteriores permanecem no diretório `docs`.
+As regras e a compilação são verificadas por `npm test` e `npm run build`. O recibo desta entrega fica em `docs/verification-alpha12.md`, com fluxos no navegador e limites da verificação. Os recibos anteriores permanecem no diretório `docs`.

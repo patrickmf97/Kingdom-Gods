@@ -1,6 +1,7 @@
 import { ITEMS } from "./data";
 import { findPath, isWalkable, moveWithCollisions, type NavigationContext } from "./navigation";
-import { regionForZone, WILDERNESS_ROADS } from "./regions";
+import { regionForZone } from "./regions";
+import { LEGACY_WILDERNESS_ROADS } from "./landscape-paths";
 import { ESTATE_DEFS } from "./territory-data";
 import { ANIMAL_DEFS, animalDefinition, type AnimalDefinition } from "./wildlife-data";
 import type { AnimalState, Dialog, ExpansionHooks, GameState, Point, WildlifeState, Zone } from "./types";
@@ -28,7 +29,12 @@ export function isAnimalHabitatPoint(definition: AnimalDefinition, point: Point)
       point.x <= estate.x + estate.width / 2 + 35 &&
       point.y >= estate.y - estate.height - 35 && point.y <= estate.y + 60)) return false;
   if (regionForZone("wilderness").portals.some(portal => distance(point, portal) < 165)) return false;
-  return !WILDERNESS_ROADS.some(road => road.some((pointOnRoad, index) => index > 0 &&
+  // Keep the original accepted habitat domain for every save version.
+  if (point.x > 2271 && point.x < 2649 && point.y > 1421 && point.y < 1639) {
+    const x = Math.max(2280, Math.min(2640, point.x)), y = Math.max(1430, Math.min(1630, point.y));
+    if ((point.x - x) ** 2 + (point.y - y) ** 2 < 81) return false;
+  }
+  return !LEGACY_WILDERNESS_ROADS.some(road => road.some((pointOnRoad, index) => index > 0 &&
     segmentDistance(point, road[index - 1], pointOnRoad) < 65));
 }
 

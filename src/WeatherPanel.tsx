@@ -1,9 +1,20 @@
-import { Cloud, CloudFog, CloudRain, Sun } from "lucide-react";
+import { Cloud, CloudFog, CloudLightning, CloudRain, Sun } from "lucide-react";
 import type { GameState } from "./types";
 import { weatherFor, weatherForecast } from "./weather";
 import { interiorForZone } from "./interiors";
 
-const WEATHER_ICONS = { clear: Sun, cloudy: Cloud, rain: CloudRain, fog: CloudFog };
+const WEATHER_ICONS = { clear: Sun, cloudy: Cloud, rain: CloudRain, storm: CloudLightning, fog: CloudFog };
+
+export function StormWarning({ state }: { state: GameState }) {
+  const warning = state.worldLife?.storm.warning;
+  if (!warning || state.phase !== "playing" || !state.apostle.alive || warning.zone !== state.zone ||
+    !["village", "wilderness", "highlands"].includes(state.zone)) return null;
+  const seconds = Math.ceil(Math.max(0, warning.remaining));
+  return <div className="storm-warning" role="status" aria-live="polite" aria-atomic="true">
+    <CloudLightning size={20} aria-hidden="true" />
+    <div><strong>Raio em {seconds} s</strong><span>Saia da área marcada ou procure abrigo</span></div>
+  </div>;
+}
 
 export function WeatherChip({ state, season, onOpen }: {
   state: GameState;
@@ -41,6 +52,7 @@ export function WeatherPanel({ state }: { state: GameState }) {
       })}
     </ol>
     <p className="panel-weather-current">{current.description}</p>
+    {exterior.kind === "storm" && <p className="panel-weather-risk"><CloudLightning size={17} aria-hidden="true" /><span>Risco de raios ao ar livre. Afaste-se do círculo anunciado antes do impacto ou procure abrigo. Interiores, mina e cripta protegem você.</span></p>}
     <dl className="panel-weather-effects">
       <div><dt>Coleta neste local</dt><dd>{Math.round(current.gatheringRate * 100)}% do ritmo</dd></div>
       <div><dt>Reposição externa</dt><dd>{exterior.supplyPenalty > 0 ? `Capacidade −${exterior.supplyPenalty} por produto` : "Capacidade normal"}</dd></div>

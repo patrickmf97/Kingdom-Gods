@@ -207,7 +207,7 @@ test("migrates a populated original v1 campaign without mutating or losing saved
   const migrated = persistence.migrateState(legacy);
   assert.ok(migrated);
   assert.equal(persistence.validateState(migrated), true);
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.equal(migrated.inventory.flour, 0);
   assert.equal(migrated.market.flour, 8);
   assert.equal(migrated.apostle.skills.cooking, 0);
@@ -475,7 +475,7 @@ test("requires every current economy field and accepts only supported snapshot v
     assert.equal(persistence.migrateState(invalid), null, `missing ${key}`);
   }
   assert.equal(persistence.validateState(legacySnapshot()), false);
-  for (const version of [0, 8, "7", undefined]) {
+  for (const version of [0, 9, "8", undefined]) {
     assert.equal(persistence.migrateState({ ...valid, version }), null);
   }
   assert.equal(persistence.migrateState(null), null);
@@ -636,7 +636,9 @@ test("only one funded active order can coexist with uniquely identified past ord
 test("all saved coin holdings and their combined supply must be safe whole amounts", () => {
   const valid = currentSnapshot();
   valid.gold =
-    Number.MAX_SAFE_INTEGER - valid.merchantGold - valid.economy.civicFunds;
+    Number.MAX_SAFE_INTEGER - valid.merchantGold - valid.economy.civicFunds -
+    valid.frontier.escrow - Object.values(valid.economy.npcSavings).reduce((sum, gold) => sum + gold, 0) -
+    Object.values(valid.worldLife.travelers).reduce((sum, traveler) => sum + traveler.gold, 0);
   assert.equal(
     persistence.validateState(valid),
     true,
@@ -715,7 +717,7 @@ test("loads the newest valid migrated backup and leaves offline time paused", as
     assert.equal(await persistence.hasSavedGame(), true);
     const loaded = await persistence.loadGame();
     assert.ok(loaded);
-    assert.equal(loaded.version, 7);
+    assert.equal(loaded.version, 8);
     assert.equal(loaded.day, old.day);
     assert.equal(loaded.minutes, old.minutes);
     assert.equal(loaded.savedAt, old.savedAt);
@@ -744,13 +746,13 @@ test("selects a newer valid legacy backup over an older current save", async () 
     storage.values.set("kingdom-gods:backup", JSON.stringify(backup));
     const loaded = await persistence.loadGame();
     assert.equal(loaded?.gold, 321);
-    assert.equal(loaded?.version, 7);
+    assert.equal(loaded?.version, 8);
   } finally {
     storage.restore();
   }
 });
 
-test("saving legacy input writes v7 and preserves a recoverable migrated prior snapshot", async () => {
+test("saving legacy input writes v8 and preserves a recoverable migrated prior snapshot", async () => {
   const storage = withStorage();
   try {
     const previous = legacySnapshot();
@@ -768,7 +770,7 @@ test("saving legacy input writes v7 and preserves a recoverable migrated prior s
     ) as GameState;
     assert.equal(persistence.validateState(stored), true);
     assert.equal(persistence.validateState(backup), true);
-    assert.equal(stored.version, 7);
+    assert.equal(stored.version, 8);
     assert.equal(stored.gold, 307);
     assert.ok(stored.savedAt! > previous.savedAt);
     assert.equal(backup.gold, previous.gold);
@@ -795,7 +797,7 @@ test("invalid current save leaves the previous campaign intact", async () => {
   }
 });
 
-test("v7 round trip through the nonbrowser fallback preserves economic commitments", async () => {
+test("v8 round trip through the nonbrowser fallback preserves economic commitments", async () => {
   await persistence.clearSavedGame();
   const state = currentSnapshot();
   state.economy.worker = {
@@ -821,7 +823,7 @@ test("v7 round trip through the nonbrowser fallback preserves economic commitmen
   await persistence.saveGame(state);
   const loaded = await persistence.loadGame();
   assert.ok(loaded);
-  assert.equal(loaded.version, 7);
+  assert.equal(loaded.version, 8);
   assert.equal(loaded.day, state.day);
   assert.equal(loaded.minutes, state.minutes);
   assert.deepEqual(loaded.economy, state.economy);
