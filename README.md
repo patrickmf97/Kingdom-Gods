@@ -9,7 +9,11 @@ npm ci
 npm run dev
 ```
 
-`npm test` verifica as regras; `npm run build` valida TypeScript e gera `dist/`, servido por HTTP estático. A publicação existente usa Sites e mantém a mesma origem para preservar o IndexedDB.
+`npm test` verifica as regras; `npm run build` valida TypeScript e gera `dist/`, servido por HTTP estático. O jogo local usa salvamento no navegador.
+
+## Jogar no GitHub Pages
+
+O repositório publica automaticamente em [patrickmf97.github.io/Kingdom-Gods](https://patrickmf97.github.io/Kingdom-Gods/) quando há um push para `main`. O fluxo executa os testes, cria o build com o caminho do projeto e publica `dist/`. A primeira publicação fica disponível depois que a execução **Build and deploy to GitHub Pages** terminar em verde na aba **Actions**. Cada navegador/dispositivo possui seu próprio salvamento; use **Exportar campanha** para transferir um arquivo.
 
 ## Começar e explorar
 
