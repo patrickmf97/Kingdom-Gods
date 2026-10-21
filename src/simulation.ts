@@ -15,6 +15,7 @@ import { weatherFor } from "./weather";
 import { createStormState, updateStorms, clearStormExposure } from "./storms";
 import { initializePopulation, isVisitor, populationDefinition } from "./population";
 import { executeTravelerAction, travelerDialog } from "./travelers";
+import { npcVisualIdentity } from "./character-identity";
 import {
   findPath,
   isWalkable,
@@ -1782,18 +1783,18 @@ export class GameStore {
       }
       this.state.apostle.partnerId = id;
       this.state.simulation.marriedAt[id] = this.state.day;
+      const appearance = npcVisualIdentity(this.state, npc);
       const partner: Person = {
         id,
         name: npc.name,
         surname: this.state.apostle.surname,
-        sex: id === "mira" || id === "farmer" || (populationDefinition(this.state, id) &&
-          ["alpha12-baker", "alpha12-innkeeper", "alpha12-ranger"].includes(id)) ? "female" : "male",
-        skin: "#cba282",
-        hair: "#4d3930",
-        eyes: "#90a193",
-        outfit: npc.color,
-        age: 24,
-        birthDay: this.state.day - 24 * 360,
+        sex: appearance.sex,
+        skin: appearance.skin,
+        hair: appearance.hair,
+        eyes: appearance.eyes,
+        outfit: appearance.outfit,
+        age: appearance.age,
+        birthDay: this.state.day - appearance.age * 360,
         alive: true,
         generation: this.state.apostle.generation,
         parents: [],

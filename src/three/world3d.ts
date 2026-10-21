@@ -11,12 +11,13 @@ import { WorldEffects } from "./effects";
 import { weatherFor } from "../weather";
 import { WeatherLayer, atmosphereFor } from "./weather";
 import { LightningLayer } from "./lightning";
-import { populationRole } from "../population";
+import { npcVisualIdentity } from "../character-identity";
+import { CharacterGrounding } from "./character-grounding";
 import { createWildlifeLayer } from "./wildlife";
 import { animalsForZone } from "../wildlife";
-import { cameraChange, DEFAULT_CAMERA_DISTANCE, DEFAULT_CAMERA_YAW, screenToMap, toMap, toWorld, WORLD_SCALE } from "./coordinates";
+import { cameraChange, cameraFraming, DEFAULT_CAMERA_DISTANCE, DEFAULT_CAMERA_YAW, screenToMap, toMap, toWorld, WORLD_SCALE } from "./coordinates";
 
-type Actor = { model: CharacterModel; label: HTMLDivElement; x: number; y: number; appearance: string };
+type Actor = { model: CharacterModel; label: HTMLDivElement; x: number; y: number; lastTime: number; appearance: string };
 type Destination = { point: Point; path: Point[]; id?: string };
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -27,6 +28,7 @@ class ThreeWorld {
   private effects = new WorldEffects();
   private weather = new WeatherLayer();
   private lightning = new LightningLayer();
+  private grounding = new CharacterGrounding();
   private wildlife = createWildlifeLayer();
   private presentationTime = 0;
   private actors = new Map<string, Actor>();
@@ -34,9 +36,7 @@ class ThreeWorld {
   private labels = document.createElement("div");
   private prompt = document.createElement("button");
   private haloGeometry = new THREE.RingGeometry(.43, .49, 32);
-  private haloMaterial = new THREE.MeshBasicMaterial({ color: 0xe7cc83, transparent: true, opacity: .9, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
-  private shadowGeometry = new THREE.CircleGeometry(.42, 16);
-  private shadowMaterial = new THREE.MeshBasicMaterial({ color: 0x293a29, transparent: true, opacity: .22, depthWrite: false });
+  private haloMaterial = new THREE.MeshBasicMaterial({ color: 0xe7cc83, transparent: true, opacity: .48, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
   private routeGeometry = new THREE.BufferGeometry();
   private routeMaterial = new THREE.LineBasicMaterial({ color: 0xf0d89a, transparent: true, opacity: .85, depthTest: false });
   private routeLine = new THREE.Line(this.routeGeometry, this.routeMaterial);
@@ -86,11 +86,11 @@ class ThreeWorld {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
-    // Contact shadows are drawn with small ground discs; no expensive mobile shadow pass.
+    // Actor contact and projected silhouettes share one soft, instanced layer.
     this.renderer.shadowMap.enabled = false;
     this.scene.background = new THREE.Color(0xb7c8b3);
     this.scene.fog = new THREE.Fog(0xb7c8b3, 65, 155);
-    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.lightning.group, this.wildlife.group);
+    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.lightning.group, this.wildlife.group, this.grounding.group);
     this.routeLine.frustumCulled = false;
     this.routeLine.renderOrder = 5;
     this.observer.observe(this.element);
@@ -165,7 +165,10 @@ class ThreeWorld {
     const action = (event as CustomEvent<{ action?: string }>).detail?.action;
     if (action && !blockedWorldInput()) this.setCamera(action);
   };
-  private setCamera(action: string): void { this.view = cameraChange(this.view.yaw, this.view.distance, action); };
+  private setCamera(action: string): void {
+    const yaw = action === "character" ? this.actors.get("player")?.model.group.rotation.y ?? this.view.yaw : this.view.yaw;
+    this.view = cameraChange(yaw, this.view.distance, action);
+  };
 
   private interact(id?: string): void {
     if (!this.canAct()) return;
@@ -185,7 +188,7 @@ class ThreeWorld {
     const stamina = store.state.apostle.stamina;
     store.attack();
     this.effects.observePlayerAttack(store.state, stamina, this.actors.get("player")?.model.group.rotation.y ?? 0);
-    if (stamina - store.state.apostle.stamina >= 9.999) this.attackUntil = now + .28;
+    if (stamina - store.state.apostle.stamina >= 9.999) this.attackUntil = this.presentationTime + .28;
   };
   private dodge = () => {
     if (!this.canAct()) return;
@@ -325,11 +328,9 @@ class ThreeWorld {
       const label = document.createElement("div");
       label.className = `world-three-label ${id === "player" ? "player" : kind === "skeleton" ? "enemy" : "npc"}`;
       this.labels.append(label);
-      const shadow = new THREE.Mesh(this.shadowGeometry, this.shadowMaterial);
-      shadow.rotation.x = -Math.PI / 2; shadow.position.y = .022; model.group.add(shadow);
       if (id === "player") { const halo = new THREE.Mesh(this.haloGeometry, this.haloMaterial); halo.rotation.x = -Math.PI / 2; halo.position.y = .035; halo.renderOrder = 4; model.group.add(halo); }
       this.scene.add(model.group);
-      actor = { model, label, x: NaN, y: NaN, appearance: signature };
+      actor = { model, label, x: NaN, y: NaN, lastTime: NaN, appearance: signature };
       this.actors.set(id, actor);
     }
     return actor;
@@ -337,7 +338,10 @@ class ThreeWorld {
   private placeActor(id: string, point: Point, appearance: ActorAppearance, name: string, time: number, kind: "human" | "skeleton" = "human", equipped = false): void {
     const actor = this.actor(id, appearance, kind);
     const dx = point.x - actor.x, dy = point.y - actor.y;
-    const moving = Number.isFinite(dx + dy) && Math.hypot(dx, dy) > .02;
+    const travelled = Math.hypot(dx, dy), elapsed = time - actor.lastTime;
+    // Zone transfers and restored saves are discontinuities, not a sprint.
+    const moving = Number.isFinite(travelled) && travelled > .02 && travelled < 85 && elapsed > 0;
+    const speed = moving ? travelled * WORLD_SCALE / elapsed : 0;
     if (moving) actor.model.group.rotation.y = Math.atan2(dx, dy);
     const world = toWorld(point);
     const bridge = this.zone === "village" && point.x >= 285 && point.x <= 485 && point.y >= 856 && point.y <= 930;
@@ -345,10 +349,10 @@ class ThreeWorld {
     const player = id === "player";
     actor.model.setEquipment(equipped);
     actor.model.animate(time, moving, player && !!store.state.frontier.work,
-      player ? time < this.attackUntil : kind === "skeleton" && distance(point, store.state.apostle) < 65 && time % 1 < .23);
+      player ? time < this.attackUntil : kind === "skeleton" && distance(point, store.state.apostle) < 65 && time % 1 < .23, speed);
     actor.label.textContent = name;
     actor.label.dataset.actorId = id;
-    actor.x = point.x; actor.y = point.y;
+    actor.x = point.x; actor.y = point.y; actor.lastTime = time;
   }
   private syncActors(time: number): void {
     const state = store.state;
@@ -360,12 +364,7 @@ class ThreeWorld {
     for (const npc of npcs) {
       const relative = state.family.find(person => person.id === npc.id);
       if (relative?.alive === false || (!this.scenic && npc.id === state.apostle.id)) continue;
-      const seed = [...npc.id].reduce((sum, letter) => (sum * 31 + letter.charCodeAt(0)) >>> 0, 0);
-      const role = populationRole(state, npc.id) ?? ({ matron: "matron", merchant: "merchant", mira: "farmer", aldric: "smith", guard: "guard", farmer: "farmer" } as Record<string, string>)[npc.id] ?? "traveler";
-      const appearance: ActorAppearance = { ...(relative || { skin: ["#d3a17b", "#b77d59", "#edc7a6", "#8b5b42"][seed % 4],
-        hair: npc.id === "matron" ? "#938775" : ["#57402e", "#31271f", "#a17649", "#614c3d"][seed % 4], eyes: "#566d59", outfit: npc.color }),
-        role, variant: npc.id, age: relative?.age ?? (npc.id === "matron" ? 64 : 24 + seed % 25),
-        sex: relative?.sex ?? (["matron", "mira", "farmer", "alpha12-baker", "alpha12-innkeeper", "alpha12-ranger", "alpha12-merchant-trail", "alpha12-pilgrim"].includes(npc.id) ? "female" : "male") };
+      const appearance: ActorAppearance = npcVisualIdentity(state, npc);
       this.placeActor(npc.id, npc, appearance, npc.name, time); living.add(npc.id);
     }
     if (this.zone === "dungeon") for (const enemy of state.enemies.filter(enemy => enemy.alive)) {
@@ -420,12 +419,13 @@ class ThreeWorld {
   }
   private updateCamera(dt: number): void {
     const point = toWorld(this.scenic ? { x: 1270, y: 880 } : store.state.apostle);
-    this.desiredFocus.set(point.x, .7, point.z);
+    const framing = cameraFraming(this.scenic ? 47 : this.view.distance);
+    this.desiredFocus.set(point.x, framing.focusHeight, point.z);
     this.focus.lerp(this.desiredFocus, 1 - Math.exp(-dt * 9));
     const viewDistance = this.scenic ? 47 : this.view.distance;
     const yaw = this.scenic ? .25 : this.view.yaw;
-    this.camera.position.set(this.focus.x + Math.sin(yaw) * viewDistance * .77,
-      this.focus.y + viewDistance * .9, this.focus.z + Math.cos(yaw) * viewDistance * .77);
+    this.camera.position.set(this.focus.x + Math.sin(yaw) * viewDistance * framing.horizontalFactor,
+      this.focus.y + viewDistance * framing.heightFactor, this.focus.z + Math.cos(yaw) * viewDistance * framing.horizontalFactor);
     this.camera.lookAt(this.focus);
     this.camera.updateMatrixWorld();
     this.sunlight.position.set(this.focus.x - 22, 45, this.focus.z + 12);
@@ -476,12 +476,19 @@ class ThreeWorld {
     this.lightning.update(store.state, zone, this.presentationTime);
     this.wildlife.update(store.state, zone, this.presentationTime);
     this.updateCamera(Math.max(dt, .001));
+    const shadowWeather = weatherFor(store.state.day, store.state.minutes, zone);
+    const shadowLight = atmosphereFor(store.state.minutes, shadowWeather);
+    for (const actor of this.actors.values()) actor.model.setLighting(shadowLight.daylight, !shadowWeather.outdoors);
+    this.grounding.update([...this.actors.values()].map(actor => actor.model.group.position),
+      { daylight: shadowLight.daylight, cloudiness: shadowWeather.cloudiness, indoors: !shadowWeather.outdoors });
     if (stamp - this.lastLabels > 45) { this.updateLabels(); this.lastLabels = stamp; }
     if (this.contextAvailable) this.renderer.render(this.scene, this.camera);
     if (stamp - this.lastDebug > 200) {
       const canvas = this.renderer.domElement;
       canvas.dataset.cameraYaw = String(this.view.yaw);
       canvas.dataset.cameraDistance = String(this.view.distance);
+      canvas.dataset.characterShadowDrawCalls = String(this.grounding.drawCalls);
+      canvas.dataset.characterShadowCount = String(this.grounding.count);
       canvas.dataset.drawCalls = String(this.renderer.info.render.calls);
       canvas.dataset.triangles = String(this.renderer.info.render.triangles);
       canvas.dataset.particleCount = String(this.effects.count);
@@ -531,11 +538,12 @@ class ThreeWorld {
     this.environment?.dispose();
     this.weather.dispose();
     this.lightning.dispose();
+    this.grounding.dispose();
     this.effects.dispose();
     this.wildlife.dispose();
     for (const actor of this.actors.values()) actor.model.dispose();
     this.actors.clear();
-    for (const owned of [this.haloGeometry, this.haloMaterial, this.shadowGeometry, this.shadowMaterial, this.routeGeometry, this.routeMaterial]) owned.dispose();
+    for (const owned of [this.haloGeometry, this.haloMaterial, this.routeGeometry, this.routeMaterial]) owned.dispose();
     this.scene.clear();
     this.renderer.dispose();
     this.renderer.forceContextLoss();

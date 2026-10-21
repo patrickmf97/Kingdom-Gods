@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { resourceNode, regionForZone } from "../regions";
+import { weatherFor } from "../weather";
 import type { GameState, WorkProgress, Zone } from "../types";
 import { WORLD_SCALE } from "./coordinates";
 
@@ -10,6 +11,9 @@ export type ParticleKind = keyof typeof PARTICLE_KINDS;
 const COLORS = [0xc9b28a, 0xd2a05c, 0xffce76, 0x9ebd79, 0xf6e6af, 0xe5b48a, 0xe1d6a5, 0xd4ed96]
   .map(hex => new THREE.Color(hex));
 const outside = (zone: Zone) => zone === "village" || zone === "wilderness" || zone === "highlands";
+const MAX_OBSERVED_WALKERS = 32;
+const MAX_NPC_FOOTFALLS_PER_FRAME = 4;
+const WALKER_EFFECT_RADIUS = 360;
 
 /** Dense, fixed arrays are shared with the GPU. Expired particles swap with the last live slot. */
 export class ParticlePool {
@@ -56,7 +60,7 @@ export class ParticlePool {
     this.colors[offset] = color.r; this.colors[offset + 1] = color.g; this.colors[offset + 2] = color.b;
     this.sizes[slot] = size; this.life[slot] = this.duration[slot] = lifetime;
     this.gravity[slot] = gravity; this.kinds[slot] = PARTICLE_KINDS[kind]; this.rotations[slot] = rotation;
-    this.opacities[slot] = 1;
+    this.opacities[slot] = kind === "dust" ? 0 : 1;
     this.version++;
     return true;
   }
@@ -71,7 +75,10 @@ export class ParticlePool {
       this.positions[offset + 1] += this.velocities[offset + 1] * dt;
       this.positions[offset + 2] += this.velocities[offset + 2] * dt;
       this.velocities[offset + 1] -= this.gravity[slot] * dt;
-      this.opacities[slot] = Math.min(1, this.life[slot] / this.duration[slot] * 2);
+      const remaining = this.life[slot] / this.duration[slot];
+      this.opacities[slot] = this.kinds[slot] === PARTICLE_KINDS.dust
+        ? Math.min(1, (this.duration[slot] - this.life[slot]) / .08) * Math.min(1, remaining * 1.8)
+        : Math.min(1, remaining * 2);
       slot++;
     }
     this.version++;
@@ -103,6 +110,7 @@ export class EffectSimulation {
   private workElapsed = 0;
   private workRemaining = 0;
   private enemies = new Map<string, { hp: number; alive: boolean }>();
+  private walkers = new Map<string, { x: number; y: number; zone: Zone; distance: number }>();
   private ambientTime = 0;
   private tokens = 48;
   private frameBudget = 0;
@@ -116,9 +124,9 @@ export class EffectSimulation {
 
   reset(state?: GameState): void {
     this.pool.clear(); this.state = state; this.zone = state?.zone;
-    this.enemies.clear(); this.stepDistance = this.ambientTime = 0; this.tokens = 48; this.attackPending = false;
+    this.enemies.clear(); this.walkers.clear(); this.stepDistance = this.ambientTime = 0; this.tokens = 48; this.attackPending = false;
     this.work = null;
-    if (state) this.remember(state);
+    if (state) { this.remember(state); this.observeWalkers(state, false, false); }
   }
 
   /** Called only after store.attack; rejected inputs and cooldowns spend no stamina. */
@@ -132,7 +140,8 @@ export class EffectSimulation {
     if (state !== this.state || state.zone !== this.zone) { this.reset(state); return; }
     if (!Number.isFinite(dt) || dt <= 0 || state.phase !== "playing") {
       // Discard events which happened under an overlay, including a pending input.
-      this.attackPending = false; this.stepDistance = 0; this.ambientTime = 0; this.remember(state); return;
+      this.attackPending = false; this.stepDistance = 0; this.ambientTime = 0;
+      this.remember(state); this.observeWalkers(state, false, false); return;
     }
     dt = Math.min(dt, .1);
     this.pool.update(dt);
@@ -154,31 +163,74 @@ export class EffectSimulation {
           this.burst("hit", enemy.x, enemy.y, enemy.alive ? 7 : 12, .95);
         }
       }
-      if (apostle.hp < this.hp) this.burst("hit", apostle.x, apostle.y, 6, 1);
     }
+    // Wounds such as lightning are real feedback too. A replacement campaign,
+    // region transition or paused delta has already established a fresh baseline.
+    if (apostle.hp < this.hp && Math.hypot(apostle.x - this.x, apostle.y - this.y) < 85)
+      this.burst("hit", apostle.x, apostle.y, 6, 1);
     this.observeWork(state);
+    const weather = weatherFor(state.day, state.minutes, state.zone);
+    const wet = weather.precipitation > 0;
+    this.observeWalkers(state, true, wet);
     if (outside(state.zone) && apostle.alive) {
       const travelled = Math.hypot(apostle.x - this.x, apostle.y - this.y);
-      if (travelled > .01 && travelled < 85) {
+      if (!wet && travelled > .01 && travelled < 85) {
         this.stepDistance += travelled;
         if (this.stepDistance >= 24) {
           this.stepDistance %= 24;
           const bridge = state.zone === "village" && apostle.x >= 285 && apostle.x <= 485 && apostle.y >= 856 && apostle.y <= 930;
           this.burst("dust", apostle.x, apostle.y, 2, bridge ? .28 : .07);
         }
-      } else if (travelled >= 85) this.stepDistance = 0;
+      } else if (wet || travelled >= 85) this.stepDistance = 0;
       this.ambientTime += dt;
       if (this.ambientTime >= .65) {
         this.ambientTime %= .65;
-        const region = regionForZone(state.zone);
-        const x = Math.max(24, Math.min(region.width - 24, apostle.x + (this.random() - .5) * 560));
-        const y = Math.max(24, Math.min(region.height - 24, apostle.y + (this.random() - .5) * 440));
-        const night = state.minutes < 360 || state.minutes > 1110;
-        this.emit(night ? "firefly" : "pollen", x * WORLD_SCALE, .7 + this.random() * 2.1, y * WORLD_SCALE,
-          .035, .025, -.02, night ? .14 : .09, 3.8, 0, this.random() * 6.28);
+        // Dry pollen and wandering fireflies do not sparkle through a downpour.
+        if (!wet) {
+          const region = regionForZone(state.zone);
+          const x = Math.max(24, Math.min(region.width - 24, apostle.x + (this.random() - .5) * 560));
+          const y = Math.max(24, Math.min(region.height - 24, apostle.y + (this.random() - .5) * 440));
+          const night = state.minutes < 360 || state.minutes > 1110;
+          this.emit(night ? "firefly" : "pollen", x * WORLD_SCALE, .7 + this.random() * 2.1, y * WORLD_SCALE,
+            .035, .025, -.02, night ? .14 : .09, 3.8, 0, this.random() * 6.28);
+        }
       }
     }
     this.remember(state);
+  }
+
+  /** Only visible-neighbour travel matters; no particles simulate distant crowds. */
+  private observeWalkers(state: GameState, active: boolean, wet: boolean): void {
+    const observed = new Set<string>();
+    let footfalls = 0;
+    if (outside(state.zone) && state.apostle.alive) for (const npc of state.npcs) {
+      if (observed.size >= MAX_OBSERVED_WALKERS) break;
+      if (npc.zone !== state.zone || npc.id === state.apostle.id ||
+        Math.hypot(npc.x - state.apostle.x, npc.y - state.apostle.y) > WALKER_EFFECT_RADIUS ||
+        state.family.some(person => person.id === npc.id && !person.alive)) continue;
+      // Historical saves can contain duplicate NPC IDs. Observe each identity once.
+      if (observed.has(npc.id)) continue;
+      observed.add(npc.id);
+      const previous = this.walkers.get(npc.id);
+      if (!previous || previous.zone !== npc.zone) {
+        this.walkers.set(npc.id, { x: npc.x, y: npc.y, zone: npc.zone, distance: 0 });
+        continue;
+      }
+      const travelled = Math.hypot(npc.x - previous.x, npc.y - previous.y);
+      if (active && !wet && travelled > .01 && travelled < 48) {
+        previous.distance += travelled;
+        if (previous.distance >= 28) {
+          previous.distance %= 28;
+          if (footfalls < MAX_NPC_FOOTFALLS_PER_FRAME) {
+            const bridge = state.zone === "village" && npc.x >= 285 && npc.x <= 485 && npc.y >= 856 && npc.y <= 930;
+            this.burst("dust", npc.x, npc.y, 1, bridge ? .28 : .07);
+            footfalls++;
+          }
+        }
+      } else if (!active || wet || travelled >= 48) previous.distance = 0;
+      previous.x = npc.x; previous.y = npc.y; previous.zone = npc.zone;
+    }
+    for (const id of this.walkers.keys()) if (!observed.has(id)) this.walkers.delete(id);
   }
 
   private observeWork(state: GameState): void {
@@ -215,11 +267,11 @@ export class EffectSimulation {
 
   private burst(kind: "dust" | "wood" | "spark" | "leaf" | "hit", x: number, y: number, count: number, height: number): void {
     for (let i = 0; i < count; i++) {
-      const angle = this.random() * Math.PI * 2, speed = (kind === "dust" ? .25 : .7) + this.random() * .9;
+      const angle = this.random() * Math.PI * 2, speed = kind === "dust" ? .15 + this.random() * .35 : .7 + this.random() * .9;
       this.emit(kind, x * WORLD_SCALE + (this.random() - .5) * .25, height, y * WORLD_SCALE + (this.random() - .5) * .25,
-        Math.cos(angle) * speed, kind === "dust" ? .25 : .5 + this.random(), Math.sin(angle) * speed,
-        kind === "dust" ? .3 + this.random() * .25 : kind === "leaf" ? .18 : .12 + this.random() * .09,
-        kind === "leaf" ? 1.1 : kind === "dust" ? .7 : .45 + this.random() * .25,
+        Math.cos(angle) * speed, kind === "dust" ? .12 : .5 + this.random(), Math.sin(angle) * speed,
+        kind === "dust" ? .18 + this.random() * .10 : kind === "leaf" ? .18 : .12 + this.random() * .09,
+        kind === "leaf" ? 1.1 : kind === "dust" ? .55 : .45 + this.random() * .25,
         kind === "dust" ? .1 : kind === "leaf" ? .5 : 3, angle);
     }
   }

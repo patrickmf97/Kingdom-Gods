@@ -1,4 +1,4 @@
-# KINGDOM GODS · alpha 0.12 · 3D
+# KINGDOM GODS · alpha 0.13 · 3D
 
 RPG sandbox medieval **3D, local e jogável**, em português, com mundo externo, mineração pacífica e legado familiar. Multiplayer permanece para a última etapa; esta versão não usa contas nem depende de serviços pagos.
 
@@ -24,7 +24,18 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
-## Novidades da alpha 0.12
+## Novidades da alpha 0.13
+
+- **Personagens refinados:** fantasia estilizada com proporções mais naturais, rosto modelado com superfícies suaves, olhos e expressões discretos, mechas curvas, mãos com polegares, ombros arredondados e roupas ajustadas em camadas. Cabelos, uniformes e acessórios distinguem os ofícios; o fundador de 16 anos não recebe barba adulta.
+- **Materiais:** texturas originais de tecido, pele, cabelo, couro, linho e metal, com relevo e rugosidade próprios. As cores escolhidas e salvas continuam sendo a base de cada personagem. Uma iluminação indireta suave mantém os rostos legíveis à noite e em interiores.
+- **Movimento e contato:** joelhos e cotovelos articulados, passada proporcional à velocidade real, apoio dos pés no solo, respiração e movimentos discretos de cabeça/capa. Sombras suaves de contato e silhuetas projetadas aproximadas usam um único lote; não são sombras volumétricas nem mapas de profundidade.
+- **Câmera de personagem:** abra Câmera e toque no ícone de pessoa para ver seu apóstolo de perto. A rotação permite uma volta completa; Restaurar câmera retorna ao enquadramento de exploração. O mundo continua interativo na aproximação.
+- **Efeitos contidos:** pegadas de poeira acompanham o movimento real dos moradores próximos em tempo seco; chuva e tempestades suprimem poeira e partículas de ambiente seco. Ferimentos apresentam um efeito breve sem alterar o dano da simulação.
+- **Identidade persistente:** um morador mantém sua aparência e idade ao entrar na família. Campanhas v8 continuam com o mesmo formato, bens e progressão; esta etapa não acrescenta migração nem população artificial.
+
+Os modelos e materiais são próprios e gerados por código. O foco desta etapa é acabamento dos personagens existentes; o cenário, o número de moradores, os sistemas locais e as limitações das etapas anteriores continuam válidos. Não há modelos humanos realistas de alta resolução ou sincronização multiplayer.
+
+## Novidades da alpha 0.12 preservadas
 
 - **Personagens:** rostos, cabelos, proporções, roupas e acessórios próprios de cada ofício, com texturas originais e articulações mescladas para reduzir as chamadas de desenho. As paletas da criação e os equipamentos continuam funcionais.
 - **Mundo habitado:** dez novos NPCs, somando 16 na campanha inicial: padeira, moleiro, estalajadeira, carregador, guarda-florestal, pescador e quatro viajantes. Visitantes percorrem estradas, portas e regiões, fazem pausas e procuram abrigo à noite ou em tempestades. Os 22 animais anteriores permanecem.
@@ -152,7 +163,10 @@ A política inicial limita-se a registro territorial, influência, carta e obrig
 - `persistence.ts`, `campaign-files.ts`: validação, migrações v1–v7 para v8, backups e intercâmbio de campanhas.
 - `world.ts`, `world-input.ts`: carregamento 3D sob demanda, recuperação de WebGL, ciclo de vida e entrada compartilhada.
 - `three/world3d.ts`, `three/coordinates.ts`: Three.js, câmera, seleção por raio, rotas e apresentação da simulação.
-- `three/environment.ts`, `three/characters.ts`: cenários e personagens tridimensionais, animações e descarte de recursos.
+- `three/environment.ts`: cenário tridimensional e seu ciclo de vida.
+- `character-identity.ts`: aparência consistente entre o NPC renderizado e seu registro familiar.
+- `three/characters.ts`, `three/character-geometry.ts`: formas, roupas e articulações dos personagens, animações e descarte.
+- `three/character-materials.ts`, `three/character-grounding.ts`: materiais de superfícies, iluminação indireta e lote de sombras suaves.
 - `three/horizon.ts`: céu, serras e transição atmosférica das regiões externas, sem alterar navegação.
 - `three/materials.ts`, `three/effects.ts`: texturas procedurais e partículas reutilizadas, com propriedade e descarte por instância.
 - `three/interiors.ts`, `three/highlands.ts`: mobiliário, arquitetura interna e paisagem das Terras Altas.

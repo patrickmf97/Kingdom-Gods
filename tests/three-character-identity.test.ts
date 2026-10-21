@@ -27,7 +27,7 @@ test("every profession stays within articulated mesh and triangle budgets in all
     actor.group.traverse(object => {
       if (object instanceof THREE.Mesh) allocatedTriangles += object.geometry.getAttribute("position").count / 3;
     });
-    assert.ok(allocatedTriangles <= 2400, `${role}: ${allocatedTriangles} allocated triangles including both hidden tools`);
+    assert.ok(allocatedTriangles <= 6500, `${role}: ${allocatedTriangles} allocated triangles including both hidden tools`);
     actor.setEquipment(true);
     for (const [moving, working, attacking] of [[false, false, false], [true, false, false], [false, true, false], [false, false, true]]) for (const time of [0, .04, .13, .22, .29, .44, .65]) {
       actor.animate(time, moving, working, attacking);
@@ -35,7 +35,7 @@ test("every profession stays within articulated mesh and triangle budgets in all
       const draws = meshes.reduce((sum, mesh) => sum + (Array.isArray(mesh.material) ? Math.max(1, mesh.geometry.groups.length) : 1), 0);
       const triangles = meshes.reduce((sum, mesh) => sum + (mesh.geometry.index?.count ?? mesh.geometry.getAttribute("position").count) / 3, 0);
       assert.ok(draws <= 12, `${role}: ${draws} visible calls`);
-      assert.ok(triangles <= 2400, `${role}: ${triangles} triangles`);
+      assert.ok(triangles <= 6500, `${role}: ${triangles} triangles`);
       assert.ok(visibleBounds(actor.group).min.y >= -0.000001, `${role} action clips ground`);
     }
     actor.dispose();

@@ -36,6 +36,21 @@ test("camera buttons and wheel zoom remain bounded and reset reliably", () => {
   assert.equal(view.distance, MIN_CAMERA_DISTANCE);
   for (let i = 0; i < 100; i++) { view = cameraChange(view.yaw, view.distance, "out"); view = cameraChange(view.yaw, view.distance, "right"); }
   assert.equal(view.distance, MAX_CAMERA_DISTANCE);
-  assert.equal(view.yaw, Math.PI / 3);
+  assert.ok(view.yaw >= -Math.PI && view.yaw <= Math.PI, "orbit wraps without an angle jump outside its canonical range");
   assert.deepEqual(cameraChange(view.yaw, view.distance, "reset"), { yaw: DEFAULT_CAMERA_YAW, distance: DEFAULT_CAMERA_DISTANCE });
+});
+
+test("character inspection uses a close natural angle and returns to the exploration view", async () => {
+  const module = await import("../src/three/coordinates");
+  const close = cameraChange(.8, 29, "character");
+  assert.ok(close.distance <= 7, "the character must be large enough to inspect its face");
+  assert.equal(close.yaw, .8);
+  assert.ok(typeof module.cameraFraming === "function", "close framing must lower the camera instead of enlarging a top-down scalp");
+  const portrait = module.cameraFraming(close.distance), exploration = module.cameraFraming(29);
+  assert.ok(portrait.heightFactor < .5 && portrait.focusHeight > .9);
+  assert.equal(exploration.heightFactor, .9);
+  assert.ok(portrait.horizontalFactor > exploration.horizontalFactor);
+  assert.deepEqual(cameraChange(close.yaw, close.distance, "reset"), { yaw: DEFAULT_CAMERA_YAW, distance: DEFAULT_CAMERA_DISTANCE });
+  const orbit = cameraChange(Math.PI - .05, close.distance, "right");
+  assert.ok(orbit.yaw < 0, "a full orbit must wrap smoothly across the back of the character");
 });

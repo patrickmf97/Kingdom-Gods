@@ -26,6 +26,7 @@ import {
   Sun,
   Sword,
   Users,
+  UserRound,
   Volume2,
   VolumeX,
   X,
@@ -432,7 +433,7 @@ export default function App() {
         )}
         <div className="header-actions">
           <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.12 · {rendererMode.toUpperCase()}</span>
+            <i /> MODO LOCAL <span className="badge-version">α 0.13 · {rendererMode.toUpperCase()}</span>
           </span>
           {s.phase === "playing" && (
             <button
@@ -699,6 +700,7 @@ export default function App() {
                     { action: "right", label: "Girar câmera à direita", Icon: RotateCw },
                     { action: "in", label: "Aproximar câmera", Icon: ZoomIn },
                     { action: "out", label: "Afastar câmera", Icon: ZoomOut },
+                    { action: "character", label: "Ver personagem de perto", Icon: UserRound },
                     { action: "reset", label: "Restaurar câmera", Icon: Compass },
                   ] as const).map(({ action, label, Icon }) => (
                     <button key={action} title={label} aria-label={label} onClick={() => document.dispatchEvent(new CustomEvent("kg-camera", { detail: { action } }))}><Icon size={20} /></button>
@@ -943,7 +945,7 @@ export default function App() {
               </div>
               <footer className="title-footer">
                 <span>
-                  ALPHA 0.12 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
+                  ALPHA 0.13 · CADA ESCOLHA DEIXA MARCAS <i /> MUNDO LOCAL PERSISTENTE
                 </span>
                 <button onClick={() => open("help")}>
                   Conheça o mundo <ArrowUpRight size={13} />
