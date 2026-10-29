@@ -342,7 +342,7 @@ export class RegionVegetation {
     for (const kind of forestKinds) {
       const items = decor.filter(item => kind === "pine" ? item.key === "pine" : kind === "broadleaf" ? item.key === "tree2" : item.key !== "pine" && item.key !== "tree2");
       const crowns = this.batch(`forest-${kind}-crowns`, this.crowns[kind], this.leaves, items.length);
-      crowns.castShadow = false; // no extra animated global shadow pass
+      crowns.castShadow = true; // static canopy shade; wind sway stays on the visible crowns
       items.forEach((item, i) => {
         const s = item.scale ?? 1;
         const angle = ((item.x * 13 + item.y * 7) % 628) / 100;

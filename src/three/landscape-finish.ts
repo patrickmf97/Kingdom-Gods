@@ -70,7 +70,7 @@ export function createLandscapeFinish(zone: Zone, state: GameState): LandscapeFi
   shadows.userData.resourceSlots = Object.fromEntries(contacts.flatMap((contact, index) => contact.resource ? [[contact.resource, index]] : []));
   const groundGeometry = new THREE.PlaneGeometry(region.width * WORLD_SCALE, region.height * WORLD_SCALE); groundGeometry.rotateX(-Math.PI / 2);
   const groundMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, map: groundMap, roughness: 1, metalness: 0, transparent: true, opacity: .85, depthWrite: false });
-  const ground = new THREE.Mesh(groundGeometry, groundMaterial); ground.name = "landscape-ground-variation";
+  const ground = new THREE.Mesh(groundGeometry, groundMaterial); ground.name = "landscape-ground-variation"; ground.receiveShadow = true;
   ground.position.set(region.width * WORLD_SCALE / 2, .001, region.height * WORLD_SCALE / 2);
   for (const mesh of [ground, shadows]) { mesh.userData.presentationOnly = true; mesh.raycast = () => {}; mesh.renderOrder = mesh === ground ? 0 : 1; group.add(mesh); }
   const matrix = new THREE.Matrix4(), scale = new THREE.Vector3(), rotation = new THREE.Quaternion(), position = new THREE.Vector3();
