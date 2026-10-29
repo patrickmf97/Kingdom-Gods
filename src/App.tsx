@@ -5,6 +5,7 @@ import {
   BookOpen,
   Camera,
   Check,
+  ChevronDown,
   ChevronRight,
   Coins,
   Compass,
@@ -14,7 +15,8 @@ import {
   Home,
   Leaf,
   Map,
-  Pause,
+  Menu,
+  Moon,
   Play,
   Save,
   RotateCcw,
@@ -86,11 +88,14 @@ function MiniMap({ onOpen }: { onOpen: () => void }) {
   </button>;
 }
 
-const navItems: { id: Panel; label: string; icon: typeof Users }[] = [
-  { id: "inventory", label: "Inventário", icon: ShoppingBag },
-  { id: "character", label: "Atributos", icon: Shield },
-  { id: "relations", label: "Relações", icon: Users },
-  { id: "property", label: "Propriedades", icon: Home },
+const menuItems: { id: Panel; label: string; key: string; icon: typeof Users; mobile: boolean }[] = [
+  { id: "inventory", label: "Inventário", key: "I", icon: ShoppingBag, mobile: true },
+  { id: "character", label: "Atributos", key: "C", icon: Shield, mobile: false },
+  { id: "journal", label: "Diário", key: "J", icon: BookOpen, mobile: true },
+  { id: "relations", label: "Relações", key: "R", icon: Heart, mobile: false },
+  { id: "family", label: "Linhagem", key: "F", icon: Users, mobile: false },
+  { id: "property", label: "Propriedades", key: "P", icon: Home, mobile: false },
+  { id: "map", label: "Mapa", key: "M", icon: Map, mobile: true },
 ];
 
 export default function App() {
@@ -108,6 +113,7 @@ export default function App() {
   const [rendererMode, setRendererMode] = useState(getRendererMode);
   const [rendererNotice, setRendererNotice] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [trackerOpen, setTrackerOpen] = useState(() => !matchMedia("(pointer: coarse), (max-width: 720px)").matches);
   const campaignInput = useRef<HTMLInputElement>(null);
   const importDialog = useRef<HTMLDivElement>(null);
   const [transferError, setTransferError] = useState("");
@@ -373,6 +379,52 @@ export default function App() {
   const supplyOrder = s.economy.orders.find(
     (order) => order.status === "available" || order.status === "accepted",
   );
+  const opportunities: { id: string; panel: Panel; icon: typeof Users; title: string; detail: string; tone: string }[] = [
+    {
+      id: "land",
+      panel: "property",
+      icon: Leaf,
+      title: "Um pedaço de terra",
+      detail: s.property.owned ? "Seu cultivo em Valeverde" : `Parcela do Moinho · ${s.property.cost} coroas`,
+      tone: "",
+    },
+    {
+      id: "crypt",
+      panel: "journal",
+      icon: Sword,
+      title: "Ruídos sob as raízes",
+      detail: s.quest === "accepted" ? `${s.kills}/3 guardiões derrotados` : "Uma cripta ao norte da vila",
+      tone: "danger",
+    },
+    ...(supplyOrder
+      ? [{
+          id: "order",
+          panel: "journal" as Panel,
+          icon: ShoppingBag,
+          title: supplyOrder.title,
+          detail: `Prazo de ${Math.max(0, supplyOrder.deadline - s.day)} dias · ${supplyOrder.reward} coroas`,
+          tone: "",
+        }]
+      : []),
+    {
+      id: "market",
+      panel: "market",
+      icon: Coins,
+      title: "O mercado está aberto",
+      detail: `Prosperidade ${s.economy.prosperity}% · trigo, farinha e pão`,
+      tone: "muted",
+    },
+    ...(s.economy.worker
+      ? [{
+          id: "worker",
+          panel: "relations" as Panel,
+          icon: Users,
+          title: "Gente que trabalha com você",
+          detail: `Lina · ${s.economy.worker.wage} coroas/dia · lealdade ${s.economy.worker.loyalty}%`,
+          tone: "muted",
+        }]
+      : []),
+  ];
   const nearest = s.phase === "playing" ? store.getNearest() : null;
   const workRemaining = s.frontier.work
     ? Math.max(0, Math.ceil((s.frontier.work.duration - s.frontier.work.elapsed)
@@ -383,230 +435,13 @@ export default function App() {
     <div
       className={`kingdom-app ${s.phase === "playing" ? "is-playing" : "is-landing"} ${mobile ? "is-mobile" : ""}`}
     >
-      <header className="main-header">
-        <button
-          className="brand"
-          onClick={() =>
-            s.phase === "playing" ? setPaused((v) => !v) : store.returnTitle()
-          }
-          aria-label="Kingdom Gods"
-        >
-          <Sigil size={35} />
-          <span>
-            KINGDOM <b>GODS</b>
-            <small>UMA VIDA. UM LEGADO.</small>
-          </span>
-        </button>
-        {s.phase === "playing" ? (
-          <nav className="top-nav" aria-label="Navegação">
-            <button
-              className={!panel ? "active" : ""}
-              onClick={() => {
-                setPanel(null);
-                setDialog(null);
-              }}
-            >
-              <Compass size={15} />
-              Mundo
-            </button>
-            <button
-              className={panel === "character" ? "active" : ""}
-              onClick={() => open("character")}
-            >
-              Apóstolo
-            </button>
-            <button
-              className={panel === "family" ? "active" : ""}
-              onClick={() => open("family")}
-            >
-              Linhagem
-            </button>
-            <button
-              className={panel === "journal" ? "active" : ""}
-              onClick={() => open("journal")}
-            >
-              Diário
-            </button>
-          </nav>
-        ) : (
-          <span className="header-caption">CRÔNICAS DE UM MUNDO VIVO</span>
-        )}
-        <div className="header-actions">
-          <span className="local-badge">
-            <i /> MODO LOCAL <span className="badge-version">α 0.13 · {rendererMode.toUpperCase()}</span>
-          </span>
-          {s.phase === "playing" && (
-            <button
-              className="icon-button save-button"
-              onClick={doSave}
-              title="Salvar campanha"
-              aria-label="Salvar campanha"
-            >
-              {saving ? <span className="spinner" /> : <Save size={17} />}
-            </button>
-          )}
-          <button
-            className="icon-button"
-            onClick={() => open("help")}
-            aria-label="Controles e informações"
-          >
-            <Settings2 size={18} />
-          </button>
-        </div>
-      </header>
-      <div className="game-layout">
-        {s.phase === "playing" && (
-          <aside className="left-sidebar">
-            <div className="apostle-card">
-              <div className="eyebrow">
-                <span>SEU APÓSTOLO</span>
-                <Sparkles size={12} />
-              </div>
-              <div className="apostle-identity">
-                <div className="portrait-frame">
-                  <Portrait person={a} size={66} />
-                  <span className="blessing-dot">
-                    <Sparkles size={11} />
-                  </span>
-                </div>
-                <div>
-                  <h2>
-                    {a.name} {a.surname}
-                  </h2>
-                  <p>
-                    {a.age} anos <span>·</span> {a.title}
-                  </p>
-                  <span className="blessing-label">
-                    Bênção {a.blessing === "vigor" ? "do" : "da"}{" "}
-                    {BLESSINGS[a.blessing].name}
-                  </span>
-                </div>
-              </div>
-              <div className="vital-label">
-                <span>
-                  <Heart size={12} /> Vitalidade
-                </span>
-                <b>
-                  {Math.ceil(a.hp)} <em>/ {a.maxHp}</em>
-                </b>
-              </div>
-              <div className="bar health">
-                <i
-                  style={{ width: `${Math.max(0, (a.hp / a.maxHp) * 100)}%` }}
-                />
-              </div>
-              <div className="vital-label">
-                <span>
-                  <Zap size={12} /> Energia
-                </span>
-                <b>
-                  {Math.floor(a.stamina)} <em>/ {a.maxStamina}</em>
-                </b>
-              </div>
-              <div className="bar energy">
-                <i style={{ width: `${(a.stamina / a.maxStamina) * 100}%` }} />
-              </div>
-              <div className="wallet">
-                <Coins size={16} />
-                <strong>{s.gold}</strong>
-                <span>coroas</span>
-                <button onClick={() => open("inventory")}>
-                  <ShoppingBag size={16} />
-                </button>
-              </div>
-            </div>
-            <div className="sidebar-section">
-              <div className="section-title">
-                <h3>Seu caminho</h3>
-                <Feather size={14} />
-              </div>
-              <span className="chapter-label">CAPÍTULO I · UM NOVO COMEÇO</span>
-              <h4>{s.intro ? "Além dos portões" : "O mundo à sua espera"}</h4>
-              <p>
-                {s.intro
-                  ? "Converse com Madre Elara. Hoje, aos 16 anos, você deixa o orfanato."
-                  : "Você é livre para escolher. Cultive uma terra, faça amizades ou siga a estrada."}
-              </p>
-              <button className="text-link" onClick={() => open("journal")}>
-                Abrir diário <ArrowRight size={13} />
-              </button>
-            </div>
-            <div className="sidebar-section opportunities">
-              <div className="section-title">
-                <h3>Oportunidades</h3>
-                <span className="tiny-number">{supplyOrder ? 3 : 2}</span>
-              </div>
-              <button className="opportunity" onClick={() => open("property")}>
-                <span className="op-icon">
-                  <Leaf size={18} />
-                </span>
-                <span>
-                  <b>Um pedaço de terra</b>
-                  <small>
-                    {s.property.owned
-                      ? "Seu cultivo em Valeverde"
-                      : `Parcela do Moinho · ${s.property.cost} coroas`}
-                  </small>
-                </span>
-                <ChevronRight size={14} />
-              </button>
-              <button className="opportunity" onClick={() => open("journal")}>
-                <span className="op-icon danger">
-                  <Sword size={18} />
-                </span>
-                <span>
-                  <b>Ruídos sob as raízes</b>
-                  <small>
-                    {s.quest === "accepted"
-                      ? `${s.kills}/3 guardiões derrotados`
-                      : "Uma cripta ao norte da vila"}
-                  </small>
-                </span>
-                <ChevronRight size={14} />
-              </button>
-              {supplyOrder && (
-                <button className="opportunity" onClick={() => open("journal")}>
-                  <span className="op-icon">
-                    <ShoppingBag size={18} />
-                  </span>
-                  <span>
-                    <b>{supplyOrder.title}</b>
-                    <small>
-                      Prazo de {Math.max(0, supplyOrder.deadline - s.day)} dias
-                      · {supplyOrder.reward} coroas
-                    </small>
-                  </span>
-                  <ChevronRight size={14} />
-                </button>
-              )}
-            </div>
-            <div className="sidebar-memory">
-              <span className="eyebrow">ECOS DA MEMÓRIA</span>
-              <p>
-                “
-                {a.memories.length
-                  ? a.memories[a.memories.length - 1].text
-                  : "A estrada será longa. Mas, pela primeira vez, ela é minha."}
-                ”
-              </p>
-              <button onClick={() => open("journal")}>
-                Conhecer sua história <ArrowUpRight size={12} />
-              </button>
-            </div>
-            <div className="sidebar-bottom">
-              <Flag size={14} />
-              <span>Reino de Auren</span>
-              <i />
-              Em paz
-            </div>
-          </aside>
-        )}
-        <main className={`world-area ${cameraOpen ? "camera-open" : ""} ${s.worldLife?.storm.warning?.zone === s.zone ? "has-storm-warning" : ""}`}>
+      <main className={`world-area ${cameraOpen ? "camera-open" : ""} ${s.worldLife?.storm.warning?.zone === s.zone ? "has-storm-warning" : ""} ${dialog ? "has-dialog" : ""}`}>
           <div
             className="world-canvas"
             ref={worldEl}
             aria-label="Mundo explorável de Kingdom Gods"
           />
+          <div className="world-vignette" aria-hidden="true" />
           {rendererNotice && (s.phase === "title" || s.phase === "playing") && (
             <div className="renderer-notice" role="status">
               <span>{rendererNotice}</span>
@@ -615,194 +450,209 @@ export default function App() {
           )}
           {s.phase === "playing" && (
             <>
-              <div className="region-header">
-                <span className="region-crest">
-                  <Compass size={21} />
-                </span>
-                <div>
-                  <small>
-                    {s.zone === "wilderness" ? "TERRAS DE AUREN" : s.zone === "mine" ? "GALERIAS DE FERRO" : s.zone === "dungeon" ? "TERRITÓRIO SELVAGEM" : "REINO DE AUREN"}
-                  </small>
-                  <h1>
-                    {regionForZone(s.zone).name}
-                  </h1>
-                </div>
-                <span className="region-state">
-                  {s.zone === "dungeon" ? (
-                    <>
-                      <Sword size={12} /> Área perigosa
-                    </>
-                  ) : (
-                    <>
-                      <Shield size={12} /> {s.zone === "mine" ? "Extração pacífica" : s.zone === "wilderness" ? "Exploração livre" : "Terras protegidas"}
-                    </>
-                  )}
-                </span>
-              </div>
-              <WeatherChip state={s} season={calendar.season} onOpen={() => open("journal")} />
-              <StormWarning state={s} />
-              {mobile && (
-                <div className="mobile-vitals">
-                  <div>
-                    <Heart size={11} />
-                    <b>{Math.ceil(a.hp)}</b>
-                    <small>/{a.maxHp}</small>
-                    <span className="mobile-meter health">
-                      <i style={{ width: `${(a.hp / a.maxHp) * 100}%` }} />
-                    </span>
+              <div className="hud">
+                <section className="hud-left" aria-label="Seu apóstolo e objetivos">
+                  <div className="hud-plate">
+                    <button className="plate-portrait" onClick={() => open("character")} aria-label="Abrir atributos do apóstolo">
+                      <Portrait person={a} size={58} />
+                      <span className="plate-blessing" title={`Bênção ${a.blessing === "vigor" ? "do" : "da"} ${BLESSINGS[a.blessing].name}`}>
+                        <Sparkles size={10} />
+                      </span>
+                    </button>
+                    <div className="plate-body">
+                      <div className="plate-name">
+                        <h2>{a.name} {a.surname}</h2>
+                        <span>{a.age} anos · {a.generation}ª geração</span>
+                      </div>
+                      <div className="meter health" role="meter" aria-label="Vitalidade" aria-valuemin={0} aria-valuemax={a.maxHp} aria-valuenow={Math.ceil(a.hp)}>
+                        <Heart size={11} aria-hidden="true" />
+                        <span className="meter-track"><i style={{ width: `${Math.max(0, (a.hp / a.maxHp) * 100)}%` }} /></span>
+                        <b>{Math.ceil(a.hp)}<em>/{a.maxHp}</em></b>
+                      </div>
+                      <div className="meter energy" role="meter" aria-label="Energia" aria-valuemin={0} aria-valuemax={a.maxStamina} aria-valuenow={Math.floor(a.stamina)}>
+                        <Zap size={11} aria-hidden="true" />
+                        <span className="meter-track"><i style={{ width: `${Math.max(0, (a.stamina / a.maxStamina) * 100)}%` }} /></span>
+                        <b>{Math.floor(a.stamina)}<em>/{a.maxStamina}</em></b>
+                      </div>
+                    </div>
+                    <button className="plate-purse" onClick={() => open("inventory")} aria-label={`${s.gold} coroas. Abrir inventário`}>
+                      <Coins size={13} aria-hidden="true" />
+                      <b>{s.gold}</b>
+                    </button>
                   </div>
-                  <div>
-                    <Zap size={11} />
-                    <b>{Math.floor(a.stamina)}</b>
-                    <small>/{a.maxStamina}</small>
-                    <span className="mobile-meter energy">
-                      <i
-                        style={{
-                          width: `${(a.stamina / a.maxStamina) * 100}%`,
-                        }}
-                      />
-                    </span>
+                  <div className={`hud-tracker ${trackerOpen ? "open" : ""}`}>
+                    <button className="tracker-toggle" aria-expanded={trackerOpen} aria-controls="hud-tracker-list" onClick={() => setTrackerOpen((v) => !v)}>
+                      <Feather size={13} aria-hidden="true" />
+                      <span>Objetivos</span>
+                      <small>{opportunities.length + 1}</small>
+                      <ChevronDown size={14} aria-hidden="true" className="tracker-chevron" />
+                    </button>
+                    {trackerOpen && (
+                      <div className="tracker-list" id="hud-tracker-list">
+                        <button className="tracker-main" onClick={() => open("journal")}>
+                          <span className="tracker-chapter">Capítulo I · Um novo começo</span>
+                          <b>{s.intro ? "Além dos portões" : "O mundo à sua espera"}</b>
+                          <small>
+                            {s.intro
+                              ? "Converse com Madre Elara. Hoje, aos 16 anos, você deixa o orfanato."
+                              : "Cultive uma terra, faça amizades ou siga a estrada."}
+                          </small>
+                        </button>
+                        {opportunities.map((item) => (
+                          <button key={item.id} className={`tracker-item ${item.tone}`} onClick={() => open(item.panel)}>
+                            <item.icon size={14} aria-hidden="true" />
+                            <span>
+                              <b>{item.title}</b>
+                              <small>{item.detail}</small>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-              {s.frontier.work && (
-                <div className="work-progress-hud" role="status" aria-live="polite">
-                  <div><strong>{resourceNode(s.frontier.work.nodeId)?.label || "Trabalhando"}</strong><span>{workRemaining} s</span></div>
-                  <progress aria-label="Progresso do trabalho" value={s.frontier.work.elapsed} max={s.frontier.work.duration} />
-                  <button onClick={() => store.act("cancel-work")}>Interromper</button>
-                </div>
-              )}
-              <div className="world-top-controls">
-                {rendererMode === "3d" && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
-                  <button className="map-toggle camera-toggle" aria-label="Controles da câmera" aria-expanded={cameraOpen} aria-controls="world-camera-controls" onClick={() => setCameraOpen((value) => !value)}>
-                    <Camera size={17} /><span>Câmera</span>
-                  </button>
-                )}
-                <button
-                  className="map-toggle"
-                  onClick={() => open("map")}
-                  aria-label="Mapa"
-                >
-                  <Map size={17} />
-                </button>
-                <button
-                  className="map-toggle"
-                  onClick={() => setPaused((v) => !v)}
-                  aria-label="Pausar"
-                >
-                  {paused ? <Play size={17} /> : <Pause size={17} />}
-                </button>
-              </div>
-              {cameraOpen && rendererMode === "3d" && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
-                <div className="camera-controls" id="world-camera-controls" role="group" aria-label="Ajustar câmera 3D">
-                  {([
-                    { action: "left", label: "Girar câmera à esquerda", Icon: RotateCcw },
-                    { action: "right", label: "Girar câmera à direita", Icon: RotateCw },
-                    { action: "in", label: "Aproximar câmera", Icon: ZoomIn },
-                    { action: "out", label: "Afastar câmera", Icon: ZoomOut },
-                    { action: "character", label: "Ver personagem de perto", Icon: UserRound },
-                    { action: "reset", label: "Restaurar câmera", Icon: Compass },
-                  ] as const).map(({ action, label, Icon }) => (
-                    <button key={action} title={label} aria-label={label} onClick={() => document.dispatchEvent(new CustomEvent("kg-camera", { detail: { action } }))}><Icon size={20} /></button>
-                  ))}
-                </div>
-              )}
-              <div className="notification-feed" aria-live="polite" style={{ visibility: s.frontier.work ? "hidden" : undefined }}>
-                {s.messages.slice(-3).map((m, i) => (
-                  <div
-                    className={`world-notice notice-${m.type}`}
-                    key={m.id}
-                    style={{
-                      opacity: i === s.messages.slice(-3).length - 1 ? 1 : 0.75,
-                    }}
-                  >
-                    <span className="notice-mark" />
-                    <span>{m.text}</span>
-                  </div>
-                ))}
-              </div>
-              {nearest &&
-                nearest.distance < 120 &&
-                !panel &&
-                !dialog &&
-                !mobile && (
-                  <button
-                    className="interact-prompt"
-                    onClick={() => worldInput.interact()}
-                  >
-                    <kbd>E</kbd>
-                    <span>{nearest.label}</span>
-                    <ChevronRight size={13} />
-                  </button>
-                )}
-              {!dialog && !panel && (
-                <div className="hotbar">
-                  <span className="hotbar-flourish">✦</span>
-                  <button
-                    className="hotbar-slot equipped"
-                    onClick={() => {
-                      store.act("equip:sword");
-                    }}
-                    title="Equipar espada"
-                  >
-                    <kbd>1</kbd>
-                    <ItemIcon id="sword" size={31} />
+                </section>
+                <section className="hud-center" aria-label="Região atual">
+                  <div className="hud-region">
                     <small>
-                      {a.equipment === "sword" ? "Equipada" : "Espada"}
+                      {s.zone === "wilderness" ? "Terras de Auren" : s.zone === "mine" ? "Galerias de ferro" : s.zone === "dungeon" ? "Território selvagem" : "Reino de Auren"}
                     </small>
-                  </button>
-                  <button
-                    className="hotbar-slot"
-                    onClick={() => store.act("use:bread")}
-                    title="Comer pão"
-                  >
-                    <kbd>2</kbd>
-                    <ItemIcon id="bread" size={31} />
-                    <b>{s.inventory.bread}</b>
-                    <small>Pão</small>
-                  </button>
-                  <button
-                    className="hotbar-slot"
-                    onClick={() => store.act("use:herb")}
-                    title="Usar erva"
-                  >
-                    <kbd>3</kbd>
-                    <ItemIcon id="herb" size={31} />
-                    <b>{s.inventory.herb}</b>
-                    <small>Erva</small>
-                  </button>
-                  <i className="hotbar-separator" />
-                  <button
-                    className="hotbar-slot bag"
-                    onClick={() => open("inventory")}
-                    title="Inventário"
-                  >
-                    <kbd>I</kbd>
-                    <ShoppingBag size={25} />
-                    <small>Mochila</small>
-                  </button>
-                  <span className="hotbar-flourish">✦</span>
-                </div>
-              )}
-              {!mobile && !panel && !dialog && (
-                <div className="control-hints">
-                  <span>
-                    <kbd>W</kbd>
-                    <kbd>A</kbd>
-                    <kbd>S</kbd>
-                    <kbd>D</kbd> mover
-                  </span>
-                  <span>
-                    <kbd>E</kbd> interagir
-                  </span>
-                  <span>
-                    <kbd>ESPAÇO</kbd> atacar
-                  </span>
-                  <span>
-                    <kbd>SHIFT</kbd> esquivar
-                  </span>
-                </div>
-              )}
+                    <h1>{regionForZone(s.zone).name}</h1>
+                    <span className={`region-state ${s.zone === "dungeon" ? "danger" : ""}`}>
+                      {s.zone === "dungeon" ? <Sword size={11} aria-hidden="true" /> : <Shield size={11} aria-hidden="true" />}
+                      {s.zone === "dungeon" ? "Área perigosa" : s.zone === "mine" ? "Extração pacífica" : s.zone === "wilderness" ? "Exploração livre" : "Terras protegidas"}
+                    </span>
+                  </div>
+                  <StormWarning state={s} />
+                  {s.frontier.work && (
+                    <div className="work-progress-hud" role="status" aria-live="polite">
+                      <div><strong>{resourceNode(s.frontier.work.nodeId)?.label || "Trabalhando"}</strong><span>{workRemaining} s</span></div>
+                      <progress aria-label="Progresso do trabalho" value={s.frontier.work.elapsed} max={s.frontier.work.duration} />
+                      <button onClick={() => store.act("cancel-work")}>Interromper</button>
+                    </div>
+                  )}
+                </section>
+                <section className="hud-right" aria-label="Tempo, mapa e opções">
+                  <div className="hud-toolbar">
+                    {rendererMode === "3d" && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
+                      <button className="tool-button" aria-label="Controles da câmera" title="Câmera" aria-expanded={cameraOpen} aria-controls="world-camera-controls" onClick={() => setCameraOpen((value) => !value)}>
+                        <Camera size={17} />
+                      </button>
+                    )}
+                    <button className="tool-button" onClick={doSave} title="Salvar campanha" aria-label="Salvar campanha">
+                      {saving ? <span className="spinner" /> : <Save size={17} />}
+                    </button>
+                    <button className={`tool-button ${sound ? "active" : ""}`} onClick={() => setSound((v) => !v)} title="Ambiente sonoro" aria-label={sound ? "Desativar ambiente sonoro" : "Ativar ambiente sonoro"}>
+                      {sound ? <Volume2 size={17} /> : <VolumeX size={17} />}
+                    </button>
+                    <button className="tool-button" onClick={() => open("help")} title="Controles e ajustes" aria-label="Controles e informações">
+                      <Settings2 size={17} />
+                    </button>
+                    <button className="tool-button tool-menu" onClick={() => { setPanel(null); setDialog(null); setPaused((v) => !v); }} title="Menu (Esc)" aria-label={paused ? "Retomar" : "Pausar e abrir menu"}>
+                      {paused ? <Play size={17} /> : <Menu size={18} />}
+                    </button>
+                  </div>
+                  {cameraOpen && rendererMode === "3d" && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
+                    <div className="camera-controls" id="world-camera-controls" role="group" aria-label="Ajustar câmera 3D">
+                      {([
+                        { action: "left", label: "Girar câmera à esquerda", Icon: RotateCcw },
+                        { action: "right", label: "Girar câmera à direita", Icon: RotateCw },
+                        { action: "in", label: "Aproximar câmera", Icon: ZoomIn },
+                        { action: "out", label: "Afastar câmera", Icon: ZoomOut },
+                        { action: "character", label: "Ver personagem de perto", Icon: UserRound },
+                        { action: "reset", label: "Restaurar câmera", Icon: Compass },
+                      ] as const).map(({ action, label, Icon }) => (
+                        <button key={action} title={label} aria-label={label} onClick={() => document.dispatchEvent(new CustomEvent("kg-camera", { detail: { action } }))}><Icon size={18} /></button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="hud-clock">
+                    <div className="clock-dial" aria-hidden="true" style={{ ["--day" as string]: `${(s.minutes / 1440) * 360}deg` }}>
+                      {s.minutes >= 360 && s.minutes < 1140 ? <Sun size={15} /> : <Moon size={14} />}
+                    </div>
+                    <div className="clock-text">
+                      <strong>{calendar.hour}</strong>
+                      <span>Dia {calendar.day} de {calendar.month} · Ano {calendar.year}</span>
+                    </div>
+                    <WeatherChip state={s} season={calendar.season} onOpen={() => open("journal")} />
+                  </div>
+                  <MiniMap onOpen={() => open("map")} />
+                </section>
+                <section className="hud-feed notification-feed" aria-live="polite" style={{ visibility: s.frontier.work ? "hidden" : undefined }}>
+                  {s.messages.slice(-3).map((m, i, list) => (
+                    <div
+                      className={`world-notice notice-${m.type} ${i === list.length - 1 ? "latest" : ""}`}
+                      key={m.id}
+                    >
+                      <span className="notice-mark" />
+                      <span>{m.text}</span>
+                    </div>
+                  ))}
+                </section>
+                <section className="hud-bottom" aria-label="Ações rápidas">
+                  {nearest &&
+                    nearest.distance < 120 &&
+                    !panel &&
+                    !dialog &&
+                    !mobile && (
+                      <button
+                        className="interact-prompt"
+                        onClick={() => worldInput.interact()}
+                      >
+                        <kbd>E</kbd>
+                        <span>{nearest.label}</span>
+                      </button>
+                    )}
+                  {!dialog && (
+                    <div className="hud-dock">
+                      <div className="hotbar" role="group" aria-label="Itens rápidos">
+                        <button className={`hotbar-slot ${a.equipment === "sword" ? "equipped" : ""}`} onClick={() => store.act("equip:sword")} title="Equipar espada">
+                          <kbd>1</kbd>
+                          <ItemIcon id="sword" size={28} />
+                          <small>{a.equipment === "sword" ? "Equipada" : "Espada"}</small>
+                        </button>
+                        <button className="hotbar-slot" onClick={() => store.act("use:bread")} title="Comer pão">
+                          <kbd>2</kbd>
+                          <ItemIcon id="bread" size={28} />
+                          <b>{s.inventory.bread}</b>
+                          <small>Pão</small>
+                        </button>
+                        <button className="hotbar-slot" onClick={() => store.act("use:herb")} title="Usar erva">
+                          <kbd>3</kbd>
+                          <ItemIcon id="herb" size={28} />
+                          <b>{s.inventory.herb}</b>
+                          <small>Erva</small>
+                        </button>
+                      </div>
+                      <i className="dock-divider" aria-hidden="true" />
+                      <nav className="dock-menu" aria-label="Menus do jogo">
+                        {menuItems.map((item) => (
+                          <button
+                            key={item.id}
+                            className={`dock-button ${panel === item.id ? "active" : ""} ${item.mobile ? "keep-mobile" : ""}`}
+                            onClick={() => open(item.id)}
+                            title={`${item.label} (${item.key})`}
+                            aria-label={item.label}
+                          >
+                            <item.icon size={18} aria-hidden="true" />
+                            <kbd>{item.key}</kbd>
+                          </button>
+                        ))}
+                        <button className="dock-button keep-mobile mobile-only" onClick={() => { setPanel(null); setDialog(null); setPaused(true); }} aria-label="Abrir menu">
+                          <Menu size={18} aria-hidden="true" />
+                        </button>
+                      </nav>
+                    </div>
+                  )}
+                </section>
+                {!mobile && !panel && !dialog && (
+                  <section className="hud-hints control-hints" aria-label="Controles">
+                    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover</span>
+                    <span><kbd>E</kbd> interagir</span>
+                    <span><kbd>Espaço</kbd> atacar</span>
+                    <span><kbd>Shift</kbd> esquivar</span>
+                  </section>
+                )}
+              </div>
               {mobile && !panel && !dialog && !paused && (
                 <MobileControls
                   onAttack={() => worldInput.attack()}
@@ -811,12 +661,12 @@ export default function App() {
                 />
               )}
               {dialog && (
-                <div className="dialog-box">
+                <div className="dialog-box" role="dialog" aria-label={`Conversa com ${dialog.name}`}>
                   <div className="dialog-speaker">
                     {!animalEncounter && <span className="dialog-portrait">
                       <Portrait
                         person={{ ...a, hair: "#b1a48a", outfit: "#777462" }}
-                        size={52}
+                        size={64}
                       />
                     </span>}
                     <div>
@@ -839,7 +689,8 @@ export default function App() {
                         disabled={o.disabled}
                         onClick={() => choose(o.action)}
                       >
-                        {o.label}
+                        <span className="option-index">{i + 1}</span>
+                        <span>{o.label}</span>
                         <ArrowRight size={14} />
                       </button>
                     ))}
@@ -847,36 +698,61 @@ export default function App() {
                 </div>
               )}
               {paused && !panel && (
-                <div className="pause-overlay">
-                  <Sigil size={54} />
-                  <h2>Um instante de silêncio</h2>
-                  <p>O mundo aguarda seu retorno.</p>
-                  {saveError && (
-                    <p className="save-error" role="alert">
-                      {saveError}
-                    </p>
-                  )}
-                  <button
-                    className="primary-button"
-                    onClick={() => setPaused(false)}
-                  >
-                    <Play size={16} /> Continuar jornada
-                  </button>
-                  <button className="secondary-button" onClick={doSave}>
-                    <Save size={15} /> Salvar campanha
-                  </button>
-                  <button
-                    className="text-link"
-                    onClick={async () => {
-                      if (await doSave()) {
-                        store.returnTitle();
-                        setPaused(false);
-                        setHasSave(true);
-                      }
-                    }}
-                  >
-                    Voltar à tela inicial
-                  </button>
+                <div className="pause-overlay" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+                  <div className="pause-window">
+                    <div className="pause-brand">
+                      <Sigil size={44} />
+                      <span>KINGDOM <b>GODS</b></span>
+                    </div>
+                    <h2 id="pause-title">Um instante de silêncio</h2>
+                    <p>O mundo aguarda seu retorno.</p>
+                    <div className="pause-house">
+                      <Portrait person={a} size={44} />
+                      <span>
+                        <b>{a.name} {a.surname}</b>
+                        <small>Casa {a.surname} · {a.generation}ª geração · {s.gold} coroas</small>
+                      </span>
+                    </div>
+                    {saveError && (
+                      <p className="save-error" role="alert">
+                        {saveError}
+                      </p>
+                    )}
+                    <button className="primary-button" onClick={() => setPaused(false)}>
+                      <Play size={16} /> Continuar jornada
+                    </button>
+                    <nav className="pause-grid" aria-label="Menus do jogo">
+                      {[...menuItems, { id: "help" as Panel, label: "Ajustes", key: "?", icon: Settings2, mobile: false }].map((item) => (
+                        <button key={item.id} onClick={() => open(item.id)}>
+                          <item.icon size={17} aria-hidden="true" />
+                          <span>{item.label}</span>
+                        </button>
+                      ))}
+                    </nav>
+                    <div className="pause-actions">
+                      <button className="secondary-button" onClick={doSave}>
+                        {saving ? <span className="spinner" /> : <Save size={15} />} Salvar campanha
+                      </button>
+                      <button
+                        className="text-link"
+                        onClick={async () => {
+                          if (await doSave()) {
+                            store.returnTitle();
+                            setPaused(false);
+                            setHasSave(true);
+                          }
+                        }}
+                      >
+                        Voltar à tela inicial
+                      </button>
+                    </div>
+                    <blockquote className="pause-memory">
+                      “{a.memories.length
+                        ? a.memories[a.memories.length - 1].text
+                        : "A estrada será longa. Mas, pela primeira vez, ela é minha."}”
+                      <cite>Ecos da memória · {s.savedAt ? "progresso salvo neste navegador" : "salvamento automático ativo"}</cite>
+                    </blockquote>
+                  </div>
                 </div>
               )}
             </>
@@ -884,6 +760,23 @@ export default function App() {
           {s.phase === "title" && (
             <div className="title-overlay">
               <div className="title-grain" />
+              <header className="title-topbar">
+                <div className="title-brand">
+                  <Sigil size={34} />
+                  <span>
+                    KINGDOM <b>GODS</b>
+                    <small>Uma vida. Um legado.</small>
+                  </span>
+                </div>
+                <div className="title-topbar-actions">
+                  <span className="local-badge">
+                    <i /> Modo local <span className="badge-version">α 0.13 · {rendererMode.toUpperCase()}</span>
+                  </span>
+                  <button className="icon-button" onClick={() => open("help")} aria-label="Controles e informações">
+                    <Settings2 size={18} />
+                  </button>
+                </div>
+              </header>
               <div className="title-copy">
                 <span className="title-overline">
                   <span /> {rendererMode === "3d" ? "UM MUNDO MEDIEVAL EM 3D" : "UM RPG SANDBOX DE FANTASIA MEDIEVAL"}
@@ -1245,126 +1138,7 @@ export default function App() {
               </div>
             </div>
           )}
-        </main>
-        {s.phase === "playing" && (
-          <aside className="right-sidebar">
-            <div className="calendar-card">
-              <span className="eyebrow">A RODA DO TEMPO</span>
-              <div className="clock-face">
-                <Sun size={26} />
-                <strong>{calendar.hour}</strong>
-                <span>
-                  Dia {calendar.day} de {calendar.month}
-                </span>
-                <small>
-                  ANO {calendar.year} · {calendar.season.toUpperCase()}
-                </small>
-              </div>
-              <div className="day-track">
-                <i style={{ left: `${(s.minutes / 1440) * 100}%` }} />
-              </div>
-              <p>O tempo passa. O mundo muda.</p>
-            </div>
-            <div className="right-section">
-              <div className="section-title">
-                <h3>Seus arredores</h3>
-                <button onClick={() => open("map")} aria-label="Abrir mapa">
-                  <Map size={14} />
-                </button>
-              </div>
-              <MiniMap onOpen={() => open("map")} />
-              <div className="map-legend">
-                <i />
-                Seu apóstolo
-                <span>
-                  Mapa <kbd>M</kbd>
-                </span>
-              </div>
-            </div>
-            <div className="right-section world-pulse">
-              <div className="section-title">
-                <h3>O mundo vive</h3>
-                <span className="pulse-dot" />
-              </div>
-              <div className="pulse-event">
-                <span>
-                  <ShoppingBag size={16} />
-                </span>
-                <div>
-                  <b>O mercado está aberto</b>
-                  <p>
-                    Prosperidade {s.economy.prosperity}%. Trigo, farinha e pão
-                    circulam pela vila.
-                  </p>
-                  <button onClick={() => open("market")}>
-                    Ver o mercado <ArrowUpRight size={11} />
-                  </button>
-                </div>
-              </div>
-              <div className="pulse-event">
-                <span>
-                  <Users size={16} />
-                </span>
-                <div>
-                  <b>
-                    {s.economy.worker
-                      ? "Gente que trabalha com você"
-                      : "Vidas que se cruzam"}
-                  </b>
-                  <p>
-                    {s.economy.worker
-                      ? `Lina: ${s.economy.worker.wage} coroas por dia · lealdade ${s.economy.worker.loyalty}%.`
-                      : "Moradores trabalham, caminham e criam memórias."}
-                  </p>
-                  <button onClick={() => open("relations")}>
-                    Conhecer moradores <ArrowUpRight size={11} />
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="legacy-card">
-              <Sigil size={24} />
-              <span>CASA {a.surname.toUpperCase()}</span>
-              <b>{a.generation}ª geração</b>
-              <button onClick={() => open("family")}>
-                Sua linhagem <ArrowRight size={12} />
-              </button>
-            </div>
-          </aside>
-        )}
-      </div>
-      {s.phase === "playing" && (
-        <footer className="game-footer">
-          <div className="footer-tabs">
-            {navItems.map((n) => (
-              <button
-                key={n.id}
-                className={panel === n.id ? "active" : ""}
-                onClick={() => open(n.id)}
-              >
-                <n.icon size={16} />
-                <span>{n.label}</span>
-              </button>
-            ))}
-          </div>
-          <div className="save-state">
-            <span className="live-dot" />
-            {saveError ||
-              (s.savedAt
-                ? "Progresso salvo neste navegador"
-                : "Salvamento automático ativo")}
-          </div>
-          <button
-            className={`audio-toggle ${sound ? "active" : ""}`}
-            onClick={() => setSound((v) => !v)}
-            aria-label={
-              sound ? "Desativar ambiente sonoro" : "Ativar ambiente sonoro"
-            }
-          >
-            {sound ? <Volume2 size={16} /> : <VolumeX size={16} />}
-          </button>
-        </footer>
-      )}
+      </main>
       {panel && (
         <GamePanel panel={panel} state={s} onClose={() => setPanel(null)} />
       )}

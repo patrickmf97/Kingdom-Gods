@@ -3,7 +3,7 @@
   inset: 0;
   z-index: 80;
   color: #253d32;
-  font-family: Inter, Arial, sans-serif;
+  font-family: var(--sans);
 }
 .panel-scrim {
   position: absolute;
@@ -59,7 +59,7 @@
   line-height: 1.5;
 }
 .panel-header h2 {
-  font-family: Georgia, serif;
+  font-family: var(--serif);
   font-weight: 400;
   font-size: 25px;
   margin: 5px 0 0;
@@ -99,7 +99,7 @@
   border-radius: 4px;
 }
 .panel-scroll h3 {
-  font-family: Georgia, serif;
+  font-family: var(--serif);
   font-weight: 400;
   color: #253d32;
 }
@@ -806,7 +806,7 @@
   background: #efe7d2;
 }
 .family-node strong {
-  font-family: Georgia, serif;
+  font-family: var(--serif);
   font-weight: 400;
   font-size: 15px;
 }
@@ -900,7 +900,7 @@
   color: #96937c;
 }
 .panel-property-stats b {
-  font-family: Georgia, serif;
+  font-family: var(--serif);
   font-size: 22px;
   font-weight: 400;
   color: #526647;
@@ -1035,7 +1035,7 @@
   position: absolute;
   right: 16px;
   top: 13px;
-  font-family: Georgia, serif;
+  font-family: var(--serif);
   font-size: 12px;
   color: #829170;
   display: flex;
@@ -1229,7 +1229,7 @@
   align-items: center;
 }
 .panel-controls kbd {
-  font-family: Inter, Arial, sans-serif;
+  font-family: var(--sans);
   font-size: 8px;
   font-weight: 500;
   letter-spacing: 0.7px;
@@ -1260,7 +1260,7 @@
   position: absolute;
   left: 0;
   top: 0;
-  font-family: Georgia, serif;
+  font-family: var(--serif);
   color: #a58c59;
   font-size: 19px;
 }
@@ -1881,3 +1881,122 @@
 .panel-weather-risk { display: flex; gap: 9px; padding: 11px; color: #704f2a; border: 1px solid #d0b98b; background: #f4e8ce; font-size: 11px; line-height: 1.6; border-radius: 3px; }
 .panel-weather-risk svg { flex-shrink: 0; margin-top: 2px; }
 .panel-travelers-entry:focus-visible, .panel-traveler-list button:focus-visible, .panel-traveler-item select:focus-visible { outline: 3px solid #8d743d; outline-offset: 3px; }
+
+/* ==========================================================================
+   Repaginação · códice em pergaminho emoldurado
+   (sobrepõe a casca dos painéis; o conteúdo interno mantém suas regras)
+   ========================================================================== */
+.panel-overlay {
+  color: #2b2618;
+  font-family: var(--sans);
+}
+.panel-scrim {
+  background: radial-gradient(circle at 30% 50%, rgba(6, 10, 8, 0.2), rgba(6, 10, 8, 0.6));
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.panel-shell {
+  right: calc(18px + env(safe-area-inset-right, 0px));
+  top: calc(18px + env(safe-area-inset-top, 0px));
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  width: min(540px, calc(100vw - 36px));
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(255, 252, 240, 0.9), transparent 60%),
+    linear-gradient(180deg, #f6eed9 0%, #f1e6cb 100%);
+  border: 1px solid #a07a3c;
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 5px rgba(13, 21, 17, 0.88),
+    0 0 0 6px rgba(217, 179, 107, 0.45),
+    0 40px 100px rgba(0, 0, 0, 0.55);
+  animation: panel-enter 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.panel-shell-map { width: min(640px, calc(100vw - 36px)); }
+.panel-header {
+  position: relative;
+  padding: 20px 22px 18px;
+  gap: 14px;
+  background: linear-gradient(180deg, #17241d 0%, #101a15 100%);
+  border-bottom: 1px solid #a07a3c;
+  color: #f4ecd7;
+}
+.panel-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -5px;
+  height: 4px;
+  background: linear-gradient(180deg, rgba(16, 26, 21, 0.18), transparent);
+  pointer-events: none;
+}
+.panel-header-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: #2a1d08;
+  border: 0;
+  background: radial-gradient(circle at 50% 35%, #f3dcab, #c8964a);
+  box-shadow: 0 0 0 3px #101a15, 0 0 0 4px rgba(217, 179, 107, 0.55);
+}
+.panel-overline,
+.panel-header .panel-overline { color: #d9b36b; font-size: 9.5px; letter-spacing: 2.2px; }
+.panel-header h2 {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 29px;
+  letter-spacing: 0;
+  line-height: 1.05;
+  margin-top: 3px;
+  color: #f4ecd7;
+}
+.panel-close {
+  width: 38px;
+  height: 38px;
+  color: rgba(244, 236, 215, 0.75);
+  border-color: rgba(228, 204, 146, 0.3);
+}
+.panel-close:hover { color: #101a15; background: #ecd8a6; border-color: #ecd8a6; }
+.panel-scroll {
+  padding: 24px 26px 30px;
+  scrollbar-color: #c4ac78 transparent;
+}
+.panel-scroll::-webkit-scrollbar-thumb { background: #c4ac78; }
+.panel-scroll h3 { font-family: var(--serif); font-weight: 600; color: #2b2618; }
+.panel-footer {
+  gap: 14px;
+  padding: 12px 22px;
+  min-height: 50px;
+  background: linear-gradient(180deg, #e9dcbc, #e2d2ab);
+  border-top: 1px solid #c9b07a;
+}
+.panel-footer-gold { font-size: 11px; color: #7a5a24; }
+.panel-footer-gold b { font-size: 13px; color: #3b2a12; }
+.panel-footer-gold span { font-size: 10px; color: #7a6a48; }
+.panel-footer p { font-size: 11px; color: #5f5a45; }
+.panel-tabs button.panel-tab-active { color: #2b2618; }
+.panel-overlay button:focus-visible { outline-color: #a07a3c; }
+@keyframes panel-enter {
+  from { opacity: 0; transform: translateX(22px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+/* Telas largas: códice com leitura mais confortável */
+@media (min-width: 900px) and (min-height: 620px) {
+  .panel-scroll { zoom: 1.12; }
+  .panel-shell-map .panel-scroll { zoom: 1; }
+}
+@media (max-width: 600px) {
+  .panel-shell,
+  .panel-shell-map {
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    width: calc(100vw - 20px);
+    border-radius: 16px;
+  }
+  .panel-header { padding: 16px 16px 14px; }
+  .panel-header-icon { width: 38px; height: 38px; }
+  .panel-header h2 { font-size: 24px; }
+  .panel-scroll { padding: 18px 16px 24px; }
+  .panel-footer { padding: 10px 16px; }
+}

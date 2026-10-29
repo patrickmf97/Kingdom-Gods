@@ -7,8 +7,8 @@
 .territory-realm-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 15px 0 20px; }
 .territory-realm-stats > div { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #ded7c4; padding-top: 13px; }
 .territory-realm-stats span { font-size: 9px; color: #6a705b; }
-.territory-realm-stats b { color: #526647; font: 26px Georgia, serif; }
-.territory-realm-stats small { font: 11px Inter, Arial, sans-serif; }
+.territory-realm-stats b { color: #526647; font: 600 28px var(--serif); }
+.territory-realm-stats small { font: 11px var(--sans); }
 .territory-influence-guide { border-top: 1px solid #ded7c4; border-bottom: 1px solid #ded7c4; padding: 5px 0; margin-bottom: 17px; color: #526647; }
 .territory-influence-guide summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 11px; }
 .territory-influence-guide summary::before { content: "+"; margin-right: 9px; }
@@ -46,7 +46,7 @@
 .territory-storage-heading strong { font-size: 11px; font-weight: 500; }
 .territory-storage-heading > span { margin-left: auto; font-size: 10px; }
 .territory-item-label { display: block; margin: 16px 0 9px; color: #617057; font-size: 10px; }
-.territory-item-select { width: 100%; min-width: 0; min-height: 44px; color: #354f40; background: #faf7ee; border: 1px solid #c9c4b1; border-radius: 6px; padding: 9px; font: 11px Inter, Arial, sans-serif; }
+.territory-item-select { width: 100%; min-width: 0; min-height: 44px; color: #354f40; background: #faf7ee; border: 1px solid #c9c4b1; border-radius: 6px; padding: 9px; font: 11px var(--sans); }
 .territory-transfer-counts { display: flex; justify-content: space-between; gap: 10px; margin: 13px 0; font-size: 10px; color: #617057; }
 .territory-transfer-counts b { font-weight: 600; }
 .territory-transfer-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }

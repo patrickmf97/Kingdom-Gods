@@ -28,6 +28,14 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
+## Interface repaginada
+
+- **Mundo em tela cheia:** o cabeçalho, as barras laterais e o rodapé deram lugar a um HUD flutuante sobre o mundo 3D. Ficha do apóstolo (vitalidade, energia, coroas), objetivos recolhíveis, região atual, relógio com mostrador dia/noite, clima e minimapa ocupam os cantos.
+- **Barra de ações:** itens rápidos (1–3) e atalhos para Inventário, Atributos, Diário, Relações, Linhagem, Propriedades e Mapa numa única barra inferior.
+- **Menu de pausa:** Esc ou o botão de menu abre um painel com todos os menus, salvamento, retorno à tela inicial e a última memória do apóstolo.
+- **Visual:** vidro escuro com filetes dourados no HUD, diálogos cinematográficos e códices em pergaminho emoldurado para os painéis. Tela inicial e criação do apóstolo seguem a mesma linguagem.
+- **Celular:** HUD compacto em retrato e paisagem; a barra mostra itens, mochila, diário, mapa e menu entre o joystick e os botões de ação.
+
 ## Novidades da alpha 0.13
 
 - **Personagens refinados:** fantasia estilizada com proporções mais naturais, rosto modelado com superfícies suaves, olhos e expressões discretos, mechas curvas, mãos com polegares, ombros arredondados e roupas ajustadas em camadas. Cabelos, uniformes e acessórios distinguem os ofícios; o fundador de 16 anos não recebe barba adulta.
