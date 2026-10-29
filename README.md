@@ -34,6 +34,7 @@ Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverd
 - **Barra de ações:** itens rápidos (1–3) e atalhos para Inventário, Atributos, Diário, Relações, Linhagem, Propriedades e Mapa numa única barra inferior.
 - **Menu de pausa:** Esc ou o botão de menu abre um painel com todos os menus, salvamento, retorno à tela inicial e a última memória do apóstolo.
 - **Visual:** vidro escuro com filetes dourados no HUD, diálogos cinematográficos e códices em pergaminho emoldurado para os painéis. Tela inicial e criação do apóstolo seguem a mesma linguagem.
+- **Gráficos:** sombras suaves do sol em construções, árvores, móveis e animais (o quadro de sombra acompanha a câmera e é alinhado aos texels para não tremeluzir), antisserrilhado, luz principal mais forte com preenchimento menor e interiores apresentados como dioramas sobre fundo escuro. Personagens mantêm as sombras de contato próprias.
 - **Celular:** HUD compacto em retrato e paisagem; a barra mostra itens, mochila, diário, mapa e menu entre o joystick e os botões de ação.
 
 ## Novidades da alpha 0.13

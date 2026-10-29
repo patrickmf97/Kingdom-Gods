@@ -20,6 +20,7 @@ import { cameraChange, cameraFraming, DEFAULT_CAMERA_DISTANCE, DEFAULT_CAMERA_YA
 type Actor = { model: CharacterModel; label: HTMLDivElement; x: number; y: number; lastTime: number; appearance: string };
 type Destination = { point: Point; path: Point[]; id?: string };
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+const SHADOW_EXTENT = 34;
 
 class ThreeWorld {
   private scene = new THREE.Scene();
@@ -85,9 +86,22 @@ class ThreeWorld {
     this.element.append(this.layer);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
-    // Actor contact and projected silhouettes share one soft, instanced layer.
-    this.renderer.shadowMap.enabled = false;
+    this.renderer.toneMappingExposure = 1.1;
+    // Buildings, trees and props use a soft sun shadow map that follows the camera focus.
+    // Characters keep their batched contact and silhouette layer, so they do not cast a second shadow.
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.sunlight.castShadow = true;
+    const coarse = matchMedia("(pointer: coarse)").matches;
+    this.sunlight.shadow.mapSize.set(coarse ? 1024 : 2048, coarse ? 1024 : 2048);
+    const shadowCamera = this.sunlight.shadow.camera;
+    shadowCamera.left = -SHADOW_EXTENT; shadowCamera.right = SHADOW_EXTENT;
+    shadowCamera.top = SHADOW_EXTENT; shadowCamera.bottom = -SHADOW_EXTENT;
+    shadowCamera.near = 1; shadowCamera.far = 140;
+    shadowCamera.updateProjectionMatrix();
+    this.sunlight.shadow.bias = -0.0004;
+    this.sunlight.shadow.normalBias = 0.035;
+    this.sunlight.shadow.radius = 3;
     this.scene.background = new THREE.Color(0xb7c8b3);
     this.scene.fog = new THREE.Fog(0xb7c8b3, 65, 155);
     this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.lightning.group, this.wildlife.group, this.grounding.group);
@@ -325,6 +339,8 @@ class ThreeWorld {
     if (!actor) {
       const model = createCharacterModel(appearance, kind);
       model.group.userData.actorId = id;
+      // Characters already have soft contact/silhouette shadows in CharacterGrounding.
+      model.group.traverse(child => { if ((child as THREE.Mesh).isMesh) { child.castShadow = false; } });
       const label = document.createElement("div");
       label.className = `world-three-label ${id === "player" ? "player" : kind === "skeleton" ? "enemy" : "npc"}`;
       this.labels.append(label);
@@ -428,18 +444,22 @@ class ThreeWorld {
       this.focus.y + viewDistance * framing.heightFactor, this.focus.z + Math.cos(yaw) * viewDistance * framing.horizontalFactor);
     this.camera.lookAt(this.focus);
     this.camera.updateMatrixWorld();
-    this.sunlight.position.set(this.focus.x - 22, 45, this.focus.z + 12);
-    this.sunlight.target.position.copy(this.focus);
+    // Snap the shadow frustum to its texel grid so shadows do not shimmer while walking.
+    const texel = (SHADOW_EXTENT * 2) / this.sunlight.shadow.mapSize.x;
+    const sx = Math.round(this.focus.x / texel) * texel, sz = Math.round(this.focus.z / texel) * texel;
+    this.sunlight.position.set(sx - 26, 52, sz + 16);
+    this.sunlight.target.position.set(sx, 0, sz);
     const interior = this.zone !== "village" && this.zone !== "wilderness" && this.zone !== "highlands";
     const weather = weatherFor(store.state.day, store.state.minutes, this.zone ?? store.state.zone);
     const atmosphere = atmosphereFor(store.state.minutes, weather);
-    this.ambient.intensity = interior ? 1.6 : atmosphere.ambientIntensity;
-    this.sunlight.intensity = interior ? .9 : atmosphere.sunIntensity;
+    // Less fill and a stronger key light give the sun shadows real depth without darkening night scenes.
+    this.ambient.intensity = interior ? 1.15 : Math.max(.7, atmosphere.ambientIntensity * .62);
+    this.sunlight.intensity = interior ? 1.55 : atmosphere.sunIntensity * 1.5;
     if (!interior) { this.ambient.intensity += this.lightning.flash; this.sunlight.intensity += this.lightning.flash; }
     this.ambient.color.copy(interior ? new THREE.Color(0xfff2d6) : atmosphere.ambient);
     this.ambient.groundColor.copy(interior ? new THREE.Color(0x5c7558) : atmosphere.ground);
     this.sunlight.color.copy(interior ? new THREE.Color(0xffebc0) : atmosphere.sun);
-    const backdrop = interior ? new THREE.Color(0x40534b) : atmosphere.sky;
+    const backdrop = interior ? new THREE.Color(0x15130f) : atmosphere.sky;
     (this.scene.background as THREE.Color).copy(backdrop);
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(backdrop); fog.near = interior ? 65 : atmosphere.fogNear; fog.far = interior ? 155 : atmosphere.fogFar;
@@ -553,7 +573,7 @@ class ThreeWorld {
 }
 
 export function mountWorld3D(element: HTMLElement): () => void {
-  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", alpha: false });
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", alpha: false });
   const world = new ThreeWorld(element, renderer);
   try { world.start(); } catch (error) { world.dispose(); throw error; }
   return () => world.dispose();
