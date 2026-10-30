@@ -11,6 +11,7 @@ import { WorldEffects } from "./effects";
 import { weatherFor } from "../weather";
 import { WeatherLayer, atmosphereFor } from "./weather";
 import { LightningLayer } from "./lightning";
+import { AmbienceLayer } from "./ambience";
 import { npcVisualIdentity } from "../character-identity";
 import { CharacterGrounding } from "./character-grounding";
 import { createWildlifeLayer } from "./wildlife";
@@ -29,6 +30,9 @@ class ThreeWorld {
   private effects = new WorldEffects();
   private weather = new WeatherLayer();
   private lightning = new LightningLayer();
+  private ambience = new AmbienceLayer();
+  private ambienceDay = 1;
+  private ambienceWet = 0;
   private grounding = new CharacterGrounding();
   private wildlife = createWildlifeLayer();
   private presentationTime = 0;
@@ -104,7 +108,7 @@ class ThreeWorld {
     this.sunlight.shadow.radius = 3;
     this.scene.background = new THREE.Color(0xb7c8b3);
     this.scene.fog = new THREE.Fog(0xb7c8b3, 65, 155);
-    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.lightning.group, this.wildlife.group, this.grounding.group);
+    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.lightning.group, this.ambience.group, this.wildlife.group, this.grounding.group);
     this.routeLine.frustumCulled = false;
     this.routeLine.renderOrder = 5;
     this.observer.observe(this.element);
@@ -452,6 +456,8 @@ class ThreeWorld {
     const interior = this.zone !== "village" && this.zone !== "wilderness" && this.zone !== "highlands";
     const weather = weatherFor(store.state.day, store.state.minutes, this.zone ?? store.state.zone);
     const atmosphere = atmosphereFor(store.state.minutes, weather);
+    this.ambienceDay = atmosphere.daylight;
+    this.ambienceWet = weather.kind === "rain" || weather.kind === "storm" ? 1 : weather.kind === "fog" ? .4 : 0;
     // Less fill and a stronger key light give the sun shadows real depth without darkening night scenes.
     this.ambient.intensity = interior ? 1.15 : Math.max(.7, atmosphere.ambientIntensity * .62);
     this.sunlight.intensity = interior ? 1.55 : atmosphere.sunIntensity * 1.5;
@@ -501,6 +507,8 @@ class ThreeWorld {
     for (const actor of this.actors.values()) actor.model.setLighting(shadowLight.daylight, !shadowWeather.outdoors);
     this.grounding.update([...this.actors.values()].map(actor => actor.model.group.position),
       { daylight: shadowLight.daylight, cloudiness: shadowWeather.cloudiness, indoors: !shadowWeather.outdoors });
+    const mood = zone === "mine" || zone === "dungeon" ? "underground" : shadowWeather.outdoors ? "outdoor" : "interior";
+    this.ambience.update(this.presentationTime, this.focus, this.ambienceDay, mood, this.ambienceWet, this.renderer.getPixelRatio());
     if (stamp - this.lastLabels > 45) { this.updateLabels(); this.lastLabels = stamp; }
     if (this.contextAvailable) this.renderer.render(this.scene, this.camera);
     if (stamp - this.lastDebug > 200) {
@@ -558,6 +566,7 @@ class ThreeWorld {
     this.environment?.dispose();
     this.weather.dispose();
     this.lightning.dispose();
+    this.ambience.dispose();
     this.grounding.dispose();
     this.effects.dispose();
     this.wildlife.dispose();

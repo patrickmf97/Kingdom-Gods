@@ -12,6 +12,7 @@ import type { GameState, Point, Zone } from "../types";
 import { createHorizon, type RegionHorizon } from "./horizon";
 import { RegionSurfaceTextures, type SurfaceTexture } from "./materials";
 import { createRegionVegetation, VILLAGE_LANDSCAPE_PATHS, type RegionVegetation } from "./vegetation";
+import { createGlowTexture } from "./ambience";
 
 /** Presentation only. Navigation and interactions keep their existing logical coordinates. */
 export interface RegionEnvironment {
@@ -30,8 +31,15 @@ const PALETTE = {
   water: 0x548f91, leaf: 0x52784c, leafLight: 0x6e9258,
 };
 
+const SIGNS: Record<string, { cloth: number; mark: number }> = {
+  orphanage: { cloth: 0x3f5f86, mark: 0xe7c66f },
+  inn: { cloth: 0x8e3b2f, mark: 0xead6a4 },
+  bakery: { cloth: 0xc79a45, mark: 0x6b4325 },
+};
+const FLOWERS = [0xd9604f, 0xf0c35a, 0xe9e2d0, 0xb35a8b, 0xd9604f];
+
 type FadeEntry = { x: number; y: number; radius: number; materials: THREE.MeshStandardMaterial[] };
-type Flame = { mesh: THREE.Mesh; seed: number };
+type Flame = { mesh: THREE.Mesh; seed: number; halo?: THREE.Sprite };
 type NodeVisual = { id: string; live: THREE.Group; depleted: THREE.Group };
 
 /** All caches belong to one active region and are released together. */
@@ -43,6 +51,10 @@ class EnvironmentBuilder {
   readonly fades: FadeEntry[] = [];
   readonly flames: Flame[] = [];
   readonly waters: THREE.MeshStandardMaterial[] = [];
+  /** Window panes and lanterns brighten after dusk; halos are additive sprites without real lights. */
+  readonly glows: { material: THREE.MeshStandardMaterial; day: number; night: number }[] = [];
+  readonly halos: THREE.Sprite[] = [];
+  private glowTexture?: THREE.DataTexture;
   readonly nodes: NodeVisual[] = [];
   readonly mills: THREE.Group[] = [];
   readonly surfaces = new RegionSurfaceTextures();
@@ -263,10 +275,34 @@ class EnvironmentBuilder {
       const windowX = x + width * offset;
       if (Math.abs(windowX - (x + width * .12)) < 18) continue;
       this.box(windowX, area.bottom + 1, Math.min(18, width * .18), 2, 1.0, timber, 1.2, group);
-      const pane = this.material(0xf3d593, { emissive: 0xbd8c43, emissiveIntensity: .32 });
+      const pane = this.glowing(0xf3d593, 0xd9923e, .32, 1.35);
       this.box(windowX, area.bottom + 2.1, Math.min(14, width * .14), 1, .76, pane, 1.3, group);
       this.box(windowX, area.bottom + 2.8, 1.5, 1, .8, timber, 1.28, group);
       this.box(windowX, area.bottom + 3, Math.min(16, width * .15), 1, .07, timber, 1.65, group);
+    }
+    if (kind !== "forge" && kind !== "farm-shed") {
+      const doorX = x + width * .12, doorW = Math.min(23, width * .22);
+      // Lanterns flank the door on the facade; a hanging sign names the trade.
+      for (const side of [-1, 1]) this.lantern(doorX + side * (doorW / 2 + 4), area.bottom + .4, 1.95, group);
+      const sign = SIGNS[kind];
+      if (sign) {
+        this.box(doorX, area.bottom + 4.2, 1.2, 8.5, .14, 0x2f2a25, 2.55, group);
+        this.box(doorX, area.bottom + 8, 15, 1.2, 1.15, sign.cloth, 1.35, group);
+        this.box(doorX, area.bottom + 8.7, 7, .6, .45, sign.mark, 1.7, group);
+        this.box(doorX, area.bottom + 8, 16, 1.6, .12, 0xc9a453, 2.48, group);
+      }
+      for (const offset of [-.29, .32]) {
+        const windowX = x + width * offset;
+        if (Math.abs(windowX - doorX) < 18) continue;
+        // Flower boxes under the windows: earthenware trough and a few blooms.
+        const trough = Math.min(16, width * .16);
+        this.box(windowX, area.bottom + 2.6, trough, 3, .22, 0x7a4b32, 1.05, group);
+        FLOWERS.forEach((color, i) => {
+          const bloom = this.mesh(this.sphereGeometry, this.material(color, { roughness: .8 }), group);
+          bloom.position.set((windowX - trough / 2 + (i + .5) * trough / FLOWERS.length) * SCALE, 1.32, (area.bottom + 2.8) * SCALE);
+          bloom.scale.setScalar(.085 + (i % 2) * .02); bloom.castShadow = false;
+        });
+      }
     }
     this.box(area.right - width * .18, y - depth * .15, 13, 15, 1.75, PALETTE.stone, height + .65, group);
     this.box(area.right - width * .18, y - depth * .15, 17, 19, .2, PALETTE.stoneLight, height + 2.3, group);
@@ -284,7 +320,37 @@ class EnvironmentBuilder {
       { emissive: 0xe88832, emissiveIntensity: 1.3 }), parent);
     fire.position.set(x * SCALE, base + .3, y * SCALE);
     fire.scale.set(.18, .65, .18);
-    this.flames.push({ mesh: fire, seed: x * .1 + y * .7 });
+    const halo = this.halo(0xffa94d, 1.5, parent);
+    halo.position.set(x * SCALE, base + .45, y * SCALE);
+    this.flames.push({ mesh: fire, seed: x * .1 + y * .7, halo });
+  }
+
+  halo(color: THREE.ColorRepresentation, size: number, parent: THREE.Object3D = this.group): THREE.Sprite {
+    this.glowTexture ??= createGlowTexture();
+    const material = new THREE.SpriteMaterial({ map: this.glowTexture, color, transparent: true, opacity: .35,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    this.materials.add(material);
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(size, size, 1); sprite.renderOrder = 7; sprite.raycast = () => {};
+    sprite.userData.baseSize = size; sprite.userData.presentationOnly = true;
+    parent.add(sprite); this.halos.push(sprite);
+    return sprite;
+  }
+
+  glowing(color: number, emissive: number, day: number, night: number): THREE.MeshStandardMaterial {
+    const material = new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: day, roughness: .6, flatShading: true });
+    this.materials.add(material); this.glows.push({ material, day, night });
+    return material;
+  }
+
+  /** A wall lantern on an iron bracket; it sits against the facade and never reaches the walkway. */
+  lantern(x: number, y: number, base: number, parent: THREE.Object3D = this.group): void {
+    this.box(x, y - .6, 1.4, 3.2, .18, 0x2f2a25, base + .55, parent);
+    this.box(x, y + 1.2, 4.2, 4.2, .5, this.glowing(0xffd88a, 0xffa53c, .25, 2.2), base, parent);
+    this.box(x, y + 1.2, 5, 5, .1, 0x2f2a25, base + .5, parent);
+    const halo = this.halo(0xffb35c, 2.8, parent);
+    halo.position.set(x * SCALE, base + .25, (y + 2) * SCALE);
+    halo.userData.night = true;
   }
 
   torch(x: number, y: number, base = 1.2): void {
@@ -829,9 +895,21 @@ class EnvironmentBuilder {
       node.live.visible = available; node.depleted.visible = !available;
     }
     for (const rotor of this.mills) rotor.rotation.z = timeSeconds * .14;
-    for (const { mesh, seed } of this.flames) {
+    const daylight = Math.max(0, Math.sin((state.minutes - 360) / 1440 * Math.PI * 2));
+    const night = this.zone === "village" || this.zone === "wilderness" ? 1 - THREE.MathUtils.smoothstep(daylight, .05, .4) : 1;
+    for (const { mesh, seed, halo } of this.flames) {
       mesh.scale.y = .62 + Math.sin(timeSeconds * 8 + seed) * .075;
       mesh.rotation.y = timeSeconds * .5 + seed;
+      if (halo) {
+        const flicker = .92 + Math.sin(timeSeconds * 11 + seed * 3) * .05 + Math.sin(timeSeconds * 17 + seed) * .03;
+        (halo.material as THREE.SpriteMaterial).opacity = (.22 + night * .5) * flicker;
+        halo.scale.setScalar(halo.userData.baseSize * (1 + night * .7) * flicker);
+      }
+    }
+    for (const { material, day, night: lit } of this.glows) material.emissiveIntensity = day + (lit - day) * night;
+    for (const halo of this.halos) if (halo.userData.night) {
+      (halo.material as THREE.SpriteMaterial).opacity = night * .75;
+      halo.visible = night > .02;
     }
     for (const material of this.waters) material.emissive.setRGB(.014, .025 + Math.sin(timeSeconds * .7) * .006, .022);
     const apostle = state.apostle;
@@ -869,6 +947,7 @@ class EnvironmentBuilder {
     this.group.clear(); this.dynamic.clear();
     this.mills.length = 0;
     this.cache.clear(); this.geometries.clear(); this.materials.clear();
+    this.glowTexture?.dispose(); this.glows.length = 0; this.halos.length = 0;
     this.fades.length = 0; this.flames.length = 0; this.nodes.length = 0; this.waters.length = 0;
   }
 }

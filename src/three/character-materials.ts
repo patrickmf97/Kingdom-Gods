@@ -132,10 +132,13 @@ export function createCharacterMaterials(): CharacterMaterials {
           * (0.86 + 0.14 * smoothstep(-0.5, 0.9, normal.y));
         reflectedLight.indirectDiffuse += diffuseColor.rgb * uCharacterFillTint
           * uCharacterFillStrength * characterFillShape;
+        // Soft warm rim separates figures from busy ground and floors (storybook silhouette).
+        float characterRim = pow(1.0 - characterFillFacing, 3.0) * smoothstep(-0.2, 0.6, normal.y + 0.4);
+        reflectedLight.indirectDiffuse += diffuseColor.rgb * vec3(1.0, 0.9, 0.74) * characterRim * 0.42;
       `);
   };
   // Lighting changes are uniforms, so every actor can reuse the same program.
-  material.customProgramCacheKey = () => "kingdom-character-diffuse-fill-v1";
+  material.customProgramCacheKey = () => "kingdom-character-diffuse-fill-v2";
   let disposed = false;
   return { material,
     setLighting(daylight, indoors) {
