@@ -46,6 +46,7 @@ import { GamePanel, ItemIcon, Portrait, LocalMapTerrain, mapObjectsForState } fr
 import { interiorForZone } from "./interiors";
 import { StormWarning, WeatherChip } from "./WeatherPanel";
 import { weatherFor } from "./weather";
+import { startSoundscape, type Soundscape } from "./soundscape";
 import "./three.css";
 
 function Sigil({ size = 36 }: { size?: number }) {
@@ -287,27 +288,29 @@ export default function App() {
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
   }, [panel, dialog, paused, s.phase, pendingImport, transferBusy, cameraOpen]);
+  const soundscape = useRef<Soundscape | null>(null);
   useEffect(() => {
     if (!sound) return;
     const audio = new AudioContext();
     audioRef.current = audio;
-    const gain = audio.createGain();
-    gain.gain.value = 0.025;
-    gain.connect(audio.destination);
-    const oscillators = [130.81, 196, 261.63].map((f) => {
-      const o = audio.createOscillator();
-      o.type = "sine";
-      o.frequency.value = f;
-      o.connect(gain);
-      o.start();
-      return o;
-    });
+    soundscape.current = startSoundscape(audio);
     return () => {
-      oscillators.forEach((o) => o.stop());
+      soundscape.current?.stop();
+      soundscape.current = null;
       audio.close();
       audioRef.current = null;
     };
   }, [sound]);
+  useEffect(() => {
+    if (!soundscape.current) return;
+    const weather = weatherFor(s.day, s.minutes, s.zone);
+    soundscape.current.update({
+      daylight: Math.max(0, Math.sin((s.minutes - 360) / 1440 * Math.PI * 2)),
+      outdoors: weather.outdoors,
+      underground: s.zone === "mine" || s.zone === "dungeon",
+      rain: weather.kind === "storm" ? 1 : weather.kind === "rain" ? .7 : 0,
+    });
+  }, [sound, s.zone, Math.floor(s.minutes / 10), s.day]);
   const open = (p: Panel) => {
     setDialog(null);
     setPanel((v) => (v === p ? null : p));

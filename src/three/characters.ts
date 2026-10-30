@@ -30,10 +30,11 @@ export function createCharacterModel(appearance: ActorAppearance, kind: 'human' 
     const valid = (s: string, f: string) => /^#[\da-f]{6}$/i.test(s) ? s : f;
     const skin = valid(appearance.skin, '#c9936f'), hair = valid(appearance.hair, '#543b2b'), eyes = valid(appearance.eyes, '#729480'), outfit = valid(appearance.outfit, '#4d7961');
     const tint = (s: string, k: number) => `#${new THREE.Color(s).multiplyScalar(k).getHexString()}`;
-    const leather = '#634934', linen = '#ded5bd', iron = '#aeb8bc', bone = '#d7cfb2', role = appearance.role ?? 'apostle';
+    const leather = '#634934', linen = '#e6dcc2', iron = '#b7c1c5', bone = '#d7cfb2', gold = '#c9a453', role = appearance.role ?? 'apostle';
     let seed = 0;
     for (const c of String(appearance.variant ?? role))
         seed = (Math.imul(seed, 31) + c.charCodeAt(0)) >>> 0;
+    const TROUSERS = ['#5b4a3a', '#4a4f45', '#6b5840', '#3f4652', '#5e4b52', '#57503f'];
     const female = appearance.sex === 'female' || appearance.sex === 'Feminino', elder = (appearance.age ?? 22) >= 60, style = (seed + (female ? 2 : 0)) % 4, phase = (seed % 101) * .062;
     type Batch = {
         p: number[];
@@ -94,15 +95,18 @@ export function createCharacterModel(appearance: ActorAppearance, kind: 'human' 
         number,
         number
     ])[], radius: number, color = hair, surface: CharacterSurface = 'hair', segments = 6) => piece(name, parent, strand(points, radius, segments), color, [0, 0, 0], [1, 1, 1], [0, 0, 0], surface);
-    const head = joint(kind === 'human' ? 'head' : 'skull', body, 0, 1.879);
+    const HEAD_Y = 1.92, HEAD_SCALE = 1.32;
+    const head = joint(kind === 'human' ? 'head' : 'skull', body, 0, HEAD_Y);
+    // Storybook proportions: a slightly larger head keeps faces readable from the exploration camera.
+    head.scale.setScalar(HEAD_SCALE);
     const legs = [joint('leg-left', body, -.116, 1), joint('leg-right', body, .116, 1)];
     const knees = legs.map((leg, i) => joint(i ? 'knee-right' : 'knee-left', leg, 0, -.48));
     const arms = [joint('arm-left', body, -.263, 1.503), joint('arm-right', body, .263, 1.503)];
     const elbows = arms.map((arm, i) => joint(i ? 'elbow-right' : 'elbow-left', arm, 0, -.29));
     for (let i = 0; i < 2; i++) {
         const side = i ? 'right' : 'left', leg = legs[i], knee = knees[i], arm = arms[i], elbow = elbows[i];
-        piece(kind === 'human' ? `trouser-${side}` : `thigh-bone-${side}`, leg, form([[-.49, .066, .066], [-.27, .079, .084], [0, .093, .098]], 10), kind === 'human' ? tint(outfit, .48) : bone);
-        piece(kind === 'human' ? `shin-${side}` : `leg-bone-${side}`, knee, form([[-.38, .052, .058], [-.17, .061, .064], [0, .066, .068]], 10), kind === 'human' ? tint(outfit, .46) : bone);
+        piece(kind === 'human' ? `trouser-${side}` : `thigh-bone-${side}`, leg, form([[-.49, .066, .066], [-.27, .079, .084], [0, .093, .098]], 10), kind === 'human' ? TROUSERS[seed % TROUSERS.length] : bone);
+        piece(kind === 'human' ? `shin-${side}` : `leg-bone-${side}`, knee, form([[-.38, .052, .058], [-.17, .061, .064], [0, .066, .068]], 10), kind === 'human' ? tint(TROUSERS[seed % TROUSERS.length], .92) : bone);
         piece(kind === 'human' ? `boot-${side}` : `foot-bones-${side}`, knee, form([[-.52, .067, .113], [-.485, .079, .128], [-.43, .073, .115], [-.35, .057, .073], [-.22, .06, .065]], 12), kind === 'human' ? leather : bone, [0, 0, .029], [1, 1, 1], [0, 0, 0], 'leather');
         if (kind === 'human') {
             piece(`boot-sole-${side}`, knee, form([[-.52, .068, .114], [-.495, .081, .132]], 12), tint(leather, .56), [0, 0, .029], [1, 1, 1], [0, 0, 0], 'dark');
@@ -121,35 +125,42 @@ export function createCharacterModel(appearance: ActorAppearance, kind: 'human' 
     if (kind === 'human') {
         const robe = ['matron', 'innkeeper', 'pilgrim'].includes(role), coat = ['merchant', 'traveler', 'courier'].includes(role), broad = role === 'smith' ? 1.08 : role === 'guard' ? 1.05 : 1;
         const hem = robe ? .24 : coat ? .59 : .84, waist = female ? .157 : .174;
-        piece('tunic', body, form([[hem, robe ? .265 : coat ? .247 : .227, robe ? .153 : .139], [.98, .205, .132], [1.19, waist, .115], [1.39, .226, .137], [1.53, .228, .125], [1.59, .157, .088]], 14), outfit, [0, 0, 0], [broad, 1, 1]);
+        piece('tunic', body, form([[hem, robe ? .27 : coat ? .255 : .245, robe ? .158 : .15], [.98, .205, .132], [1.19, waist, .115], [1.39, .226, .137], [1.53, .228, .125], [1.59, .157, .088]], 14), outfit, [0, 0, 0], [broad, 1, 1]);
         piece('neck', body, form([[1.55, .066, .061], [1.75, .063, .058]], 12), skin, [0, 0, 0], [1, 1, 1], [0, 0, 0], 'skin');
         for (const sign of [-1, 1]) {
-            lock(`collar-${sign}`, body, [[sign * .105, 1.567, .074], [sign * .074, 1.525, .112], [sign * .024, 1.47, .139]], .020, linen, 'linen', 4);
+            lock(`collar-${sign}`, body, [[sign * .105, 1.567, .074], [sign * .074, 1.525, .112], [sign * .024, 1.47, .139]], .022, role === 'apostle' ? gold : linen, role === 'apostle' ? 'metal' : 'linen', 4);
             lock(`tunic-seam-${sign}`, body, [[sign * .208, 1.45, .071], [sign * .176, 1.20, .086], [sign * .208, .96, .089]], .0028, tint(outfit, 1.15), 'cloth', 4);
         }
         piece('belt', body, tube(), leather, [0, 1.14, 0], [waist + .012, .058, .133], [0, 0, 0], 'leather');
         piece('belt-buckle', body, form([[-.027, .034, .008], [.027, .034, .008]], 8), '#bda15e', [0, 1.14, .137], [1, 1, 1], [0, 0, 0], 'metal');
         piece('belt-pouch', body, form([[-.07, .053, .035], [-.04, .069, .046], [.065, .057, .035]], 10), leather, [-.19, 1.05, .07], [1, 1, 1], [0, 0, -.08], 'leather');
-        lock('tunic-hem-trim', body, [[-.204, hem + .025, .06], [-.125, hem + .017, .123], [0, hem + .014, .139], [.125, hem + .017, .123], [.204, hem + .025, .06]], .008, tint(outfit, 1.24), 'cloth', 8);
+        lock('tunic-hem-trim', body, [[-.204, hem + .025, .06], [-.125, hem + .017, .123], [0, hem + .014, .139], [.125, hem + .017, .123], [.204, hem + .025, .06]], .012, role === 'apostle' ? gold : tint(outfit, 1.38), role === 'apostle' ? 'metal' : 'cloth', 8);
+        if (role === 'apostle') {
+            // The founder's mark: a gilded baldric and a small sun pendant set them apart in crowds.
+            lock('apostle-baldric', body, [[-.19, 1.50, .085], [-.09, 1.37, .146], [.07, 1.22, .150], [.20, 1.13, .095]], .014, gold, 'metal', 8);
+            piece('apostle-pendant', body, orb(10, 5), '#e8c66e', [0, 1.43, .146], [.024, .024, .010], [0, 0, 0], 'metal');
+        }
         // Gently shaped cheeks/chin and a small brow ridge; no oversized eyeballs or projecting peg nose.
         piece('head', head, form([[-.184, .060, .056], [-.153, .095, .087], [-.104, .126, .106], [-.028, elder ? .139 : .144, .118], [.060, .143, .117], [.127, .124, .099], [.171, .078, .063], [.184, .025, .023]], 16), skin, [0, 0, 0], [female ? .97 : 1, 1, 1], [0, 0, 0], 'skin');
         for (const [side, sign] of [['left', -1], ['right', 1]] as const) {
             piece(`ear-${side}`, head, orb(8, 4), skin, [sign * .143, -.018, -.005], [.024, .043, .018], [0, 0, sign * -.05], 'skin');
             piece(`ear-inner-${side}`, head, orb(6, 3), tint(skin, .84), [sign * .154, -.018, .008], [.011, .025, .009], [0, 0, 0], 'skin');
             const x = sign * .055;
-            piece(`eye-white-${side}`, head, disc(), '#ddd2bc', [x, .013, .114], [.028, .010, 1], [0, sign * .12, sign * -.025], 'eye');
-            piece(`iris-${side}`, head, disc(), eyes, [x, .013, .117], [.0095, .010, 1], [0, 0, 0], 'eye');
-            piece(`pupil-${side}`, head, disc(), '#232b28', [x, .013, .118], [.0042, .0065, 1], [0, 0, 0], 'eye');
-            piece(`eye-glint-${side}`, head, new THREE.CircleGeometry(1, 6), '#f4f1e6', [x - .003, .017, .119], [.0027, .0028, 1], [0, 0, 0], 'eye');
-            lock(`eyelid-${side}`, head, [[x - .028, .014, .115], [x, .021, .118], [x + .027, .014, .115]], .0035, tint(skin, .74), 'skin', 4);
-            lock(`brow-${side}`, head, [[x - .028, .041, .110], [x, .044, .116], [x + .027, .040, .109]], .0037, tint(hair, .91), 'hair', 4);
+            piece(`eye-white-${side}`, head, disc(), '#f2ece0', [x, .010, .116], [.026, .021, 1], [0, sign * .16, sign * -.03], 'eye');
+            piece(`iris-${side}`, head, disc(), eyes, [x + sign * .002, .008, .119], [.0155, .0175, 1], [0, sign * .16, 0], 'eye');
+            piece(`pupil-${side}`, head, disc(), '#1b2220', [x + sign * .002, .008, .120], [.0078, .0098, 1], [0, sign * .16, 0], 'eye');
+            piece(`eye-glint-${side}`, head, new THREE.CircleGeometry(1, 6), '#ffffff', [x - .004, .015, .121], [.0042, .0044, 1], [0, sign * .16, 0], 'eye');
+            lock(`eyelid-${side}`, head, [[x - .027, .014, .114], [x, .031, .119], [x + .026, .016, .114]], .0042, '#2f2622', 'dark', 5);
+            // Warm cheeks give the low-poly face life without heavy make-up.
+            piece(`cheek-${side}`, head, disc(), `#${new THREE.Color(skin).lerp(new THREE.Color('#e0705f'), .32).getHexString()}`, [sign * .083, -.046, .108], [.024, .015, 1], [0, sign * .5, 0], 'skin');
+            lock(`brow-${side}`, head, [[x - .027, .051, .110], [x, .058, .116], [x + .026, .054, .109]], .0055, tint(hair, .82), 'hair', 4);
             if (elder)
                 lock(`age-line-${side}`, head, [[x - .020, -.012, .116], [x, -.018, .119], [x + .020, -.013, .116]], .0018, tint(skin, .76), 'skin', 3);
         }
         piece('nose', head, orb(8, 4), tint(skin, 1.015), [0, -.037, .124], [.014, .028, .018], [.1, 0, 0], 'skin');
-        lock('mouth', head, [[-.030, -.111, .105], [0, -.112, .110], [.030, -.111, .105]], .0028, tint(skin, .69), 'skin', 5);
+        lock('mouth', head, [[-.028, -.104, .106], [0, -.113, .110], [.028, -.104, .106]], .0034, tint(skin, .58), 'skin', 5);
         lock('lower-lip', head, [[-.020, -.116, .106], [0, -.117, .109], [.020, -.116, .106]], .002, tint(skin, .96), 'skin', 4);
-        piece('hair', head, scalp(), hair, [0, .013, -.008], [.157, .189, .132], [0, 0, 0], 'hair');
+        piece('hair', head, scalp(), hair, [0, .015, -.010], [.162, .196, .138], [0, 0, 0], 'hair');
         for (let i = 0; i < (role === 'guard' ? 0 : 6); i++) {
             const t = i / 5, sign = style % 2 ? -1 : 1, x = (-.11 + t * .19) * sign;
             lock(`hair-lock-${i}`, head, [[x * .45, .197, -.025], [x * .80, .184, .052], [x, .139, .113], [x - sign * .025, .077 + (i % 2) * .012, .119]], .023 + (i % 2) * .004, i % 3 ? tint(hair, .95) : tint(hair, 1.10));
@@ -292,15 +303,17 @@ export function createCharacterModel(appearance: ActorAppearance, kind: 'human' 
             knees[1].rotation.x = moving ? Math.max(0, wave) * (.30 + running * .36) : 0;
             arms[0].rotation.x = stride === 0 ? 0 : -stride * (.58 + running * .28);
             arms[1].rotation.x = stride * (.58 + running * .28);
-            arms[0].rotation.z = .045;
-            arms[1].rotation.z = -.045;
-            elbows[0].rotation.x = -.09 - (moving ? running * .28 : 0);
-            elbows[1].rotation.x = -.09 - (moving ? running * .28 : 0);
+            arms[0].rotation.z = .085;
+            arms[1].rotation.z = -.085;
+            const breath = Math.sin(time * 1.6 + phase);
+            elbows[0].rotation.x = -.2 - (moving ? running * .3 : breath * .02);
+            elbows[1].rotation.x = -.2 - (moving ? running * .3 : breath * .02);
+            body.scale.set(1 + (moving ? 0 : breath * .006), 1, 1 + (moving ? 0 : breath * .01));
             body.rotation.y = moving ? wave * .025 : 0;
             body.rotation.z = 0;
             head.rotation.y = Math.sin(time * .73 + phase) * .027;
             head.rotation.z = Math.sin(time * .59 + phase) * .008;
-            head.position.y = 1.879 + Math.sin(time * 1.7 + phase) * .002;
+            head.position.y = HEAD_Y + Math.sin(time * 1.7 + phase) * .002;
             if (cape)
                 cape.rotation.x = moving ? -.035 + Math.sin(gaitPhase + .6) * (.031 + running * .018) : Math.sin(time * 1.2 + phase) * .007;
             workingNow = working && !attacking;
