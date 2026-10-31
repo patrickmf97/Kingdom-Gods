@@ -13,6 +13,7 @@ import { createHorizon, type RegionHorizon } from "./horizon";
 import { RegionSurfaceTextures, type SurfaceTexture } from "./materials";
 import { createRegionVegetation, VILLAGE_LANDSCAPE_PATHS, type RegionVegetation } from "./vegetation";
 import { createGlowTexture } from "./ambience";
+import { presentation } from "./presentation";
 
 /** Presentation only. Navigation and interactions keep their existing logical coordinates. */
 export interface RegionEnvironment {
@@ -952,7 +953,8 @@ class EnvironmentBuilder {
       const dx = apostle.x - entry.x, dy = apostle.y - entry.y;
       // Nearby roofs become translucent on either side. This remains useful
       // when the camera rotates and never changes navigation or ownership.
-      const near = Math.abs(dx) < entry.radius + 25 && Math.abs(dy) < entry.radius + 55;
+      // At eye level roofs stay solid; the see-through roof only helps the aerial camera.
+      const near = !presentation.firstPerson && Math.abs(dx) < entry.radius + 25 && Math.abs(dy) < entry.radius + 55;
       for (const material of entry.materials) {
         const target = near ? .36 : 1;
         material.opacity += (target - material.opacity) * .15;

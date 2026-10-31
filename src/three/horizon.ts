@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { SKY_SCATTERING_GLSL } from "./sky-scattering";
 import { weatherFor, type WeatherSnapshot } from "../weather";
 import { atmosphereFor } from "./weather";
 import { RegionSurfaceTextures } from "./materials";
@@ -145,6 +146,7 @@ export function createHorizon(zone: Zone): RegionHorizon | undefined {
       varying vec3 vSkyDirection;
       uniform float uSkyTime; uniform float uSkyDaylight; uniform float uSkyCloudiness;
       uniform vec3 uSkySunDirection; uniform vec3 uSkyMoonDirection; uniform vec3 uSkyCloudTint;
+      ${SKY_SCATTERING_GLSL}
       float skyHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float skyNoise(vec2 p) {
         vec2 cell = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -153,6 +155,8 @@ export function createHorizon(zone: Zone): RegionHorizon | undefined {
       }
       ${shader.fragmentShader}`.replace("#include <color_fragment>", `#include <color_fragment>
         vec3 direction = normalize(vSkyDirection);
+        // Physically inspired base: Rayleigh-like gradient and Mie halo replace the flat vertex blend.
+        diffuseColor.rgb = kgSkyScattering(direction, uSkySunDirection, uSkyDaylight, uSkyCloudiness);
         vec2 skyPlane = direction.xz * 5.0 + direction.y * vec2(1.3, 0.7);
         vec2 drift = vec2(uSkyTime * 0.006, uSkyTime * 0.002);
         float cloudField = skyNoise(skyPlane + drift) * 0.60 + skyNoise(skyPlane * 2.1 + drift * 1.4) * 0.28 + skyNoise(skyPlane * 4.3 - drift * 0.6) * 0.12;
@@ -172,7 +176,7 @@ export function createHorizon(zone: Zone): RegionHorizon | undefined {
           + vec3(0.69, 0.79, 0.89) * moonDisc * night * 0.75 + vec3(0.68, 0.78, 0.91) * starLight * 0.85) * skyOpening;
       `);
   };
-  skyMaterial.customProgramCacheKey = () => "living-celestial-sky-v1";
+  skyMaterial.customProgramCacheKey = () => "living-celestial-sky-v2";
   sky.renderOrder = -1000; sky.frustumCulled = false;
   sky.onBeforeRender = (_renderer, _scene, camera) => {
     sky.position.copy(camera.position);

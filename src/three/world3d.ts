@@ -12,6 +12,9 @@ import { weatherFor } from "../weather";
 import { WeatherLayer, atmosphereFor } from "./weather";
 import { LightningLayer } from "./lightning";
 import { AmbienceLayer } from "./ambience";
+import { GrassField } from "./grass";
+import { FrameBudget, PostProcessing, SkyEnvironment, postQualityFor } from "./realism";
+import { clampPitch, FIRST_PERSON_EYE, FIRST_PERSON_FOV, FIRST_PERSON_HUMAN_SCALE, loadViewMode, presentation, saveViewMode, yawFromDirection, type ViewMode } from "./presentation";
 import { npcVisualIdentity } from "../character-identity";
 import { CharacterGrounding } from "./character-grounding";
 import { createWildlifeLayer } from "./wildlife";
@@ -31,7 +34,17 @@ class ThreeWorld {
   private weather = new WeatherLayer();
   private lightning = new LightningLayer();
   private ambience = new AmbienceLayer();
+  private grass = new GrassField();
   private ambienceDay = 1;
+  private mode: ViewMode = loadViewMode();
+  private pitch = -.05;
+  private bob = 0;
+  private lastEye = new THREE.Vector3();
+  private look: { id: number; x: number; y: number; startX: number; startY: number; time: number; moved: boolean } | null = null;
+  private skyEnvironment?: SkyEnvironment;
+  private post?: PostProcessing;
+  private budget = new FrameBudget();
+  private sunDirection = new THREE.Vector3(0, 1, 0);
   private ambienceWet = 0;
   private grounding = new CharacterGrounding();
   private wildlife = createWildlifeLayer();
@@ -94,7 +107,7 @@ class ThreeWorld {
     // Buildings, trees and props use a soft sun shadow map that follows the camera focus.
     // Characters keep their batched contact and silhouette layer, so they do not cast a second shadow.
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.sunlight.castShadow = true;
     const coarse = matchMedia("(pointer: coarse)").matches;
     this.sunlight.shadow.mapSize.set(coarse ? 1024 : 2048, coarse ? 1024 : 2048);
@@ -108,16 +121,21 @@ class ThreeWorld {
     this.sunlight.shadow.radius = 3;
     this.scene.background = new THREE.Color(0xb7c8b3);
     this.scene.fog = new THREE.Fog(0xb7c8b3, 65, 155);
-    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.lightning.group, this.ambience.group, this.wildlife.group, this.grounding.group);
+    this.scene.add(this.ambient, this.sunlight, this.sunlight.target, this.routeLine, this.effects.group, this.weather.group, this.lightning.group, this.ambience.group, this.grass.mesh, this.wildlife.group, this.grounding.group);
     this.routeLine.frustumCulled = false;
     this.routeLine.renderOrder = 5;
+    const width = Math.max(1, this.element.clientWidth);
+    this.skyEnvironment = new SkyEnvironment(this.renderer);
+    const quality = postQualityFor(matchMedia("(pointer: coarse)").matches, width, location.search);
+    if (quality.enabled) this.post = new PostProcessing(this.renderer, this.scene, this.camera, quality);
+    presentation.firstPerson = this.mode === "first";
     this.observer.observe(this.element);
     this.resize();
     // Build and draw once while the lifecycle can still catch a mount failure.
     const scenic = store.state.phase === "title" || store.state.phase === "creation";
     this.rebuild(scenic ? "village" : store.state.zone, scenic);
     this.updateCamera(.016);
-    this.renderer.render(this.scene, this.camera);
+    this.draw();
     this.lastFrame = performance.now();
     window.addEventListener("keydown", this.keyDown);
     window.addEventListener("keyup", this.keyUp);
@@ -126,6 +144,11 @@ class ThreeWorld {
     document.addEventListener("kg-navigate", this.navigate);
     document.addEventListener("kg-camera", this.changeCamera);
     this.renderer.domElement.addEventListener("pointerdown", this.pointerDown);
+    this.renderer.domElement.addEventListener("pointermove", this.pointerMove);
+    this.renderer.domElement.addEventListener("pointerup", this.pointerUp);
+    this.renderer.domElement.addEventListener("pointercancel", this.pointerUp);
+    document.addEventListener("mousemove", this.mouseLook);
+    document.addEventListener("pointerlockchange", this.lockChange);
     this.renderer.domElement.addEventListener("wheel", this.wheel, { passive: false });
     this.renderer.domElement.addEventListener("contextmenu", this.contextMenu);
     this.renderer.domElement.addEventListener("webglcontextlost", this.contextLost);
@@ -134,6 +157,82 @@ class ThreeWorld {
     worldInput.interact = () => this.interact();
     worldInput.dodge = this.dodge;
     this.frameId = requestAnimationFrame(this.frame);
+    this.announceMode();
+  }
+
+  private draw(): void {
+    if (this.post) this.post.render(); else this.renderer.render(this.scene, this.camera);
+  }
+  private firstPerson(): boolean { return this.mode === "first" && !this.scenic && store.state.phase === "playing"; }
+  private announceMode(): void {
+    window.dispatchEvent(new CustomEvent("kg-view-mode", { detail: { mode: this.mode, locked: document.pointerLockElement === this.renderer.domElement } }));
+  }
+  private setMode(mode: ViewMode): void {
+    if (mode === this.mode) return;
+    this.mode = mode; saveViewMode(mode);
+    presentation.firstPerson = mode === "first";
+    if (mode === "first") {
+      // Look the way the apostle was facing.
+      this.view.yaw = this.actors.get("player")?.model.group.rotation.y ?? this.view.yaw;
+      this.view.yaw = this.view.yaw + Math.PI; this.pitch = -.05;
+    } else if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock();
+    this.clearRoute();
+    for (const [id, actor] of this.actors) this.applyActorPresentation(id, actor);
+    this.resize();
+    this.announceMode();
+  }
+  private applyActorPresentation(id: string, actor: Actor): void {
+    const first = this.mode === "first";
+    actor.model.group.scale.setScalar(first ? FIRST_PERSON_HUMAN_SCALE : 1);
+    if (id === "player") actor.model.group.visible = !first || this.scenic;
+  }
+  private lockChange = () => this.announceMode();
+  private mouseLook = (event: MouseEvent) => {
+    if (document.pointerLockElement !== this.renderer.domElement || !this.firstPerson()) return;
+    this.turn(event.movementX * .0024, event.movementY * .0024);
+  };
+  private turn(dx: number, dy: number): void {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+    this.view.yaw -= dx;
+    if (this.view.yaw > Math.PI) this.view.yaw -= Math.PI * 2;
+    if (this.view.yaw < -Math.PI) this.view.yaw += Math.PI * 2;
+    this.pitch = clampPitch(this.pitch - dy);
+  }
+  private pointerMove = (event: PointerEvent) => {
+    if (!this.look || event.pointerId !== this.look.id) return;
+    const dx = event.clientX - this.look.x, dy = event.clientY - this.look.y;
+    this.look.x = event.clientX; this.look.y = event.clientY;
+    if (Math.hypot(event.clientX - this.look.startX, event.clientY - this.look.startY) > 8) this.look.moved = true;
+    if (this.look.moved) this.turn(dx * .0055, dy * .0045);
+  };
+  private pointerUp = (event: PointerEvent) => {
+    if (!this.look || event.pointerId !== this.look.id) return;
+    const tap = !this.look.moved && performance.now() - this.look.time < 350;
+    this.look = null;
+    if (tap) this.useAt(event.clientX, event.clientY);
+  };
+  /** First-person "use": the person, animal or place under the crosshair (or tap), if within reach. */
+  private useAt(clientX: number, clientY: number): void {
+    if (!this.canAct()) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.raycaster.setFromCamera(new THREE.Vector2((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1), this.camera);
+    const targets = [this.wildlife.group, ...[...this.actors.entries()].filter(([id]) => id !== "player").map(([, actor]) => actor.model.group)];
+    const hit = this.raycaster.intersectObjects(targets, true)[0];
+    let selected: THREE.Object3D | null = hit?.object ?? null;
+    while (selected && !selected.userData.actorId && !selected.userData.animalId) selected = selected.parent;
+    const reach = (point: Point) => distance(point, store.state.apostle) <= 150;
+    if (selected?.userData.animalId) {
+      const animal = animalsForZone(store.state, store.state.zone).find(candidate => candidate.id === selected!.userData.animalId);
+      if (animal && reach(animal)) { this.interact(`animal:${animal.id}`); return; }
+    }
+    if (selected?.userData.actorId) {
+      const npc = store.state.npcs.find(person => person.id === selected!.userData.actorId);
+      if (npc && reach(npc)) { this.interact(npc.id); return; }
+      if (npc && npc.id.startsWith("enemy")) { this.attack(); return; }
+    }
+    if (store.state.zone === "dungeon") { this.attack(); return; }
+    const nearest = store.getNearest();
+    if (nearest && nearest.distance <= 150) this.interact();
   }
 
   private canAct(): boolean { return !this.disposed && this.contextAvailable && store.state.phase === "playing" && !blockedWorldInput() && !document.hidden; }
@@ -160,8 +259,11 @@ class ThreeWorld {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width < 900 ? 1.25 : 1.5));
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
-    this.camera.fov = width < 600 ? 48 : height < 500 ? 48 : 42;
+    const first = this.mode === "first" && !this.scenic && store.state.phase === "playing";
+    this.camera.fov = first ? (width < 600 ? FIRST_PERSON_FOV + 6 : FIRST_PERSON_FOV) : width < 600 ? 48 : height < 500 ? 48 : 42;
+    this.camera.near = first ? .05 : .1; this.camera.far = first ? 600 : 230;
     this.camera.updateProjectionMatrix();
+    this.post?.setSize(width, height, this.renderer.getPixelRatio());
     this.effects.setProjection(height, this.renderer.getPixelRatio(), this.camera.fov);
   };
 
@@ -171,6 +273,7 @@ class ThreeWorld {
     if (movement.includes(event.code)) { event.preventDefault(); this.pressed.add(event.code); }
     if (event.repeat) return;
     if (event.code === "KeyE") { event.preventDefault(); this.interact(); }
+    if (event.code === "KeyV") { event.preventDefault(); this.setMode(this.mode === "first" ? "third" : "first"); }
     if (event.code === "Space") this.attack();
     if (event.code.startsWith("Shift")) this.dodge();
     if (event.code === "KeyZ" || event.code === "KeyX") {
@@ -178,9 +281,10 @@ class ThreeWorld {
     }
   };
   private keyUp = (event: KeyboardEvent) => this.pressed.delete(event.code);
-  private wheel = (event: WheelEvent) => { if (!blockedWorldInput()) { event.preventDefault(); this.setCamera(event.deltaY > 0 ? "out" : "in"); } };
+  private wheel = (event: WheelEvent) => { if (this.firstPerson()) return; if (!blockedWorldInput()) { event.preventDefault(); this.setCamera(event.deltaY > 0 ? "out" : "in"); } };
   private changeCamera = (event: Event) => {
     const action = (event as CustomEvent<{ action?: string }>).detail?.action;
+    if (action === "toggle-view") { this.setMode(this.mode === "first" ? "third" : "first"); return; }
     if (action && !blockedWorldInput()) this.setCamera(action);
   };
   private setCamera(action: string): void {
@@ -250,6 +354,23 @@ class ThreeWorld {
   private pointerDown = (event: PointerEvent) => {
     if (!this.canAct()) return;
     if (event.button === 2) { event.preventDefault(); this.attack(); return; }
+    if (this.firstPerson()) {
+      if (event.pointerType === "mouse") {
+        if (event.button !== 0) return;
+        if (document.pointerLockElement !== this.renderer.domElement) {
+          // The first click captures the mouse for looking; it does not act.
+          const request = this.renderer.domElement.requestPointerLock?.() as Promise<void> | undefined;
+          request?.catch?.(() => {});
+          return;
+        }
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.useAt(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      } else {
+        this.look = { id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, time: performance.now(), moved: false };
+        this.renderer.domElement.setPointerCapture?.(event.pointerId);
+      }
+      return;
+    }
     if (event.button !== 0) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1), this.camera);
@@ -345,6 +466,8 @@ class ThreeWorld {
       model.group.userData.actorId = id;
       // Characters already have soft contact/silhouette shadows in CharacterGrounding.
       model.group.traverse(child => { if ((child as THREE.Mesh).isMesh) { child.castShadow = false; } });
+      if (this.mode === "first") model.group.scale.setScalar(FIRST_PERSON_HUMAN_SCALE);
+      if (id === "player" && this.mode === "first" && !this.scenic) model.group.visible = false;
       const label = document.createElement("div");
       label.className = `world-three-label ${id === "player" ? "player" : kind === "skeleton" ? "enemy" : "npc"}`;
       this.labels.append(label);
@@ -409,7 +532,8 @@ class ThreeWorld {
       return priority(aId, a) - priority(bId, b);
     });
     for (const [id, actor] of actors) {
-      const point = actor.model.group.position.clone(); point.y += 2.55;
+      const point = actor.model.group.position.clone(); point.y += 2.55 * actor.model.group.scale.y;
+      if (id === "player" && this.firstPerson()) { actor.label.hidden = true; continue; }
       const screen = this.project(point);
       const close = id === "player" || distance(actor, store.state.apostle) < 430;
       actor.label.hidden = !active || !screen.visible || !close;
@@ -440,6 +564,39 @@ class ThreeWorld {
     }
   }
   private updateCamera(dt: number): void {
+    const wantsFirst = this.mode === "first" && !this.scenic && store.state.phase === "playing";
+    if (wantsFirst !== (this.camera.near < .08)) this.resize();
+    if (wantsFirst) this.updateFirstPersonCamera(dt);
+    else this.updateThirdPersonCamera(dt);
+    this.updateLighting();
+  }
+  private updateFirstPersonCamera(dt: number): void {
+    const apostle = toWorld(store.state.apostle);
+    const eye = new THREE.Vector3(apostle.x, 0, apostle.z);
+    // Auto-walk along a planned route turns the view toward the path.
+    const waypoint = this.destination?.path[0];
+    if (waypoint) {
+      const target = yawFromDirection(waypoint.x - store.state.apostle.x, waypoint.y - store.state.apostle.y);
+      let delta = target - this.view.yaw;
+      delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      this.view.yaw += delta * (1 - Math.exp(-dt * 4));
+    }
+    const travelled = Math.hypot(eye.x - this.lastEye.x, eye.z - this.lastEye.z);
+    this.lastEye.copy(eye);
+    if (travelled > .0005 && travelled < 2) this.bob += travelled * 2.6; else this.bob *= .9;
+    const bobHeight = Math.sin(this.bob) * .035, bobSide = Math.cos(this.bob * .5) * .018;
+    eye.y = FIRST_PERSON_EYE + bobHeight;
+    const right = new THREE.Vector3(Math.cos(this.view.yaw), 0, -Math.sin(this.view.yaw));
+    eye.addScaledVector(right, bobSide);
+    this.camera.position.copy(eye);
+    const cosPitch = Math.cos(this.pitch);
+    this.vector.set(eye.x - Math.sin(this.view.yaw) * cosPitch, eye.y + Math.sin(this.pitch), eye.z - Math.cos(this.view.yaw) * cosPitch);
+    this.camera.lookAt(this.vector);
+    this.camera.updateMatrixWorld();
+    this.focus.set(apostle.x, .7, apostle.z);
+    if (document.pointerLockElement === this.renderer.domElement && blockedWorldInput()) document.exitPointerLock();
+  }
+  private updateThirdPersonCamera(dt: number): void {
     const point = toWorld(this.scenic ? { x: 1270, y: 880 } : store.state.apostle);
     const framing = cameraFraming(this.scenic ? 47 : this.view.distance);
     this.desiredFocus.set(point.x, framing.focusHeight, point.z);
@@ -450,10 +607,20 @@ class ThreeWorld {
       this.focus.y + viewDistance * framing.heightFactor, this.focus.z + Math.cos(yaw) * viewDistance * framing.horizontalFactor);
     this.camera.lookAt(this.focus);
     this.camera.updateMatrixWorld();
+  }
+  private updateLighting(): void {
     // Snap the shadow frustum to its texel grid so shadows do not shimmer while walking.
     const texel = (SHADOW_EXTENT * 2) / this.sunlight.shadow.mapSize.x;
-    const sx = Math.round(this.focus.x / texel) * texel, sz = Math.round(this.focus.z / texel) * texel;
-    this.sunlight.position.set(sx - 26, 52, sz + 16);
+    // In first person the shadow box sits ahead of the eye, where the player looks.
+    const ahead = this.firstPerson() ? SHADOW_EXTENT * .55 : 0;
+    const cx = this.focus.x - Math.sin(this.view.yaw) * ahead, cz = this.focus.z - Math.cos(this.view.yaw) * ahead;
+    const sx = Math.round(cx / texel) * texel, sz = Math.round(cz / texel) * texel;
+    // The key light follows the real sun (or the moon at night), never dipping below a low evening angle.
+    const angle = (((store.state.minutes % 1440) + 1440) % 1440 - 360) / 1440 * Math.PI * 2;
+    this.sunDirection.set(Math.cos(angle) * .88, Math.sin(angle), -.48).normalize();
+    const key = this.sunDirection.y > 0 ? this.sunDirection.clone() : this.sunDirection.clone().negate();
+    key.y = Math.max(.32, key.y); key.normalize();
+    this.sunlight.position.set(sx + key.x * 60, key.y * 60, sz + key.z * 60);
     this.sunlight.target.position.set(sx, 0, sz);
     const interior = this.zone !== "village" && this.zone !== "wilderness" && this.zone !== "highlands";
     const weather = weatherFor(store.state.day, store.state.minutes, this.zone ?? store.state.zone);
@@ -470,7 +637,18 @@ class ThreeWorld {
     const backdrop = interior ? new THREE.Color(0x15130f) : atmosphere.sky;
     (this.scene.background as THREE.Color).copy(backdrop);
     const fog = this.scene.fog as THREE.Fog;
-    fog.color.copy(backdrop); fog.near = interior ? 65 : atmosphere.fogNear; fog.far = interior ? 155 : atmosphere.fogFar;
+    const first = this.firstPerson();
+    fog.color.copy(backdrop);
+    // Eye-level views see the whole valley: fog starts nearer but reaches the horizon ring.
+    fog.near = interior ? (first ? 40 : 65) : first ? atmosphere.fogNear * .55 : atmosphere.fogNear;
+    fog.far = interior ? (first ? 120 : 155) : first ? atmosphere.fogFar * 1.25 : atmosphere.fogFar;
+    if (this.skyEnvironment) {
+      this.scene.environment = this.skyEnvironment.update({ sunDirection: this.sunDirection, daylight: atmosphere.daylight, cloudiness: weather.cloudiness, outdoors: !interior });
+      this.scene.environmentIntensity = interior ? .55 : .35 + atmosphere.daylight * .55;
+      // Sky light now arrives through the environment, so the flat hemisphere fill steps back.
+      this.ambient.intensity *= interior ? .6 : .55;
+    }
+    this.post?.setMood(interior ? .6 : atmosphere.daylight, interior);
   }
   private frame = (stamp: number) => {
     if (this.disposed) return;
@@ -483,7 +661,9 @@ class ThreeWorld {
     }
   };
   private renderFrame(stamp: number): void {
-    const dt = Math.max(0, Math.min((stamp - this.lastFrame) / 1000, .1)); this.lastFrame = stamp;
+    const elapsed = stamp - this.lastFrame;
+    const dt = Math.max(0, Math.min(elapsed / 1000, .1)); this.lastFrame = stamp;
+    if (this.post && !document.hidden && this.budget.sample(elapsed)) this.post.degrade();
     const scenic = store.state.phase === "title" || store.state.phase === "creation";
     const zone = scenic ? "village" : store.state.zone;
     if (this.zone !== zone || this.scenic !== scenic) this.rebuild(zone, scenic);
@@ -503,6 +683,12 @@ class ThreeWorld {
       scenic ? { x: 1270, y: 880 } : store.state.apostle, store.state.minutes);
     this.lightning.update(store.state, zone, this.presentationTime);
     this.wildlife.update(store.state, zone, this.presentationTime);
+    // Animals share the people's first-person scale so a dog stays dog-sized beside them.
+    const animalScale = this.firstPerson() ? FIRST_PERSON_HUMAN_SCALE : 1;
+    for (const animal of this.wildlife.group.children) {
+      animal.userData.baseScale ??= animal.scale.x;
+      animal.scale.setScalar(animal.userData.baseScale * animalScale);
+    }
     this.updateCamera(Math.max(dt, .001));
     const shadowWeather = weatherFor(store.state.day, store.state.minutes, zone);
     const shadowLight = atmosphereFor(store.state.minutes, shadowWeather);
@@ -511,8 +697,9 @@ class ThreeWorld {
       { daylight: shadowLight.daylight, cloudiness: shadowWeather.cloudiness, indoors: !shadowWeather.outdoors });
     const mood = zone === "mine" || zone === "dungeon" ? "underground" : shadowWeather.outdoors ? "outdoor" : "interior";
     this.ambience.update(this.presentationTime, this.focus, this.ambienceDay, mood, this.ambienceWet, this.renderer.getPixelRatio());
+    this.grass.update(zone, this.camera.position, this.firstPerson(), this.presentationTime, store.state.day);
     if (stamp - this.lastLabels > 45) { this.updateLabels(); this.lastLabels = stamp; }
-    if (this.contextAvailable) this.renderer.render(this.scene, this.camera);
+    if (this.contextAvailable) this.draw();
     if (stamp - this.lastDebug > 200) {
       const canvas = this.renderer.domElement;
       canvas.dataset.cameraYaw = String(this.view.yaw);
@@ -569,6 +756,14 @@ class ThreeWorld {
     this.weather.dispose();
     this.lightning.dispose();
     this.ambience.dispose();
+    this.grass.dispose();
+    this.post?.dispose(); this.skyEnvironment?.dispose();
+    this.renderer.domElement.removeEventListener("pointermove", this.pointerMove);
+    this.renderer.domElement.removeEventListener("pointerup", this.pointerUp);
+    this.renderer.domElement.removeEventListener("pointercancel", this.pointerUp);
+    document.removeEventListener("mousemove", this.mouseLook);
+    document.removeEventListener("pointerlockchange", this.lockChange);
+    if (document.pointerLockElement === this.renderer.domElement) document.exitPointerLock();
     this.grounding.dispose();
     this.effects.dispose();
     this.wildlife.dispose();

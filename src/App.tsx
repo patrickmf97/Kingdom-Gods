@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   BookOpen,
   Camera,
+  Eye,
   Check,
   ChevronDown,
   ChevronRight,
@@ -114,6 +115,16 @@ export default function App() {
   const [rendererMode, setRendererMode] = useState(getRendererMode);
   const [rendererNotice, setRendererNotice] = useState("");
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<{ mode: "first" | "third"; locked: boolean }>({ mode: "first", locked: false });
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent<{ mode: "first" | "third"; locked: boolean }>).detail;
+      if (detail) { setViewMode(detail); if (detail.mode === "first") setCameraOpen(false); }
+    };
+    window.addEventListener("kg-view-mode", listener);
+    return () => window.removeEventListener("kg-view-mode", listener);
+  }, []);
+  const firstPerson = viewMode.mode === "first";
   const [trackerOpen, setTrackerOpen] = useState(() => !matchMedia("(pointer: coarse), (max-width: 720px)").matches);
   const campaignInput = useRef<HTMLInputElement>(null);
   const importDialog = useRef<HTMLDivElement>(null);
@@ -536,15 +547,19 @@ export default function App() {
                 </section>
                 <section className="hud-right" aria-label="Tempo, mapa e opções">
                   <div className="hud-toolbar">
-                    {rendererMode === "3d" && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
-                      <button className="tool-button" aria-label="Controles da câmera" title="Câmera" aria-expanded={cameraOpen} aria-controls="world-camera-controls" onClick={() => setCameraOpen((value) => !value)}>
+                    <button className={`tool-button ${firstPerson ? "active" : ""}`} onClick={() => document.dispatchEvent(new CustomEvent("kg-camera", { detail: { action: "toggle-view" } }))}
+                      title={firstPerson ? "Visão de cima (V)" : "Primeira pessoa (V)"} aria-label={firstPerson ? "Mudar para a visão de cima" : "Mudar para a primeira pessoa"} aria-pressed={firstPerson}>
+                      <Eye size={17} />
+                    </button>
+                    {rendererMode === "3d" && !firstPerson && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
+                      <button className="tool-button tool-camera" aria-label="Controles da câmera" title="Câmera" aria-expanded={cameraOpen} aria-controls="world-camera-controls" onClick={() => setCameraOpen((value) => !value)}>
                         <Camera size={17} />
                       </button>
                     )}
-                    <button className="tool-button" onClick={doSave} title="Salvar campanha" aria-label="Salvar campanha">
+                    <button className="tool-button tool-save" onClick={doSave} title="Salvar campanha" aria-label="Salvar campanha">
                       {saving ? <span className="spinner" /> : <Save size={17} />}
                     </button>
-                    <button className={`tool-button ${sound ? "active" : ""}`} onClick={() => setSound((v) => !v)} title="Ambiente sonoro" aria-label={sound ? "Desativar ambiente sonoro" : "Ativar ambiente sonoro"}>
+                    <button className={`tool-button tool-sound ${sound ? "active" : ""}`} onClick={() => setSound((v) => !v)} title="Ambiente sonoro" aria-label={sound ? "Desativar ambiente sonoro" : "Ativar ambiente sonoro"}>
                       {sound ? <Volume2 size={17} /> : <VolumeX size={17} />}
                     </button>
                     <button className="tool-button" onClick={() => open("help")} title="Controles e ajustes" aria-label="Controles e informações">
@@ -554,7 +569,7 @@ export default function App() {
                       {paused ? <Play size={17} /> : <Menu size={18} />}
                     </button>
                   </div>
-                  {cameraOpen && rendererMode === "3d" && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
+                  {cameraOpen && !firstPerson && rendererMode === "3d" && !panel && !dialog && !paused && !pendingImport && !transferBusy && (
                     <div className="camera-controls" id="world-camera-controls" role="group" aria-label="Ajustar câmera 3D">
                       {([
                         { action: "left", label: "Girar câmera à esquerda", Icon: RotateCcw },
@@ -650,12 +665,19 @@ export default function App() {
                 {!mobile && !panel && !dialog && (
                   <section className="hud-hints control-hints" aria-label="Controles">
                     <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover</span>
+                    {firstPerson && <span><kbd>Mouse</kbd> olhar · <kbd>Clique</kbd> usar</span>}
                     <span><kbd>E</kbd> interagir</span>
                     <span><kbd>Espaço</kbd> atacar</span>
-                    <span><kbd>Shift</kbd> esquivar</span>
+                    <span><kbd>V</kbd> {firstPerson ? "visão de cima" : "primeira pessoa"}</span>
                   </section>
                 )}
               </div>
+              {firstPerson && !panel && !dialog && !paused && (
+                <div className={`crosshair ${viewMode.locked || mobile ? "" : "idle"}`} aria-hidden="true"><i /></div>
+              )}
+              {firstPerson && !mobile && !viewMode.locked && !panel && !dialog && !paused && (
+                <div className="look-hint" role="status">Clique no mundo para olhar com o mouse · <kbd>Esc</kbd> libera o cursor</div>
+              )}
               {mobile && !panel && !dialog && !paused && (
                 <MobileControls
                   onAttack={() => worldInput.attack()}
