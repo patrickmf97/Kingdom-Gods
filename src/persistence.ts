@@ -1,5 +1,5 @@
 import type { GameState, Apostle, Npc, Person, ResourceNodeDefinition } from "./types";
-import { createEconomyState } from "./economy";
+import { CROP_MAX_WATERING, createEconomyState } from "./economy";
 import { createFrontierState, FRONTIER_JOB_DEFS } from "./frontier";
 import { createLifeState } from "./life";
 import { LEGACY_RESOURCE_NODES, V5_RESOURCE_NODES, REGIONS, RESOURCE_NODES } from "./regions";
@@ -299,7 +299,10 @@ function economy(value: unknown): boolean {
         choice(value.crop.season, ["Primavera", "Verão", "Outono", "Inverno"]) &&
         day(value.crop.readyDay) &&
         count(value.crop.yield) &&
-        value.crop.yield > 0)) &&
+        value.crop.yield > 0 &&
+        (value.crop.watered === undefined || (count(value.crop.watered) && value.crop.watered <= CROP_MAX_WATERING)) &&
+        (value.crop.lastWatered === undefined || day(value.crop.lastWatered)) &&
+        (value.crop.fertile === undefined || boolean(value.crop.fertile)))) &&
     (value.worker === null ||
       (object(value.worker) &&
         string(value.worker.npcId) &&

@@ -430,11 +430,13 @@ class ThreeWorld {
     }
     this.prompt.hidden = !nearest || nearest.distance > 150;
     if (nearest && !this.prompt.hidden) {
-      const world = toWorld(nearest);
-      const screen = this.project(new THREE.Vector3(world.x, .5, world.z));
+      // Anchored under the apostle's own feet: it never covers the player, and the
+      // target stays visible above it with its name label.
+      const world = toWorld(store.state.apostle);
+      const screen = this.project(new THREE.Vector3(world.x, 0, world.z));
       this.prompt.hidden = !screen.visible;
       this.prompt.textContent = `E · ${nearest.label}`;
-      this.prompt.style.transform = `translate(${screen.x}px,${screen.y + 22}px) translate(-50%,0)`;
+      this.prompt.style.transform = `translate(${screen.x}px,${screen.y + 16}px) translate(-50%,0)`;
     }
   }
   private updateCamera(dt: number): void {
