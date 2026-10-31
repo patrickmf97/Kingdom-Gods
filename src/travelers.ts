@@ -3,6 +3,7 @@ import { interiorForZone } from './interiors';
 import { marketQuote, type MarketQuote } from './market';
 import { isVisitor, populationDefinition, type PopulationStop } from './population';
 import { weatherFor } from './weather';
+import { npcVisualIdentity } from './character-identity';
 import type { Dialog, ExpansionHooks, GameState, ItemId, Npc } from './types';
 const distance=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
 const count=(n:number)=>Number.isSafeInteger(n)&&n>=0;
@@ -19,11 +20,12 @@ export function travelerQuote(state:GameState,id:string,item:ItemId,buy:boolean)
 export function travelerDialog(state:GameState,id:string):Dialog|null {
   const npc=state.npcs.find(n=>n.id===id), d=populationDefinition(state,id);
   if(!npc||!d||d.resident)return null;
-  if(d.role!=='merchant')return {name:npc.name,role:npc.role,text:d.role==='pilgrim'
+  const speaker=npcVisualIdentity(state,npc);
+  if(d.role!=='merchant')return {name:npc.name,role:npc.role,speaker,text:d.role==='pilgrim'
     ?'Sigo até a capela da serra. Cada abrigo e cada encontro fazem parte da caminhada.'
     :'Levo notícias entre a vila, o acampamento e a serra. Aguardo aqui antes de retomar a estrada.',options:[]};
   const trader=state.worldLife.travelers[id];
-  return {name:npc.name,role:npc.role,text:`Meu estoque e meu caixa são finitos. Tenho ${trader.gold} moedas para negociar.`,
+  return {name:npc.name,role:npc.role,speaker,text:`Meu estoque e meu caixa são finitos. Tenho ${trader.gold} moedas para negociar.`,
     options:(Object.keys(ITEMS) as ItemId[]).flatMap(item=>{
       const buy=travelerQuote(state,id,item,true)!,sell=travelerQuote(state,id,item,false)!;
       return [{label:`Comprar ${ITEMS[item].name} · ${buy.price} moedas (${buy.stock})`,action:`traveler-buy:${id}:${item}`,

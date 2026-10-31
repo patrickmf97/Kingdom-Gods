@@ -822,6 +822,7 @@ class EnvironmentBuilder {
     const readyDay = crop?.readyDay ?? (state.property.plantedAt === null ? Infinity : state.property.plantedAt + 2);
     const signature = this.zone === "village"
       ? `${state.property.building}:${state.property.plantedAt}:${crop?.readyDay ?? 0}:${state.day >= readyDay}:${state.economy.condition < 25}`
+        + `:${state.property.plantedAt === null ? 0 : state.day}:${crop?.lastWatered === state.day}:${!!crop?.fertile}`
       : this.zone === "wilderness" ? ESTATE_DEFS.map(estate => {
         const parcel = state.territory.parcels[estate.id];
         return `${parcel.owned}:${parcel.building}:${parcel.condition < 25}`;
@@ -839,6 +840,14 @@ class EnvironmentBuilder {
         if (!sharedMaterials.has(material as THREE.MeshStandardMaterial)) oldMaterials.add(material);
       }
     });
+    // Lantern halos and glowing panes of the owned home are rebuilt with it.
+    this.dynamic.traverse(object => {
+      if (!(object instanceof THREE.Sprite)) return;
+      oldMaterials.add(object.material);
+      const index = this.halos.indexOf(object);
+      if (index >= 0) this.halos.splice(index, 1);
+    });
+    for (let i = this.glows.length - 1; i >= 0; i--) if (oldMaterials.has(this.glows[i].material)) this.glows.splice(i, 1);
     for (let i = this.fades.length - 1; i >= 0; i--) if (this.fades[i].materials.some(material => oldMaterials.has(material))) this.fades.splice(i, 1);
     oldMaterials.forEach(material => { material.dispose(); this.materials.delete(material); });
     this.dynamic.clear();
@@ -847,17 +856,43 @@ class EnvironmentBuilder {
         state.economy.condition < 25 ? 0x746951 : PALETTE.roof, { height: 2.7, parent: this.dynamic, kind: "owned-home" });
       if (state.property.plantedAt !== null) {
         const ripe = state.day >= readyDay;
-        const stalks = new THREE.InstancedMesh(this.cylinderGeometry,
-          this.material(ripe ? 0xcbb465 : 0x81a45c), 96);
-        const heads = new THREE.InstancedMesh(this.sphereGeometry,
-          this.material(ripe ? 0xe2c779 : 0x9cba6c), 96);
-        const matrix = new THREE.Matrix4();
-        for (let i = 0; i < 96; i++) {
-          const x = (1816 + (i % 16) * 11) * SCALE, z = (755 + Math.floor(i / 16) * 17) * SCALE;
-          const h = ripe ? .66 : .34;
-          matrix.makeScale(.023, h, .023); matrix.setPosition(x, h / 2 + .05, z); stalks.setMatrixAt(i, matrix);
-          matrix.makeScale(.08, .16, .06); matrix.setPosition(x, h + .04, z); heads.setMatrixAt(i, matrix);
+        const span = Math.max(1, readyDay - state.property.plantedAt);
+        // Growth reads at a glance: shoots on the sowing day, ears by mid-season, gold at harvest.
+        const growth = ripe ? 1 : THREE.MathUtils.clamp((state.day - state.property.plantedAt + .35) / span, .12, .92);
+        const field = { left: 1806, right: 1998, top: 751, bottom: 853 };
+        const fieldX = (field.left + field.right) / 2, fieldY = (field.top + field.bottom) / 2;
+        if (crop?.fertile) this.box(fieldX, fieldY, field.right - field.left, field.bottom - field.top, .012,
+          this.material(0x5a4128, { roughness: .98 }), .03, this.dynamic).castShadow = false;
+        if (crop?.lastWatered === state.day) {
+          // Damp furrows: darker, slightly glossy soil for the rest of the day.
+          this.box(fieldX, fieldY, field.right - field.left - 4, field.bottom - field.top - 4, .012,
+            this.material(0x3a2a1d, { roughness: .42, metalness: .04 }), .036, this.dynamic).castShadow = false;
         }
+        const green = new THREE.Color(0x6fb84a), gold = new THREE.Color(0xe0b85a);
+        const stalkColor = ripe ? gold.clone().multiplyScalar(.92) : green.clone().lerp(new THREE.Color(0xa7b65a), growth * .55);
+        const columns = 26, rows = 6, count = columns * rows;
+        // Tapered cones read as leafy tufts when young and as dense straw when ripe.
+        const stalks = new THREE.InstancedMesh(this.coneGeometry, this.material(stalkColor.getHex(), { roughness: .85 }), count);
+        const showHeads = ripe || growth > .45;
+        const heads = new THREE.InstancedMesh(this.sphereGeometry,
+          this.material(ripe ? 0xebc96f : new THREE.Color(0xa9c46e).lerp(gold, growth * .4).getHex(), { roughness: .75 }), count);
+        heads.visible = showHeads;
+        const matrix = new THREE.Matrix4(), rotation = new THREE.Quaternion(), position = new THREE.Vector3(), scale = new THREE.Vector3();
+        const tilt = new THREE.Euler();
+        for (let i = 0; i < count; i++) {
+          const row = Math.floor(i / columns), column = i % columns;
+          const jitter = Math.abs(Math.sin(i * 12.9898) * 43758.5453 % 1);
+          const x = (1812 + column * 7.2 + (row % 2) * 3.6 + jitter * 2) * SCALE, z = (757 + row * 17 + (jitter - .5) * 3) * SCALE;
+          const h = (ripe ? .78 : .22 + growth * .56) * (.85 + jitter * .3);
+          tilt.set((jitter - .5) * .22, jitter * 3, (jitter - .5) * .18);
+          rotation.setFromEuler(tilt);
+          position.set(x, h / 2 + .04, z); scale.set(ripe ? .1 : .13 - growth * .04, h, ripe ? .1 : .13 - growth * .04);
+          matrix.compose(position, rotation, scale); stalks.setMatrixAt(i, matrix);
+          position.set(x, h * .92 + .04, z); scale.set(.055, ripe ? .16 : .09 + growth * .06, .045);
+          matrix.compose(position, rotation, scale); heads.setMatrixAt(i, matrix);
+        }
+        stalks.name = "crop-stalks"; heads.name = "crop-heads";
+        stalks.castShadow = true; heads.castShadow = true;
         stalks.computeBoundingSphere(); heads.computeBoundingSphere(); this.dynamic.add(stalks, heads);
       }
     } else if (this.zone === "wilderness") for (const estate of ESTATE_DEFS) {

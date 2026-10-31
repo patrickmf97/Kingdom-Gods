@@ -291,6 +291,12 @@ export interface CropPlan {
   season: Season;
   readyDay: number;
   yield: number;
+  /** Days of care so far (manual watering, rain or a hired worker). Absent on older campaigns. */
+  watered?: number;
+  /** Last day the soil was watered; one watering per day counts. */
+  lastWatered?: number;
+  /** Green manure worked into the soil once per crop. */
+  fertile?: boolean;
 }
 export interface WorkerContract {
   npcId: string;
@@ -356,6 +362,8 @@ export interface Dialog {
   role: string;
   text: string;
   options: DialogOption[];
+  /** Appearance of the person speaking; places, objects and animals have none. */
+  speaker?: Pick<Person, "skin" | "hair" | "eyes" | "outfit" | "sex">;
 }
 export interface Point {
   x: number;

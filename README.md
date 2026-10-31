@@ -28,6 +28,15 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
+## Cuidado do campo
+
+- **Regar:** na Parcela do Moinho, **Regar a plantação** custa 6 de energia e acrescenta 1 trigo à colheita prevista, uma vez por dia e até 3 dias por plantio. Chuva ou tempestade sobre Valeverde rega a parcela sozinha durante a noite, e Lina, quando contratada, rega depois de plantar.
+- **Adubar:** **Adubar o solo** mistura 2 ervas à terra como adubo verde, uma vez por plantio, e acrescenta 2 trigos.
+- **Ver o campo:** o trigo cresce em estágios visíveis (brotos, espigas verdes e campo dourado); a terra regada no dia fica escura e úmida, e o solo adubado ganha tom mais rico. O diálogo da parcela mostra os dias regados e se o solo foi adubado.
+- **Compatibilidade:** campanhas existentes continuam válidas; os campos novos são opcionais e conferidos ao carregar.
+- **Diálogos:** cada pessoa aparece com o próprio retrato (cores de pele, cabelo e roupa reais); placas, portas e propriedades não mostram retrato.
+- **Interação:** no computador, o aviso de interação aparece só acima da barra de ações; no toque, ele fica sob os pés do apóstolo, sem cobrir ninguém.
+
 ## Personagens e ambientação
 
 - **Personagens:** proporções de livro ilustrado com cabeça maior e rostos legíveis à distância de exploração — olhos amendoados com íris, pupila e brilho, sobrancelhas marcadas, bochechas coradas e sorriso discreto. Calças em tons terrosos variados por morador, barras e golas com acabamento, postura relaxada com respiração no repouso e um contorno de luz quente que destaca as figuras do chão. O apóstolo usa golas e barra douradas, um boldrié e um pingente solar.

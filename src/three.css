@@ -50,6 +50,8 @@
   touch-action: manipulation;
   pointer-events: auto;
 }
+/* With a keyboard and mouse the HUD prompt above the action bar is the single prompt. */
+.kingdom-app:not(.is-mobile) .world-three-interact { display: none; }
 .world-three-interact:hover { background: rgba(30, 44, 36, 0.92); border-color: #d9b36b; }
 .world-three-interact:focus-visible,
 .renderer-choice button:focus-visible { outline: 3px solid #d9b36b; outline-offset: 3px; }

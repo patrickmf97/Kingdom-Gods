@@ -229,19 +229,19 @@ test("crop maturity updates legacy crops and repeated planting disposes GPU inst
   state.property.plantedAt = state.day;
   state.economy.crop = null;
   environment.update(state, 1);
-  const cropInstances = meshes(environment.group).filter(mesh => mesh instanceof THREE.InstancedMesh && mesh.count === 96);
+  const cropInstances = meshes(environment.group).filter(mesh => mesh instanceof THREE.InstancedMesh && mesh.name.startsWith("crop-"));
   assert.equal(cropInstances.length, 2);
   const youngColors = cropInstances.map(mesh => (mesh.material as THREE.MeshStandardMaterial).color.getHex());
   let released = 0;
   cropInstances.forEach(mesh => mesh.addEventListener("dispose", () => released++));
   state.day += 2;
   environment.update(state, 2);
-  const ripeInstances = meshes(environment.group).filter(mesh => mesh instanceof THREE.InstancedMesh && mesh.count === 96);
+  const ripeInstances = meshes(environment.group).filter(mesh => mesh instanceof THREE.InstancedMesh && mesh.name.startsWith("crop-"));
   assert.ok(ripeInstances.some((mesh, i) => (mesh.material as THREE.MeshStandardMaterial).color.getHex() !== youngColors[i]));
   assert.equal(released, 2, "maturing the crop must release replaced instance buffers");
   state.property.plantedAt = null;
   environment.update(state, 3);
-  assert.equal(meshes(environment.group).filter(mesh => mesh instanceof THREE.InstancedMesh && mesh.count === 96).length, 0);
+  assert.equal(meshes(environment.group).filter(mesh => mesh instanceof THREE.InstancedMesh && mesh.name.startsWith("crop-")).length, 0);
   environment.dispose();
 });
 

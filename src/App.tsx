@@ -666,12 +666,9 @@ export default function App() {
               {dialog && (
                 <div className="dialog-box" role="dialog" aria-label={`Conversa com ${dialog.name}`}>
                   <div className="dialog-speaker">
-                    {!animalEncounter && <span className="dialog-portrait">
-                      <Portrait
-                        person={{ ...a, hair: "#b1a48a", outfit: "#777462" }}
-                        size={64}
-                      />
-                    </span>}
+                    {!animalEncounter && dialog.speaker ? <span className="dialog-portrait">
+                      <Portrait person={dialog.speaker} size={64} />
+                    </span> : null}
                     <div>
                       <small>{dialog.role}</small>
                       <h3>{dialog.name}</h3>

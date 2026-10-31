@@ -168,6 +168,98 @@ export function plantCrop(
   return true;
 }
 
+/** Each day of watering adds one wheat, up to this many days per crop. */
+export const CROP_MAX_WATERING = 3;
+/** Herbs composted as green manure; once per crop, two extra wheat. */
+export const CROP_FERTILIZER_HERBS = 2;
+export const CROP_FERTILE_BONUS = 2;
+export const WATERING_STAMINA = 6;
+
+export type CropCare = "growing" | "ripe" | "none";
+export function cropStage(state: GameState): CropCare {
+  const crop = state.economy.crop;
+  if (!crop || state.property.plantedAt === null) return "none";
+  return state.day >= crop.readyDay ? "ripe" : "growing";
+}
+
+export function canWaterCrop(state: GameState): boolean {
+  const crop = state.economy.crop;
+  return cropStage(state) === "growing" && !!crop && crop.lastWatered !== state.day
+    && (crop.watered ?? 0) < CROP_MAX_WATERING;
+}
+
+/** Waters today's crop. Source changes only the wording and stamina; the bonus is identical. */
+export function waterCrop(
+  state: GameState,
+  hooks: EconomicHooks,
+  source: "apostle" | "rain" | "worker" = "apostle",
+): boolean {
+  const crop = state.economy.crop;
+  if (!state.property.owned || !crop || !canWaterCrop(state)) {
+    if (source === "apostle")
+      hooks.message(
+        !crop || state.property.plantedAt === null
+          ? "Não há plantação para regar."
+          : state.day >= crop.readyDay
+            ? "O trigo já está maduro. Agora é hora de colher."
+            : crop.lastWatered === state.day
+              ? "A terra já foi regada hoje."
+              : "Esta plantação já recebeu toda a água que aproveita.",
+        "warning",
+      );
+    return false;
+  }
+  if (source === "apostle") {
+    if (state.apostle.stamina < WATERING_STAMINA) {
+      hooks.message("Você está cansado demais para carregar água.", "warning");
+      return false;
+    }
+    state.apostle.stamina -= WATERING_STAMINA;
+    hooks.practice("farming", 1);
+  }
+  crop.watered = (crop.watered ?? 0) + 1;
+  crop.lastWatered = state.day;
+  crop.yield += 1;
+  const text = source === "rain"
+    ? `A chuva regou sua parcela · +1 trigo previsto (${crop.yield}).`
+    : source === "worker"
+      ? `Lina regou a plantação · +1 trigo previsto (${crop.yield}).`
+      : `Plantação regada · +1 trigo previsto (${crop.yield}).`;
+  record(state, "water", text);
+  hooks.message(text, "success");
+  return true;
+}
+
+export function canFertilizeCrop(state: GameState): boolean {
+  const crop = state.economy.crop;
+  return cropStage(state) === "growing" && !!crop && !crop.fertile && state.inventory.herb >= CROP_FERTILIZER_HERBS;
+}
+
+export function fertilizeCrop(state: GameState, hooks: EconomicHooks): boolean {
+  const crop = state.economy.crop;
+  if (!state.property.owned || !crop || !canFertilizeCrop(state)) {
+    hooks.message(
+      !crop || state.property.plantedAt === null
+        ? "Plante primeiro; o adubo se mistura à terra ao redor das sementes."
+        : crop.fertile
+          ? "O solo desta plantação já foi adubado."
+          : state.day >= crop.readyDay
+            ? "O trigo já está maduro. O adubo serviria só à próxima semeadura."
+            : `São necessárias ${CROP_FERTILIZER_HERBS} ervas para o adubo verde.`,
+      "warning",
+    );
+    return false;
+  }
+  state.inventory.herb -= CROP_FERTILIZER_HERBS;
+  crop.fertile = true;
+  crop.yield += CROP_FERTILE_BONUS;
+  hooks.practice("farming", 1);
+  const text = `Solo adubado com ervas · +${CROP_FERTILE_BONUS} trigo previsto (${crop.yield}).`;
+  record(state, "fertilize", text);
+  hooks.message(text, "success");
+  return true;
+}
+
 export function harvestCrop(
   state: GameState,
   hooks: EconomicHooks,
@@ -539,6 +631,7 @@ function workDay(state: GameState, hooks: EconomicHooks): void {
   }
   harvestCrop(state, hooks, true);
   plantCrop(state, hooks, true);
+  if (canWaterCrop(state)) waterCrop(state, hooks, "worker");
 }
 
 function orderDay(state: GameState, hooks: EconomicHooks): void {
@@ -732,6 +825,10 @@ export function processEconomicDay(
         -tax,
       );
   }
+  // Rain over Valeverde waters a growing crop before anyone has to carry a bucket.
+  const sky = weatherFor(state.day, 720, "village");
+  if (state.property.owned && (sky.kind === "rain" || sky.kind === "storm") && canWaterCrop(state))
+    waterCrop(state, hooks, "rain");
   workDay(state, hooks);
   orderDay(state, hooks);
   regionalProduction(state);

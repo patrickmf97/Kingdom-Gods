@@ -255,7 +255,8 @@ test("paid Lina transfers wages into savings and farms using a seed and a real g
   assert.equal(store.state.inventory.wheat, 0);
   store.tick(480);
   assert.equal(economy.npcSavings.farmer, 15);
-  assert.equal(store.state.inventory.wheat, 8);
+  // Eight base wheat plus one for each of the two days Lina (or rain) watered the field.
+  assert.equal(store.state.inventory.wheat, 10);
   assert.equal(store.state.property.harvests, 1);
   assert.equal(money(store), total);
   assert.equal(store.state.npcs.filter((npc) => npc.id === "farmer").length, 1);

@@ -30,6 +30,13 @@ import {
   executeEconomicAction,
   harvestCrop,
   plantCrop,
+  waterCrop,
+  fertilizeCrop,
+  canWaterCrop,
+  canFertilizeCrop,
+  CROP_FERTILIZER_HERBS,
+  CROP_MAX_WATERING,
+  WATERING_STAMINA,
   processEconomicDay,
   reconcileWorker,
   recordMarketTrade,
@@ -1214,6 +1221,7 @@ export class GameStore {
       return {
         name: npc.name,
         role: npc.role,
+        speaker: npcVisualIdentity(this.state, npc),
         text: this.state.intro
           ? `${this.state.apostle.name}, hoje você completa dezesseis anos. Pela lei de Auren, esta é a idade de assumir sua própria vida: os jovens deixam o orfanato e tornam-se cidadãos. Você continua sendo parte desta casa. Leve 48 moedas, três pães e duas sementes. Explore o orfanato, despeça-se e saia pelo portão ao sul quando estiver pronto. Lá fora, procure o mural da praça, aprenda um ofício e construa sua família.`
           : "Esta casa sempre fará parte de sua história. Seus pertences estão com você. O portão ao sul leva a Valeverde quando estiver pronto para partir.",
@@ -1281,6 +1289,7 @@ export class GameStore {
     return {
       name: npc.name,
       role: npc.role,
+        speaker: npcVisualIdentity(this.state, npc),
       text: `${spouse ? `É bom ter você de volta, ${this.state.apostle.name}. Estamos casados há ${marriedDays} dias.` : npc.trust >= 60 ? "Sua amizade faz diferença nesta aldeia." : "Cada dia traz trabalho, histórias e novas pessoas."}${remembrance} Afinidade ${Math.round(npc.relation)} · confiança ${Math.round(npc.trust)}.`,
       options,
     };
@@ -1311,6 +1320,18 @@ export class GameStore {
             label: "Plantar · 1 semente",
             action: "plant",
             disabled: p.plantedAt !== null || this.state.inventory.seed < 1,
+          },
+          {
+            label: crop && crop.lastWatered === this.state.day
+              ? "Terra regada hoje"
+              : `Regar a plantação · ${WATERING_STAMINA} energia`,
+            action: "water",
+            disabled: !canWaterCrop(this.state) || this.state.apostle.stamina < WATERING_STAMINA,
+          },
+          {
+            label: crop?.fertile ? "Solo já adubado" : `Adubar o solo · ${CROP_FERTILIZER_HERBS} ervas`,
+            action: "fertilize",
+            disabled: !canFertilizeCrop(this.state),
           },
           {
             label: "Colher trigo",
@@ -1364,7 +1385,7 @@ export class GameStore {
       name: p.name,
       role: `${p.owned ? "Sua propriedade" : "Terra à venda"} · Reino de Auren`,
       text: p.owned
-        ? `${crop ? `Trigo plantado no ${crop.season}: ${Math.max(0, crop.readyDay - this.state.day)} dias até a colheita, ${crop.yield} trigo previsto.` : `${profile.season}: uma semente produz ${profile.yield} trigo em ${profile.duration} dias.`} ${p.building ? `Casa em ${e.condition}% de condição, tributo de até 2 coroas por dia. ${e.worker ? "Lina trabalha por 5 coroas diárias." : "Uma trabalhadora pode cuidar da terra."}` : "Construa uma casa para contratar ajuda."}`
+        ? `${crop ? `Trigo plantado ${crop.season === "Primavera" ? "na" : "no"} ${crop.season}: ${Math.max(0, crop.readyDay - this.state.day)} dias até a colheita, ${crop.yield} trigo previsto. ${this.state.day >= crop.readyDay ? "Está pronto para colher." : `Regado ${crop.watered ?? 0}/${CROP_MAX_WATERING} dias${crop.lastWatered === this.state.day ? " (hoje sim)" : ""}; ${crop.fertile ? "solo adubado" : "solo sem adubo"}.`}` : `${profile.season}: uma semente produz ${profile.yield} trigo em ${profile.duration} dias. Regar a cada dia e adubar com ervas aumentam a colheita; a chuva também rega.`} ${p.building ? `Casa em ${e.condition}% de condição, tributo de até 2 coroas por dia. ${e.worker ? "Lina trabalha por 5 coroas diárias." : "Uma trabalhadora pode cuidar da terra."}` : "Construa uma casa para contratar ajuda."}`
         : `Esta parcela custa ${p.cost} coroas. Ela está vinculada ao Reino de Auren e passará aos sucessores da sua linhagem.`,
       options,
     };
@@ -1618,7 +1639,7 @@ export class GameStore {
         this.message(`${ITEMS[item].name} usado.`, "success");
       } else this.message("Você não possui esse item.", "warning");
     } else if (
-      ["acquire-property", "plant", "harvest", "build"].includes(action)
+      ["acquire-property", "plant", "harvest", "build", "water", "fertilize"].includes(action)
     ) {
       if (!this.requireNear("property")) {
         this.notify();
@@ -1650,6 +1671,10 @@ export class GameStore {
         plantCrop(this.state, this.economicHooks());
       } else if (action === "harvest") {
         harvestCrop(this.state, this.economicHooks());
+      } else if (action === "water") {
+        waterCrop(this.state, this.economicHooks());
+      } else if (action === "fertilize") {
+        fertilizeCrop(this.state, this.economicHooks());
       } else if (action === "build") {
         if (
           !p.building &&
