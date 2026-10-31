@@ -72,6 +72,8 @@ export class AmbienceLayer {
           gl_PointSize = size * uPixel * (62.0 / max(1.0, -view.z));
           // Keep a lower bound so distant particles do not collapse into single noisy pixels.
           gl_PointSize = max(gl_PointSize, vAlpha > 0.01 ? 1.5 * uPixel : 0.0);
+          // Near the eye, day motes stay pinpricks; only fireflies and embers may bloom larger.
+          gl_PointSize = min(gl_PointSize, mix(3.5, 14.0, max(uNight, step(1.5, uMood))) * uPixel);
         }`,
       fragmentShader: /* glsl */ `
         varying float vAlpha; varying vec3 vColor;

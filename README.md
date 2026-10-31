@@ -19,7 +19,7 @@ O repositório publica automaticamente em [patrickmf97.github.io/Kingdom-Gods](h
 
 Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de Elara. Caminhe ao portão sul do orfanato. Depois, todas as oportunidades são opcionais.
 
-- WASD ou setas: movimento. Clique/toque no mundo ou escolha **Caminhar até aqui** no mapa para seguir uma rota segura. Movimento manual e ações interrompem a rota.
+- WASD ou setas: movimento. Em primeira pessoa (padrão), clique no mundo para olhar com o mouse; **V** alterna para a visão de cima, onde clicar/tocar no mundo segue uma rota segura. **Caminhar até aqui** no mapa funciona nas duas visões. Movimento manual e ações interrompem a rota.
 - E: interagir; Espaço ou botão direito: ataque; Shift: esquiva.
 - I: inventário; C: atributos; J: diário; R: relações; F: família; P: propriedade; M: mapa.
 - 1: equipar espada; 2: comer pão; 3: usar erva. Escape fecha painéis ou pausa.
@@ -27,6 +27,16 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 - Painéis e diálogos pausam a simulação. A página fechada não faz o tempo avançar.
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
+
+## Primeira pessoa e visual realista
+
+- **Primeira pessoa (padrão):** você vê pelos olhos do apóstolo. No computador, clique no mundo para controlar a visão com o mouse; WASD anda na direção do olhar, o clique usa o que está na mira (pessoa, animal ou lugar ao alcance) e ataca na cripta, **E** interage com o mais próximo e **Esc** libera o cursor. No celular, o joystick anda, arrastar a tela olha em volta e um toque usa o que foi tocado. A rota do mapa vira o olhar para o caminho.
+- **Visão de cima:** a tecla **V** ou o botão de olho no HUD alterna para a câmera aérea anterior; a escolha fica guardada neste navegador.
+- **Escala:** na primeira pessoa pessoas e animais aparecem em escala humana em relação às portas e casas; os interiores ganham paredes inteiras, lintel sobre a porta e teto com vigas. Os telhados não ficam mais transparentes de perto.
+- **Céu e luz:** céu com dispersão atmosférica (azul profundo no alto, horizonte claro, pôr do sol quente e halo ao redor do sol), luz ambiente gerada a partir do próprio céu e sol que acompanha a hora do dia nas sombras.
+- **Pós-processamento:** oclusão de ambiente (GTAO), brilho suave nas luzes noturnas, gradação de cor e vinheta, com antisserrilhado por multiamostragem. No celular a oclusão fica desligada. Se o aparelho não sustentar o ritmo, os efeitos mais caros desligam sozinhos. Para forçar um nível, abra o jogo com `?gfx=high`, `?gfx=low` ou `?gfx=off` no endereço.
+- **Grama:** um campo denso de folhas balançando ao vento acompanha quem caminha em primeira pessoa, fora de estradas, praças, construções e margens.
+- **Limites:** os modelos continuam gerados por código (estilo baixo-poligonal); o ganho é de luz, atmosfera e escala, não fotorrealismo. Os interiores foram desenhados para a câmera de cima e parecem amplos vistos de dentro.
 
 ## Cuidado do campo
 

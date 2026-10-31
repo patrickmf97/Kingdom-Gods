@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { presentation } from "./presentation";
 import type { InteriorDefinition, InteriorFurniture } from "../interiors";
 import type { GameState } from "../types";
 import { RegionSurfaceTextures, type SurfaceTexture } from "./materials";
@@ -54,6 +55,8 @@ class InteriorBuilder {
   private readonly torusGeometry = this.geometry(new THREE.TorusGeometry(1, .12, 4, 12));
   private readonly roomPalette: RoomPalette;
   private disposed = false;
+  private enclosure?: THREE.Group;
+  private enclosureShade = false;
 
   constructor(readonly definition: InteriorDefinition) {
     this.roomPalette = palette(definition.zone);
@@ -170,6 +173,23 @@ class InteriorBuilder {
     this.box(shell, 450, 130.8, 820, 5, .17, C.darkWood, 3.43, "wood");
     this.box(shell, 450, 131, 820, 5, .15, C.darkWood, .12, "wood");
     for (const x of [170, 730]) this.window(shell, x, stone && this.definition.zone === "chapel-room");
+    // Seen from inside, the dollhouse cut-aways become a closed room: full side and front walls,
+    // a lintel over the door and a timber ceiling. Hidden for the aerial camera.
+    const enclosure = new THREE.Group(); enclosure.name = "interior-first-person-enclosure"; shell.add(enclosure);
+    this.enclosure = enclosure;
+    // The ceiling faces down, away from sky and sun; a faint warm self-light stands in for lamp bounce.
+    const upper = (x: number, z: number, w: number, d: number, h: number, base: number, color = wall, glow = 0) => {
+      const mesh = this.box(enclosure, x, z, w, d, h, color, base, color === wall ? wallSurface : "wood", undefined, glow);
+      mesh.castShadow = false;
+      return mesh;
+    };
+    upper(53, 465, 24, 718, 3.7 - 1.17, 1.17);
+    upper(847, 465, 24, 718, 3.7 - 1.17, 1.17);
+    for (const x of [222, 678]) upper(x, 824, 352 + 50, 22, 3.7 - .57, .57);
+    upper(450, 824, 110, 22, 3.7 - 2.77, 2.77);
+    upper(450, 465, 840, 740, .14, 3.7, C.lightWood, .32);
+    for (let z = 190; z < 820; z += 120) upper(450, z, 820, 14, .2, 3.5, C.darkWood, .18);
+    enclosure.visible = presentation.firstPerson;
     const doorway = new THREE.Group(); doorway.name = "interior-doorframe"; shell.add(doorway);
     this.box(doorway, 403, 813, 10, 20, 2.7, C.darkWood, 0, "wood");
     this.box(doorway, 497, 813, 10, 20, 2.7, C.darkWood, 0, "wood");
@@ -525,6 +545,11 @@ class InteriorBuilder {
   }
 
   update(_state: GameState, timeSeconds: number): void {
+    if (this.enclosure) {
+      this.enclosure.visible = presentation.firstPerson;
+      // The ceiling must not shade the room: instancing may have rebuilt these meshes.
+      if (!this.enclosureShade) { this.enclosure.traverse(object => { object.castShadow = false; }); this.enclosureShade = true; }
+    }
     if (this.disposed) return;
     for (const flame of this.flames) {
       flame.mesh.scale.y = flame.height * (1 + Math.sin(timeSeconds * 7.7 + flame.seed) * .12);
