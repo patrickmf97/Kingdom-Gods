@@ -28,6 +28,13 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
+## Arte modelada no Blender
+
+- **Construções de Valeverde:** orfanato, estalagem, casas, padaria, forja, galpão, casa própria e casas dos Ermos foram modeladas no Blender na medida exata de cada prédio: enxaimel com vigas chanfradas, reboco, base de pedra, fileiras de telhas, cumeeira, chaminés, janelas com caixilho e venezianas, portas de tábuas com ferragens, alpendre da estalagem, forno da padaria, sino do orfanato e a forja aberta com brasa.
+- **Oclusão de ambiente assada:** cada prédio tem a própria textura de oclusão (Cycles), somada à oclusão em tempo real.
+- **Materiais PBR:** reboco, madeira, tábuas, pedra, calçamento, telhas, ardósia e ferro, com cor, relevo e rugosidade em texturas repetíveis geradas pelo próprio projeto.
+- **Pipeline:** `npm run art` gera as texturas (`art/blender/textures.py`), modela e assa (`art/blender/buildings.py`, com `pip install bpy==5.2.3`) e comprime com meshopt e WebP (`public/models/village-buildings.glb`, cerca de 2,6 MB). Se o arquivo não carregar, o jogo usa os modelos procedurais anteriores.
+
 ## Primeira pessoa e visual realista
 
 - **Primeira pessoa (padrão):** você vê pelos olhos do apóstolo. No computador, clique no mundo para controlar a visão com o mouse; WASD anda na direção do olhar, o clique usa o que está na mira (pessoa, animal ou lugar ao alcance) e ataca na cripta, **E** interage com o mais próximo e **Esc** libera o cursor. No celular, o joystick anda, arrastar a tela olha em volta e um toque usa o que foi tocado. A rota do mapa vira o olhar para o caminho.

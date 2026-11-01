@@ -14,6 +14,7 @@ import { RegionSurfaceTextures, type SurfaceTexture } from "./materials";
 import { createRegionVegetation, VILLAGE_LANDSCAPE_PATHS, type RegionVegetation } from "./vegetation";
 import { createGlowTexture } from "./ambience";
 import { presentation } from "./presentation";
+import { assetIdForKind, buildingAsset } from "./art-assets";
 
 /** Presentation only. Navigation and interactions keep their existing logical coordinates. */
 export interface RegionEnvironment {
@@ -245,6 +246,23 @@ class EnvironmentBuilder {
     parent.add(group);
     const x = (area.left + area.right) / 2, y = (area.top + area.bottom) / 2;
     const width = area.right - area.left, depth = area.bottom - area.top;
+    const authored = buildingAsset(assetIdForKind(kind));
+    if (authored) {
+      // Blender model at the exact footprint: timber frame, tiles, baked occlusion.
+      authored.object.position.set(x * SCALE, 0, y * SCALE);
+      group.add(authored.object);
+      for (const material of authored.materials) {
+        this.materials.add(material);
+        const surface = material.userData.kg_kind as string | undefined;
+        if (surface === "glass") {
+          material.emissive.set(0xd9923e);
+          this.glows.push({ material, day: .25, night: 1.6 });
+        }
+      }
+      this.fades.push({ x, y, radius: Math.max(width, depth) / 2 + 38, materials: authored.materials });
+      this.houseDetails(area, kind, group);
+      return group;
+    }
     const walls = this.fadingMaterial(kind === "forge" ? PALETTE.stone : PALETTE.cream, kind === "forge" ? "stone" : "plaster");
     const roof = this.fadingMaterial(roofColor, "shingles");
     const timber = this.fadingMaterial(PALETTE.timber, "wood");
@@ -281,6 +299,16 @@ class EnvironmentBuilder {
       this.box(windowX, area.bottom + 2.8, 1.5, 1, .8, timber, 1.28, group);
       this.box(windowX, area.bottom + 3, Math.min(16, width * .15), 1, .07, timber, 1.65, group);
     }
+    this.houseDetails(area, kind, group);
+    this.box(area.right - width * .18, y - depth * .15, 13, 15, 1.75, PALETTE.stone, height + .65, group);
+    this.box(area.right - width * .18, y - depth * .15, 17, 19, .2, PALETTE.stoneLight, height + 2.3, group);
+    this.fades.push({ x, y, radius: Math.max(width, depth) / 2 + 38, materials: [walls, roof, timber] });
+    return group;
+  }
+
+  /** Lanterns by the door, trade banner and window boxes, shared by authored and procedural houses. */
+  houseDetails(area: Rectangle, kind: string, group: THREE.Group): void {
+    const x = (area.left + area.right) / 2, width = area.right - area.left;
     if (kind !== "forge" && kind !== "farm-shed") {
       const doorX = x + width * .12, doorW = Math.min(23, width * .22);
       // Lanterns flank the door on the facade; a hanging sign names the trade.
@@ -305,10 +333,6 @@ class EnvironmentBuilder {
         });
       }
     }
-    this.box(area.right - width * .18, y - depth * .15, 13, 15, 1.75, PALETTE.stone, height + .65, group);
-    this.box(area.right - width * .18, y - depth * .15, 17, 19, .2, PALETTE.stoneLight, height + 2.3, group);
-    this.fades.push({ x, y, radius: Math.max(width, depth) / 2 + 38, materials: [walls, roof, timber] });
-    return group;
   }
 
   forest(): void {
