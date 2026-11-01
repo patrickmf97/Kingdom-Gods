@@ -21,3 +21,16 @@ test("the shipped building file names every authored building", () => {
   assert.ok(json.extensionsUsed.includes("EXT_meshopt_compression"));
   assert.ok(data.length < 4 * 1024 * 1024, "keeps the download small");
 });
+
+test("trees and props ship as separate named meshes for instancing", () => {
+  const read = (name: string) => {
+    const data = readFileSync(new URL(`../public/models/${name}`, import.meta.url));
+    return JSON.parse(data.subarray(20, 20 + data.readUInt32LE(12)).toString("utf8"));
+  };
+  const trees = new Set(read("trees.glb").nodes.map((node: { name: string }) => node.name));
+  for (const kind of ["oak", "broadleaf", "pine"]) for (const i of [0, 1]) {
+    assert.ok(trees.has(`${kind}-${i}-wood`) && trees.has(`${kind}-${i}-leaves`), `${kind}-${i} keeps wood and leaves apart`);
+  }
+  const props = new Set(read("props.glb").nodes.map((node: { name: string }) => node.name));
+  for (const id of ["rock-0", "rock-1", "rock-2", "ore-0", "herb-0", "log-0", "stump-0", "shrub-0", "fence-post", "fence-rail"]) assert.ok(props.has(id), id);
+});

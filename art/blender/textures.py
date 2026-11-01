@@ -147,6 +147,30 @@ def roof_tiles(folder: str, name: str, stops: list) -> None:
     save(name, folder, albedo, height, .7 + grime * .2, 6)
 
 
+def rock(folder: str) -> None:
+    """Natural weathered rock: strata, cracks and lichen, no mortar."""
+    broad, mid, fine = fractal(beta=3.0, seed=61), fractal(beta=2.1, seed=62), fractal(beta=1.4, seed=63)
+    ys = np.arange(SIZE)[:, None] / SIZE
+    strata = np.sin((ys + broad * .35) * np.pi * 2 * 7) * .5 + .5
+    edge, _ = voronoi(SIZE, 5, 64, .9)
+    cracks = np.clip(1 - edge * 22, 0, 1)
+    t = broad * .45 + mid * .3 + strata * .15 + fine * .1
+    albedo = palette(t, [(0, (86, 84, 78)), (.45, (124, 120, 110)), (.8, (150, 146, 134)), (1, (170, 166, 152))])
+    lichen = np.clip((fractal(beta=2.6, seed=65) - .7) * 3.5, 0, 1)
+    albedo = albedo * (1 - lichen[..., None] * .45) + np.array([142, 150, 108]) * lichen[..., None] * .45
+    albedo *= (1 - cracks[..., None] * .5)
+    height = mid * .5 + strata * .2 + fine * .3 - cracks * .6
+    save("rock", folder, albedo, height, .88 + fine * .1, 6)
+
+
+def ore_metal(folder: str) -> None:
+    n = fractal(beta=1.6, seed=71)
+    albedo = palette(n, [(0, (120, 112, 100)), (.5, (176, 162, 134)), (1, (206, 190, 156))])
+    rust = np.clip((fractal(beta=2.6, seed=72) - .62) * 3, 0, 1)
+    albedo = albedo * (1 - rust[..., None] * .55) + np.array([152, 84, 40]) * rust[..., None] * .55
+    save("ore", folder, albedo, n, .38 + rust * .4, 3, metal=.7)
+
+
 def iron(folder: str) -> None:
     n = fractal(beta=1.8, seed=21)
     albedo = palette(n, [(0, (46, 46, 48)), (1, (82, 80, 78))])
@@ -165,6 +189,8 @@ def build_all(folder: str) -> None:
     roof_tiles(folder, "roof_tile_dark", [(0, (92, 44, 34)), (.5, (126, 60, 44)), (1, (148, 78, 56))])
     roof_tiles(folder, "slate", [(0, (58, 66, 72)), (.5, (78, 88, 94)), (1, (102, 110, 114))])
     iron(folder)
+    rock(folder)
+    ore_metal(folder)
 
 
 if __name__ == "__main__":
