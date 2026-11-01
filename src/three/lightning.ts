@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { GameState, Zone } from "../types";
+import { isOpenAir } from "../regions";
 import { LIGHTNING_RADIUS } from "../storms";
 import { WORLD_SCALE } from "./coordinates";
 
@@ -54,7 +55,7 @@ export class LightningLayer {
     const warning = storm?.warning?.zone === zone ? storm.warning : null;
     const impact = storm?.impact?.zone === zone ? storm.impact : null;
     const event = warning ?? impact;
-    this.group.visible = !!event && (zone === "village" || zone === "wilderness" || zone === "highlands");
+    this.group.visible = !!event && isOpenAir(zone);
     if (!event || !this.group.visible) return;
     this.group.position.set(event.x * WORLD_SCALE, 0, event.y * WORLD_SCALE);
     this.ring.visible = !!warning; this.disc.visible = true; this.bolt.visible = !!impact;

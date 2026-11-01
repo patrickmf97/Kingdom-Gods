@@ -2,13 +2,14 @@ import { Cloud, CloudFog, CloudLightning, CloudRain, Sun } from "lucide-react";
 import type { GameState } from "./types";
 import { weatherFor, weatherForecast } from "./weather";
 import { interiorForZone } from "./interiors";
+import { isOpenAir } from "./regions";
 
 const WEATHER_ICONS = { clear: Sun, cloudy: Cloud, rain: CloudRain, storm: CloudLightning, fog: CloudFog };
 
 export function StormWarning({ state }: { state: GameState }) {
   const warning = state.worldLife?.storm.warning;
   if (!warning || state.phase !== "playing" || !state.apostle.alive || warning.zone !== state.zone ||
-    !["village", "wilderness", "highlands"].includes(state.zone)) return null;
+    !isOpenAir(state.zone)) return null;
   const seconds = Math.ceil(Math.max(0, warning.remaining));
   return <div className="storm-warning" role="status" aria-live="polite" aria-atomic="true">
     <CloudLightning size={20} aria-hidden="true" />

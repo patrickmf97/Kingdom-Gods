@@ -5,7 +5,8 @@ import { INTERIORS, interiorRegion } from "./interiors";
 import { HIGHLANDS_REGION, HIGHLAND_RESOURCE_NODES, WILDERNESS_HIGHLANDS_PORTAL } from "./highlands";
 import { OBJECTS, WORLD_H, WORLD_W } from "./data";
 import { ESTATE_DEFS, estateObject } from "./territory-data";
-import type { InteriorZone, Point, ResourceNodeDefinition, WorldObject, Zone } from "./types";
+import type { AuthoredZone, InteriorZone, Point, ResourceNodeDefinition, WorldObject, Zone } from "./types";
+import { isLandZone, landForZone, landResource, landSeed } from "./lands";
 
 export interface Rectangle { left: number; top: number; right: number; bottom: number }
 export interface Portal extends WorldObject { to: Zone; spawn: Point }
@@ -198,7 +199,7 @@ const nodeFootprint = (node: ResourceNodeDefinition): Rectangle =>
 
 const interiorRegions = Object.fromEntries(INTERIORS.map(definition => [definition.zone, interiorRegion(definition)])) as Record<InteriorZone, RegionDefinition>;
 
-export const REGIONS: Record<Zone, RegionDefinition> = {
+export const REGIONS: Record<AuthoredZone, RegionDefinition> = {
   village: { id: "village", name: "Valeverde", width: WORLD_W, height: WORLD_H,
     objects: [...OBJECTS, ...villagePortals, ...additionalResourceNodes.filter(node => node.zone === "village"),
       { id: "farm-store", kind: "door", x: 1970, y: 786, label: "Porta do celeiro" },
@@ -225,11 +226,23 @@ export const REGIONS: Record<Zone, RegionDefinition> = {
   highlands: HIGHLANDS_REGION,
   ...interiorRegions,
 };
-export function regionForZone(zone: Zone): RegionDefinition { return REGIONS[zone]; }
-export function objectsForZone(zone: Zone): WorldObject[] { return REGIONS[zone].objects; }
+export function regionForZone(zone: Zone): RegionDefinition {
+  return isLandZone(zone) ? landForZone(zone).region : REGIONS[zone];
+}
+export function objectsForZone(zone: Zone): WorldObject[] { return regionForZone(zone).objects; }
 export function portalForZone(zone: Zone, id: string): Portal | undefined {
-  return REGIONS[zone].portals.find((portal) => portal.id === id);
+  return regionForZone(zone).portals.find((portal) => portal.id === id);
 }
+/** Authored reserves first; generated lands resolve their composite `terra-N:` ids. */
 export function resourceNode(id: string): ResourceNodeDefinition | undefined {
-  return RESOURCE_NODES.find((node) => node.id === id);
+  return RESOURCE_NODES.find((node) => node.id === id) ?? landResource(id);
 }
+export function resourceNodesForZone(zone: Zone): ResourceNodeDefinition[] {
+  return isLandZone(zone) ? landForZone(zone).resources : RESOURCE_NODES.filter(node => node.zone === zone);
+}
+/** Open-air regions: sky, weather, wildlife-free grass and the living layer. */
+export function isOpenAir(zone: Zone): boolean {
+  return zone === "village" || zone === "wilderness" || zone === "highlands" || isLandZone(zone);
+}
+/** Cache key for derived data (navigation buckets): generated lands change with the campaign seed. */
+export function regionCacheKey(zone: Zone): string { return isLandZone(zone) ? `${zone}@${landSeed()}` : zone; }

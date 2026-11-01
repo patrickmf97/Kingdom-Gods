@@ -2,7 +2,7 @@ import { isWalkable, nearestWalkable } from "./navigation";
 import { regionForZone } from "./regions";
 import { estateBuildings } from "./territory-data";
 import { weatherFor } from "./weather";
-import type { GameState, OutdoorZone, StormState } from "./types";
+import type { GameState, OpenAirZone, StormState } from "./types";
 
 export const LIGHTNING_WARNING_SECONDS = 3.5;
 export const LIGHTNING_RADIUS = 64;
@@ -75,6 +75,6 @@ export function updateStorms(state: GameState, delta: number, hooks: StormHooks)
   const target = strikeTarget(state, storm.sequence + 1);
   if (!target) { storm.cooldown = 12; return; }
   storm.sequence++;
-  storm.warning = { id: storm.sequence, zone: state.zone as OutdoorZone, ...target, remaining: LIGHTNING_WARNING_SECONDS };
+  storm.warning = { id: storm.sequence, zone: state.zone as OpenAirZone, ...target, remaining: LIGHTNING_WARNING_SECONDS };
   hooks.message("O ar crepita. Afaste-se da marca no chão; um raio vai atingir aquele ponto.", "warning");
 }

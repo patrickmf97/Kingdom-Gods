@@ -1,4 +1,5 @@
 import type { Zone } from "./types";
+import { isLandZone } from "./lands";
 
 export type WeatherKind = "clear" | "cloudy" | "rain" | "fog" | "storm";
 
@@ -46,7 +47,7 @@ export function weatherFor(day: number, minutes: number, zone: Zone): WeatherSna
   let kind: WeatherKind = safeDay === 1 ? "clear" : roll < thresholds[0] ? "clear" : roll < thresholds[1] ? "cloudy" : roll < thresholds[2] ? "rain" : "fog";
   if (kind === "rain" && roll < thresholds[1] + (thresholds[2] - thresholds[1]) * .3) kind = "storm";
   const profile = PROFILES[kind];
-  const outdoors = zone === "village" || zone === "wilderness" || zone === "highlands";
+  const outdoors = zone === "village" || zone === "wilderness" || zone === "highlands" || isLandZone(zone);
   const hour = Number.isFinite(minutes) ? ((minutes % 1440) + 1440) % 1440 : 720;
   const warmth = Math.cos((hour - 840) / 1440 * Math.PI * 2) * 4;
   const temperature = Math.round([17, 27, 13, 5][season] + warmth + (roll - 0.5) * 4 -

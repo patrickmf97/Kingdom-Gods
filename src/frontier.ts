@@ -1,6 +1,7 @@
 import { ITEMS } from "./data";
 import { civicBudget, frontierJobFunded } from "./civic-budget";
 import { RESOURCE_NODES, objectsForZone, resourceNode } from "./regions";
+import { landOfId, landResource } from "./lands";
 import { weatherFor } from "./weather";
 import type {
   ExpansionHooks,
@@ -164,7 +165,7 @@ export function executeFrontierAction(state: GameState, action: string, hooks: E
     if (!nearby(state, node)) return warning(hooks, "Aproxime-se do recurso para trabalhar.");
     if (state.zone === "mine" && state.apostle.age < 12) return warning(hooks, "A tutela impede o trabalho na mina antes dos 12 anos.");
     if (!canToolWork(state, node)) return warning(hooks, `Você precisa de ${node.tool ? TOOL_DEFS[node.tool].name.toLowerCase() : "uma ferramenta"} em condições de uso.`);
-    const resource = state.frontier.resources[node.id];
+    const resource = reserveFor(state, node);
     if (!resource || resource.remaining < 1) return warning(hooks, `Este recurso se renova no dia ${resource?.readyDay || "seguinte"}. Explore outros veios e plantas.`);
     if (state.apostle.stamina < node.stamina) return warning(hooks, "Recupere energia antes de trabalhar.");
     if (!fitsYield(state, node)) return warning(hooks, "Sua carga está pesada demais. Venda ou use itens antes de coletar.");
@@ -205,6 +206,24 @@ export function executeFrontierAction(state: GameState, action: string, hooks: E
   return true;
 }
 
+/**
+ * The live reserve of a node. Generated lands store only reserves that were touched
+ * (absent = full), so work there creates the entry on first use.
+ */
+export function reserveFor(state: GameState, node: ResourceNodeDefinition): { remaining: number; readyDay: number | null } | undefined {
+  if (!landOfId(node.id)) return state.frontier.resources[node.id];
+  if (!state.lands) return undefined;
+  return state.lands.reserves[node.id] ??= { remaining: node.capacity, readyDay: null };
+}
+/** Read-only view for dialogue and rendering. */
+export function reserveRemaining(state: GameState, id: string): number {
+  const authored = state.frontier.resources[id];
+  if (authored) return authored.remaining;
+  const saved = state.lands?.reserves[id];
+  if (saved) return saved.remaining;
+  return landResource(id)?.capacity ?? 1;
+}
+
 /** Elapsed work is saved, but passage of calendar time alone never finishes it. */
 export function updateFrontierWork(state: GameState, deltaSeconds: number, hooks: ExpansionHooks): void {
   const work = state.frontier.work;
@@ -217,7 +236,7 @@ export function updateFrontierWork(state: GameState, deltaSeconds: number, hooks
   const rate = weatherFor(state.day, state.minutes, node.zone).gatheringRate;
   work.elapsed = Math.min(node.duration, work.elapsed + deltaSeconds * rate);
   if (work.elapsed < node.duration - 1e-7) return;
-  const resource = state.frontier.resources[node.id];
+  const resource = reserveFor(state, node);
   if (!resource || resource.remaining < 1 || !fitsYield(state, node)) {
     cancelWork(state, hooks, "A coleta foi interrompida: falta espaço na carga ou o recurso se esgotou.");
     return;
@@ -256,6 +275,10 @@ export function processFrontierDay(state: GameState, hooks: ExpansionHooks): voi
       resource.remaining = node.capacity;
       resource.readyDay = null;
     }
+  }
+  if (state.lands) for (const [id, reserve] of Object.entries(state.lands.reserves)) {
+    // A replenished generated reserve returns to "untouched": its entry is removed.
+    if (reserve.remaining === 0 && reserve.readyDay !== null && state.day >= reserve.readyDay) delete state.lands.reserves[id];
   }
   for (const job of state.frontier.jobs) {
     if (!["available", "accepted", "complete"].includes(job.status) || state.day < job.deadline) continue;

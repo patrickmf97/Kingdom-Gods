@@ -3,7 +3,8 @@ import { SKY_SCATTERING_GLSL } from "./sky-scattering";
 import { weatherFor, type WeatherSnapshot } from "../weather";
 import { atmosphereFor } from "./weather";
 import { RegionSurfaceTextures } from "./materials";
-import { regionForZone } from "../regions";
+import { isOpenAir, regionForZone } from "../regions";
+import { isLandZone, landForZone, landIndex } from "../lands";
 import type { Zone } from "../types";
 
 export interface RegionHorizon {
@@ -14,7 +15,8 @@ export interface RegionHorizon {
 
 /** Five draw calls; procedural celestial sky shares the existing dome draw. */
 export function createHorizon(zone: Zone): RegionHorizon | undefined {
-  if (zone !== "village" && zone !== "wilderness" && zone !== "highlands") return undefined;
+  if (!isOpenAir(zone)) return undefined;
+  const land = isLandZone(zone) ? landForZone(zone) : null;
   const group = new THREE.Group(); group.name = `horizon-${zone}`;
   const region = regionForZone(zone), width = region.width / 24, depth = region.height / 24;
   const geometries: THREE.BufferGeometry[] = [];
@@ -87,7 +89,7 @@ export function createHorizon(zone: Zone): RegionHorizon | undefined {
   // Continue the terrain under the edge before lowering it into the distance.
   // Matching the real floor’s lighting and normal removes a weather-dependent
   // rectangular seam. The level underlap prevents a cliff at the floor cut.
-  const terrainColor = zone === "highlands" ? 0x81956d : 0x789568;
+  const terrainColor = land ? land.color : zone === "highlands" ? 0x81956d : 0x789568;
   // The source floors have different tops: highlands0, village/wilderness−.015.
   // A 2mm raised overlap seals the box sidewall; depth bias stabilizes that join.
   const terrainJoinHeight = (zone === "highlands" ? 0 : -.015) + .002;
@@ -106,11 +108,11 @@ export function createHorizon(zone: Zone): RegionHorizon | undefined {
     { outset: 55, height: () => -29, color: 0xffffff, alpha: 0 },
   ], 2);
   const edgeHaze = group.getObjectByName("horizon-edge-haze") as THREE.Mesh;
-  const phase = zone === "village" ? .7 : zone === "highlands" ? 3.8 : 2.1;
+  const phase = land ? landIndex(land.zone) * 1.37 : zone === "village" ? .7 : zone === "highlands" ? 3.8 : 2.1;
   // Broad, irregular peaks and saddles avoid a repeated perimeter fence.
   const ridge = (i: number, base: number, phaseOffset: number) => {
     const angle = i / steps * Math.PI * 2;
-    return base + (zone === "highlands" ? 13 : 0) + Math.sin(angle * 5 + phase + phaseOffset) * 8 +
+    return base + (zone === "highlands" || land?.biome === "serra" ? 13 : land?.biome === "charneca" ? -4 : 0) + Math.sin(angle * 5 + phase + phaseOffset) * 8 +
       Math.sin(angle * 3 - phase) * 6 + Math.sin(angle * 11 + phaseOffset) * 4;
   };
   ring("horizon-mountains-far", [

@@ -28,6 +28,17 @@ Crie seu apóstolo de 16 anos, escolha uma bênção e receba os pertences de El
 
 Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverde mostra a **Trilha para os Ermos de Alvor**, ao sudeste. Caminhe até a placa e siga pela estrada. Nos Ermos, localize a Mina do Ferro Antigo, ao nordeste. Caminhe até a entrada e interaja para entrar. O mapa da mina mostra as galerias e os veios. Retorne pela saída e pela estrada de Valeverde quando quiser.
 
+## Terras procedurais além da bruma
+
+Valeverde, os Ermos de Alvor e Brumavale continuam desenhados à mão. A partir do desfiladeiro leste de Brumavale (**Estrada além da bruma**), a estrada segue por até 30 terras geradas pela semente da campanha:
+
+- **Regras da história:** a 1ª terra é a **Marca** de Auren (posto de fronteira) e a 2ª, as **Terras Além da Bruma**, ainda sob a Coroa. Depois cada reino vizinho ocupa três terras em ordem fixa: **sede do reino** (cidade com torre de menagem, capela, estalagem, forja, forno e casas), **aldeia** e **ermo de fronteira**; nunca há dois ermos seguidos.
+- **Reinos com história:** cada reino tem nome, soberano, padroeiro, estandarte, relação com Auren e uma lenda ligada à queda da Torre de Alvor, a Santa Elara ou às bênçãos dos Antigos (Vigor, Sabedoria e Fortuna). Soberanos e padroeiros não se repetem entre reinos vizinhos.
+- **Terras:** bioma (campina, floresta, serra ou charneca) define cor do chão, espécies e densidade das árvores, cristas rochosas e a mistura de recursos. A estrada sempre liga a entrada oeste à saída leste e passa pela praça; trilhas levam a ruínas, círculos de pedras dos Antigos e acampamentos.
+- **Pessoas:** moradores gerados (nome, ofício, aparência) usam os personagens do Blender, viram-se para o apóstolo e conversam sobre o reino, a lenda local e a próxima terra da estrada.
+- **O que fazer:** coletar madeira, pedra, ervas e minério com o mesmo equilíbrio dos Ermos (minério só em serras, charnecas e ermos), pernoitar na estalagem (6 coroas para os mercadores), orar na capela (+15 de energia, uma vez por dia), acampar com duas madeiras e registrar marcos no diário. Cada terra nova e cada reino novo viram memória.
+- **Salvamento:** a campanha guarda só a semente, a terra mais distante, os marcos e as reservas tocadas; tudo o mais é recriado igual a cada carregamento. Campanhas antigas ganham uma semente estável derivada do apóstolo e continuam válidas.
+
 ## Arte modelada no Blender
 
 - **Construções de Valeverde:** orfanato, estalagem, casas, padaria, forja, galpão, casa própria e casas dos Ermos foram modeladas no Blender na medida exata de cada prédio: enxaimel com vigas chanfradas, reboco, base de pedra, fileiras de telhas, cumeeira, chaminés, janelas com caixilho e venezianas, portas de tábuas com ferragens, alpendre da estalagem, forno da padaria, sino do orfanato e a forja aberta com brasa.

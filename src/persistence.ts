@@ -3,6 +3,7 @@ import { CROP_MAX_WATERING, createEconomyState } from "./economy";
 import { createFrontierState, FRONTIER_JOB_DEFS } from "./frontier";
 import { createLifeState } from "./life";
 import { LEGACY_RESOURCE_NODES, V5_RESOURCE_NODES, REGIONS, RESOURCE_NODES } from "./regions";
+import { isLandZone, LAND_HEIGHT, LAND_WIDTH, landIndex, landLandmark, landOfId, landResource, landSeed, MAX_LANDS, setLandSeed } from "./lands";
 import { ITEMS as ITEM_DEFINITIONS } from "./data";
 import { createTerritoryState, syncTerritoryDeeds } from "./territory";
 import { territoryDeedValue, territoryInfluence } from "./territory-data";
@@ -261,7 +262,7 @@ function baseState(
       value.minutes < 1440 &&
       day(value.day) &&
       nonnegative(value.timeScale) &&
-      choice(value.zone, zones) &&
+      (choice(value.zone, zones) || (zones === ZONES && isLandZone(value.zone))) &&
       array(value.npcs, checkNpc) &&
       array(value.enemies, enemy) &&
       numericRecord(value.market, items, true) &&
@@ -385,13 +386,14 @@ function frontier(
   if (value.work !== null) {
     const work = value.work;
     if (!object(work) || !string(work.nodeId) || !nonnegative(work.elapsed) ||
-      !number(work.duration) || !choice(work.zone, zones)) return false;
-    const node = nodes.find((entry) => entry.id === work.nodeId);
+      !number(work.duration) || !(choice(work.zone, zones) || (zones === ZONES && isLandZone(work.zone)))) return false;
+    const generated = zones === ZONES && landOfId(work.nodeId) ? withLandSeed(state, () => landResource(work.nodeId as string)) : undefined;
+    const node = generated ?? nodes.find((entry) => entry.id === work.nodeId);
     if (!node || node.zone !== work.zone || state.zone !== work.zone ||
       work.duration !== node.duration || work.elapsed > node.duration + 1e-7 ||
       state.phase !== "playing" || !state.apostle.alive ||
       Math.hypot(state.apostle.x - node.x, state.apostle.y - node.y) > 120 ||
-      !((value.resources[node.id] as ObjectValue).remaining as number > 0)) return false;
+      !((generated ? state.lands?.reserves[node.id]?.remaining ?? node.capacity : (value.resources[node.id] as ObjectValue).remaining) as number > 0)) return false;
     if (node.tool) {
       const tool = value.tools[node.tool] as ObjectValue;
       if (!tool.owned || (tool.durability as number) <= 0) return false;
@@ -582,7 +584,8 @@ export function validateV7State(value: unknown): value is GameState {
       life(value as unknown as GameState) &&
       territory(value as unknown as GameState) &&
       economicRelations(value as unknown as GameState) &&
-      wildlife(value as unknown as GameState)
+      wildlife(value as unknown as GameState) &&
+      lands(value as unknown as GameState)
     );
   } catch {
     // Unknown input can contain getters or proxies; validation must never crash loading.
@@ -627,9 +630,9 @@ function worldLife(state: GameState): boolean {
   const event = (entry: unknown, duration: number) => {
     if (entry === null) return true;
     if (!object(entry) || !count(entry.id) || entry.id === 0 || entry.id > (storm.sequence as number) ||
-      !choice(entry.zone, ["village", "wilderness", "highlands"]) || !number(entry.x) || !number(entry.y) ||
+      !(choice(entry.zone, ["village", "wilderness", "highlands"]) || isLandZone(entry.zone)) || !number(entry.x) || !number(entry.y) ||
       !nonnegative(entry.remaining) || entry.remaining > duration) return false;
-    const region = REGIONS[entry.zone as "village" | "wilderness" | "highlands"];
+    const region = isLandZone(entry.zone) ? { width: LAND_WIDTH, height: LAND_HEIGHT } : REGIONS[entry.zone as "village" | "wilderness" | "highlands"];
     // A saved target stays fixed if construction subsequently blocks its ground.
     return entry.x >= 9 && entry.y >= 9 && entry.x <= region.width - 9 && entry.y <= region.height - 9;
   };
@@ -699,6 +702,36 @@ function validateV6State(value: unknown): value is ObjectValue {
 function companionId(state: GameState): unknown {
   const details = (state as unknown as ObjectValue).simulation;
   return object(details) ? details.companionId : undefined;
+}
+
+/** Resolve generated content with the save's own seed, restoring the live one afterwards. */
+function withLandSeed<T>(state: GameState, read: () => T): T {
+  const previous = landSeed();
+  setLandSeed(state.lands?.seed ?? previous);
+  try { return read(); } finally { setLandSeed(previous); }
+}
+
+/** Optional road beyond Brumavale: seed, progress, landmarks and touched reserves. */
+function lands(state: GameState): boolean {
+  const value: unknown = state.lands;
+  if (value === undefined) return !isLandZone(state.zone);
+  if (!object(value) || !count(value.seed) || value.seed > 0xffffffff || !count(value.furthest) || value.furthest > MAX_LANDS ||
+    !Array.isArray(value.discovered) || !object(value.reserves) ||
+    (value.prayedDay !== undefined && (!day(value.prayedDay) || value.prayedDay > state.day))) return false;
+  const furthest = value.furthest as number;
+  const reached = (id: string) => { const zone = landOfId(id); return !!zone && landIndex(zone) <= furthest; };
+  if (isLandZone(state.zone) && landIndex(state.zone) > furthest) return false;
+  return withLandSeed(state, () => {
+    const discovered = value.discovered as unknown[];
+    if (new Set(discovered).size !== discovered.length ||
+      !discovered.every(id => string(id) && reached(id) && !!landLandmark(id))) return false;
+    for (const [id, reserve] of Object.entries(value.reserves as ObjectValue)) {
+      const node = reached(id) ? landResource(id) : undefined;
+      if (!node || !object(reserve) || !count(reserve.remaining) || reserve.remaining > node.capacity ||
+        (reserve.remaining > 0 ? reserve.readyDay !== null : !day(reserve.readyDay))) return false;
+    }
+    return true;
+  });
 }
 
 function npcRegions(state: GameState): boolean {
