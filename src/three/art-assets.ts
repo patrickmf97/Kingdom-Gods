@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { loadRiggedCharacters } from "./rigged-characters";
 
 /**
  * Authored art made in Blender (see art/). Loading is optional: when a file is missing or
@@ -79,6 +80,7 @@ export function loadArtAssets(base = "/"): Promise<void> {
           cache.trees.set(id, { wood, leaves, height });
         }
       }
+      await loadRiggedCharacters(base, loader);
       const props = await loader.loadAsync(`${base}models/props.glb`).catch(() => null);
       if (props) {
         props.scene.updateMatrixWorld(true);
