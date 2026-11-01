@@ -9,7 +9,12 @@ npx gltf-transform optimize public/models/village-buildings.glb public/models/vi
   --compress meshopt --texture-compress webp --texture-size 512 --simplify false
 python3 art/blender/trees.py
 npx gltf-transform optimize public/models/trees.glb public/models/trees.glb \
-  --compress meshopt --texture-compress webp --texture-size 512 --simplify false --instance false --join false --flatten false
+  --compress meshopt --texture-compress webp --texture-size 512 --simplify false --instance false --join false --flatten false --palette false
 python3 art/blender/props.py
 npx gltf-transform optimize public/models/props.glb public/models/props.glb \
-  --compress meshopt --texture-compress webp --texture-size 512 --simplify false --instance false --join false --flatten false
+  --compress meshopt --texture-compress webp --texture-size 512 --simplify false --instance false --join false --flatten false --palette false
+python3 art/blender/characters.py
+for sex in male female; do
+  npx gltf-transform optimize public/models/characters-$sex.glb public/models/characters-$sex.glb \
+    --compress meshopt --simplify false --instance false --join false --flatten false --palette false
+done

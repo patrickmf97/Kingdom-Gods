@@ -6,6 +6,7 @@ import { estateBuildings } from "../territory-data";
 import { findPath, nearestWalkable, objectApproach, type NavigationContext, type Point } from "../navigation";
 import type { Dialog, Zone } from "../types";
 import { createCharacterModel, type ActorAppearance, type CharacterModel } from "./characters";
+import { createRiggedCharacter } from "./rigged-characters";
 import { createRegionEnvironment, type RegionEnvironment } from "./environment";
 import { WorldEffects } from "./effects";
 import { weatherFor } from "../weather";
@@ -465,7 +466,8 @@ class ThreeWorld {
     let actor = this.actors.get(id);
     if (actor && actor.appearance !== signature) { this.scene.remove(actor.model.group); actor.model.dispose(); actor.label.remove(); this.actors.delete(id); actor = undefined; }
     if (!actor) {
-      const model = createCharacterModel(appearance, kind);
+      // Blender villagers when their art has loaded; crypt skeletons and fallbacks stay procedural.
+      const model = (kind === "human" ? createRiggedCharacter(appearance) : null) ?? createCharacterModel(appearance, kind);
       model.group.userData.actorId = id;
       // Characters already have soft contact/silhouette shadows in CharacterGrounding.
       model.group.traverse(child => { if ((child as THREE.Mesh).isMesh) { child.castShadow = false; } });
