@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { store } from "../simulation";
 import { activeAutonomy, blockedWorldInput, worldInput } from "../world-input";
-import { objectsForZone, regionForZone } from "../regions";
+import { isOpenAir, objectsForZone, regionForZone } from "../regions";
 import { estateBuildings } from "../territory-data";
 import { findPath, nearestWalkable, objectApproach, type NavigationContext, type Point } from "../navigation";
 import type { Dialog, Zone } from "../types";
@@ -649,7 +649,7 @@ class ThreeWorld {
     key.y = Math.max(.32, key.y); key.normalize();
     this.sunlight.position.set(sx + key.x * 60, key.y * 60, sz + key.z * 60);
     this.sunlight.target.position.set(sx, 0, sz);
-    const interior = this.zone !== "village" && this.zone !== "wilderness" && this.zone !== "highlands";
+    const interior = !this.zone || !isOpenAir(this.zone);
     const weather = weatherFor(store.state.day, store.state.minutes, this.zone ?? store.state.zone);
     const atmosphere = atmosphereFor(store.state.minutes, weather);
     this.ambienceDay = atmosphere.daylight;

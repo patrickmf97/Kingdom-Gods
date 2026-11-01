@@ -1,12 +1,21 @@
 import type { VillageDecoration } from "./art";
 import type { Portal, Rectangle, RegionDefinition } from "./regions";
 import type { Point, ResourceNodeDefinition, WorldObject } from "./types";
+import { landHeader } from "./lands";
 
 const rect = (left: number, top: number, right: number, bottom: number): Rectangle => ({ left, top, right, bottom });
 
 export const WILDERNESS_HIGHLANDS_PORTAL: Portal = {
   id: "wild-highlands", kind: "portal", x: 2960, y: 580,
   label: "Desfiladeiro para as Terras Altas de Brumavale", to: "highlands", spawn: { x: 360, y: 1640 },
+};
+
+/** The road beyond the mist: the first generated land (see lands.ts). */
+export const HIGHLAND_LANDS_PORTAL: Portal = {
+  id: "highlands-terras", kind: "portal", x: 2420, y: 760,
+  label: "Estrada além da bruma · Terras Novas", to: "terra-1",
+  // The arrival point follows the campaign seed, which shapes the first land's road.
+  get spawn() { return { x: 360, y: landHeader(1).westY }; },
 };
 
 export const HIGHLAND_EXIT: Portal = {
@@ -89,10 +98,19 @@ for (let row = 0; row < 18; row++) for (let column = 0; column < 24; column++) {
   decor.push({ x: Math.round(x), y: Math.round(y), key: "pine", scale: .76 + random() * .42 });
 }
 
+// Added after the original forest so every existing tree keeps its place and size;
+// only trees on the new eastern road are cleared.
+const EAST_ROAD = [[2150, 650], [2300, 720], [2420, 760]].map(([x, y]) => ({ x, y }));
+HIGHLAND_ROADS.push(EAST_ROAD);
+for (let index = decor.length - 1; index >= 0; index--) {
+  const item = decor[index];
+  if (EAST_ROAD.some((b, i) => i > 0 && distanceToSegment(item, EAST_ROAD[i - 1], b) < 100) || Math.hypot(item.x - 2420, item.y - 760) < 170) decor.splice(index, 1);
+}
+
 export const HIGHLANDS_REGION: RegionDefinition = {
   id: "highlands", name: "Terras Altas de Brumavale", width: 2560, height: 1920,
-  objects: [HIGHLAND_EXIT, ...HIGHLAND_BUILDINGS, ...HIGHLAND_RESOURCE_NODES],
-  portals: [HIGHLAND_EXIT], decor,
+  objects: [HIGHLAND_EXIT, HIGHLAND_LANDS_PORTAL, ...HIGHLAND_BUILDINGS, ...HIGHLAND_RESOURCE_NODES],
+  portals: [HIGHLAND_EXIT, HIGHLAND_LANDS_PORTAL], decor,
   solids: [
     ...HIGHLAND_BUILDINGS.map(building => building.footprint), ...HIGHLAND_RIDGES,
     ...HIGHLAND_RESOURCE_NODES.filter(node => node.kind !== "herb").map(node => node.kind === "resource"

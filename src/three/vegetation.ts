@@ -1,8 +1,9 @@
 import * as THREE from "three";
-import { regionForZone, RESOURCE_NODES, WILDERNESS_ROADS } from "../regions";
+import { isOpenAir, regionForZone, resourceNodesForZone, WILDERNESS_ROADS } from "../regions";
+import { isLandZone, landForZone, landIndex, landSeed } from "../lands";
 import { HIGHLAND_ROADS } from "../highlands";
 import { ESTATE_DEFS } from "../territory-data";
-import type { Point, Zone } from "../types";
+import type { OpenAirZone, Point, Zone } from "../types";
 
 const SCALE = 1 / 24;
 const TAU = Math.PI * 2;
@@ -38,17 +39,24 @@ function inRect(point: Point, left: number, top: number, right: number, bottom: 
 }
 
 /** Logical-space reservation includes the complete footprint, plus a wind allowance. */
-export function groundCoverAllowed(zone: "village" | "wilderness" | "highlands", point: Point, radius: number, kind: GroundCoverKind): boolean {
+export function groundCoverAllowed(zone: OpenAirZone, point: Point, radius: number, kind: GroundCoverKind): boolean {
   const region = regionForZone(zone), margin = radius + 5;
   if (point.x < 38 + margin || point.y < 85 + margin || point.x > region.width - 38 - margin || point.y > region.height - 30 - margin) return false;
-  const roads = zone === "village" ? VILLAGE_LANDSCAPE_PATHS : zone === "highlands" ? HIGHLAND_ROADS : WILDERNESS_ROADS;
+  const land = isLandZone(zone) ? landForZone(zone) : null;
+  const roads = land ? land.roads : zone === "village" ? VILLAGE_LANDSCAPE_PATHS : zone === "highlands" ? HIGHLAND_ROADS : WILDERNESS_ROADS;
   if (distanceToPath(point, roads) < (zone === "village" ? 32 : 44) + margin) return false;
   if (region.solids.some(rect => inRect(point, rect.left, rect.top, rect.right, rect.bottom, margin + 8))) return false;
   // Work points and conversation fronts have a broad, clear apron even when a
   // building is not owned yet. These plants are never navigation obstacles.
   if (region.objects.some(object => Math.hypot(point.x - object.x, point.y - object.y - 23) <
     (object.kind === "portal" || object.kind === "cave" ? 90 : 57) + margin)) return false;
-  if (RESOURCE_NODES.some(node => node.zone === zone && Math.hypot(point.x - node.x, point.y - node.y - 25) < 53 + margin)) return false;
+  if (resourceNodesForZone(zone).some(node => Math.hypot(point.x - node.x, point.y - node.y - 25) < 53 + margin)) return false;
+  if (land) {
+    if (land.plaza && Math.hypot(point.x - land.plaza.x, point.y - land.plaza.y) < land.plaza.radius + margin + 20) return false;
+    if (land.fields.some(field => inRect(point, field.area.left, field.area.top, field.area.right, field.area.bottom, margin + 6))) return false;
+    if (land.buildings.some(b => inRect(point, b.footprint.left, b.footprint.top, b.footprint.right, b.footprint.bottom + 45, margin + 10))) return false;
+    if (kind === "reeds") return false;
+  }
   if (zone === "village") {
     if (inRect(point, 1780, 700, 2178, 920, margin)) return false; // crops, home and gate
     if (((point.x - 1156) / (221 + margin)) ** 2 + ((point.y - 812) / (99 + margin)) ** 2 < 1) return false;
@@ -268,7 +276,7 @@ export class RegionVegetation {
   private readonly pineLeaves: THREE.MeshStandardMaterial;
   private disposed = false;
 
-  constructor(readonly zone: "village" | "wilderness" | "highlands") {
+  constructor(readonly zone: OpenAirZone) {
     this.group.name = "living-vegetation";
     this.group.userData.presentationOnly = true;
     this.crowns = { oak: this.geometry(crownGeometry("oak")), broadleaf: this.geometry(crownGeometry("broadleaf")),
@@ -418,7 +426,7 @@ export class RegionVegetation {
   }
 
   private meadows(): void {
-    const region = regionForZone(this.zone), random = randomFrom(this.zone === "village" ? 87321 : this.zone === "highlands" ? 729931 : 100153);
+    const region = regionForZone(this.zone), random = randomFrom(isLandZone(this.zone) ? (landSeed() ^ Math.imul(landIndex(this.zone), 2654435761)) >>> 0 : this.zone === "village" ? 87321 : this.zone === "highlands" ? 729931 : 100153);
     const definitions: { kind: GroundCoverKind; geometry: () => THREE.BufferGeometry; budget: number; radius: number; amplitude: number }[] = [
       { kind: "grass", geometry: grassGeometry, budget: this.zone === "village" ? 2300 : 3400, radius: 10, amplitude: .075 },
       { kind: "flowers", geometry: flowersGeometry, budget: this.zone === "village" ? 340 : 440, radius: 9, amplitude: .045 },
@@ -428,7 +436,7 @@ export class RegionVegetation {
     ];
     const matrix = new THREE.Matrix4(), position = v3(0, 0, 0), rotation = new THREE.Quaternion(), scale = v3(1, 1, 1);
     for (const { kind, geometry, budget, radius, amplitude } of definitions) {
-      if (this.zone === "highlands" && kind === "reeds") continue;
+      if ((this.zone === "highlands" || isLandZone(this.zone)) && kind === "reeds") continue;
       // Shrubs use the Blender bush when the art is available; other cover stays light procedural tufts.
       const shrub = kind === "shrubs" ? propParts("shrub-0")[0] : undefined;
       const material = shrub ? this.authoredMaterial(shrub.material, amplitude) : this.material({ vertexColors: true, side: THREE.DoubleSide }, amplitude);
@@ -529,5 +537,5 @@ export class RegionVegetation {
 }
 
 export function createRegionVegetation(zone: Zone): RegionVegetation | undefined {
-  return zone === "village" || zone === "wilderness" || zone === "highlands" ? new RegionVegetation(zone) : undefined;
+  return isOpenAir(zone) ? new RegionVegetation(zone as OpenAirZone) : undefined;
 }

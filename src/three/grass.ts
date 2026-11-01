@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { groundCoverAllowed } from "./vegetation";
 import { regionForZone } from "../regions";
 import { WORLD_SCALE } from "./coordinates";
-import type { Zone } from "../types";
+import type { OpenAirZone, Zone } from "../types";
+import { isOpenAir, regionCacheKey } from "../regions";
 
 /**
  * Dense grass around the first-person eye. The blades are anchored to a world grid,
@@ -14,8 +15,8 @@ const SPACING = 7;          // map pixels between candidate blades (≈ .29 worl
 const RADIUS = 16;          // world units around the eye
 const MASK_CELL = 12;       // map pixels per walkability cell
 
-type OutdoorZone = "village" | "wilderness" | "highlands";
-const outdoor = (zone: Zone): zone is OutdoorZone => zone === "village" || zone === "wilderness" || zone === "highlands";
+type OutdoorZone = OpenAirZone;
+const outdoor = (zone: Zone): zone is OutdoorZone => isOpenAir(zone);
 
 const hash = (x: number, y: number) => {
   let n = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263);
@@ -44,7 +45,7 @@ export class GrassField {
   private uniforms = { uGrassTime: { value: 0 }, uGrassCenter: { value: new THREE.Vector2() } };
   private mask: Uint8Array | null = null;
   private maskWidth = 0;
-  private maskZone: Zone | null = null;
+  private maskZone: string | null = null;
   private center = new THREE.Vector2(Infinity, Infinity);
   private matrix = new THREE.Matrix4();
   private color = new THREE.Color();
@@ -88,7 +89,7 @@ export class GrassField {
     this.mask = new Uint8Array(this.maskWidth * height);
     for (let y = 0; y < height; y++) for (let x = 0; x < this.maskWidth; x++)
       this.mask[y * this.maskWidth + x] = groundCoverAllowed(zone, { x: (x + .5) * MASK_CELL, y: (y + .5) * MASK_CELL }, 2, "grass") ? 1 : 0;
-    this.maskZone = zone;
+    this.maskZone = regionCacheKey(zone);
   }
 
   private allowed(x: number, y: number): boolean {
@@ -104,7 +105,7 @@ export class GrassField {
     this.uniforms.uGrassCenter.value.set(eye.x, eye.z);
     this.mesh.visible = visible && outdoor(zone);
     if (!this.mesh.visible || !outdoor(zone)) return;
-    if (this.maskZone !== zone) { this.buildMask(zone); this.center.set(Infinity, Infinity); }
+    if (this.maskZone !== regionCacheKey(zone)) { this.buildMask(zone); this.center.set(Infinity, Infinity); }
     const season = Math.floor(((Math.max(1, day) - 1) % 360) / 90);
     if (season !== this.season) { this.season = season; this.center.set(Infinity, Infinity); }
     if (this.center.distanceTo(new THREE.Vector2(eye.x, eye.z)) < 1.6) return;

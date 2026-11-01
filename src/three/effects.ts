@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { resourceNode, regionForZone } from "../regions";
+import { isOpenAir, resourceNode, regionForZone } from "../regions";
+import { reserveRemaining } from "../frontier";
 import { weatherFor } from "../weather";
 import type { GameState, WorkProgress, Zone } from "../types";
 import { WORLD_SCALE } from "./coordinates";
@@ -10,7 +11,7 @@ export const PARTICLE_KINDS = { dust: 0, wood: 1, spark: 2, leaf: 3, arc: 4, hit
 export type ParticleKind = keyof typeof PARTICLE_KINDS;
 const COLORS = [0xc9b28a, 0xd2a05c, 0xffce76, 0x9ebd79, 0xf6e6af, 0xe5b48a, 0xe1d6a5, 0xd4ed96]
   .map(hex => new THREE.Color(hex));
-const outside = (zone: Zone) => zone === "village" || zone === "wilderness" || zone === "highlands";
+const outside = (zone: Zone) => isOpenAir(zone);
 const MAX_OBSERVED_WALKERS = 32;
 const MAX_NPC_FOOTFALLS_PER_FRAME = 4;
 const WALKER_EFFECT_RADIUS = 360;
@@ -238,7 +239,7 @@ export class EffectSimulation {
     if (this.work && !work) {
       const node = resourceNode(this.work.nodeId);
       // A cancelled action has no resource debit, so it cannot look like a harvest.
-      if (node && node.zone === state.zone && (state.frontier.resources[node.id]?.remaining ?? this.workRemaining) < this.workRemaining) {
+      if (node && node.zone === state.zone && reserveRemaining(state, node.id) < this.workRemaining) {
         this.burst(node.resource === "wood" ? "wood" : node.resource === "herb" ? "leaf" : "spark", node.x, node.y, 6, node.resource === "herb" ? .35 : .8);
       }
       return;
@@ -255,7 +256,7 @@ export class EffectSimulation {
   private remember(state: GameState): void {
     this.x = state.apostle.x; this.y = state.apostle.y; this.hp = state.apostle.hp;
     this.work = state.frontier.work; this.workElapsed = this.work?.elapsed ?? 0;
-    this.workRemaining = this.work ? state.frontier.resources[this.work.nodeId]?.remaining ?? 0 : 0;
+    this.workRemaining = this.work ? reserveRemaining(state, this.work.nodeId) : 0;
     for (const enemy of state.enemies) {
       const previous = this.enemies.get(enemy.id);
       if (previous) { previous.hp = enemy.hp; previous.alive = enemy.alive; }

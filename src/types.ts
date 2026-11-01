@@ -1,7 +1,13 @@
 export type Blessing = "vigor" | "wisdom" | "fortune";
 export type InteriorZone = "orphanage" | "inn-room" | "forge-room" | "mill-room" | "bakery-room" | "mira-room" | "farm-store-room" | "farmhouse-room" | "oak-room" | "stone-room" | "camp-room" | "ranger-room" | "chapel-room";
 export type OutdoorZone = "village" | "wilderness" | "highlands";
-export type Zone = OutdoorZone | InteriorZone | "dungeon" | "mine";
+import type { LandZone, LandsState } from "./lands";
+export type { LandZone } from "./lands";
+/** Authored regions; generated lands beyond Brumavale use `terra-N` (see lands.ts). */
+export type AuthoredZone = OutdoorZone | InteriorZone | "dungeon" | "mine";
+export type Zone = AuthoredZone | LandZone;
+/** Regions under the open sky: authored outdoors plus every generated land. */
+export type OpenAirZone = OutdoorZone | LandZone;
 export type Panel =
   | "inventory"
   | "character"
@@ -165,6 +171,8 @@ export interface GameState {
   territory: TerritoryState;
   wildlife: WildlifeState;
   worldLife: WorldLifeState;
+  /** Optional: the procedural road beyond Brumavale. Older saves create it on load. */
+  lands?: LandsState;
 }
 
 export interface TravelerState {
@@ -175,7 +183,7 @@ export interface TravelerState {
 }
 export interface LightningWarning {
   id: number;
-  zone: OutdoorZone;
+  zone: OpenAirZone;
   x: number;
   y: number;
   remaining: number;

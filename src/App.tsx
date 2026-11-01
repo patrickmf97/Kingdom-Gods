@@ -1,3 +1,4 @@
+import { isLandZone, landForZone, landIndex } from "./lands";
 import { useEffect, useRef, useState, useReducer } from "react";
 import {
   ArrowRight,
@@ -535,12 +536,12 @@ export default function App() {
                 <section className="hud-center" aria-label="Região atual">
                   <div className="hud-region">
                     <small>
-                      {s.zone === "wilderness" ? "Terras de Auren" : s.zone === "mine" ? "Galerias de ferro" : s.zone === "dungeon" ? "Território selvagem" : "Reino de Auren"}
+                      {isLandZone(s.zone) ? landForZone(s.zone).kingdom.name : s.zone === "wilderness" ? "Terras de Auren" : s.zone === "mine" ? "Galerias de ferro" : s.zone === "dungeon" ? "Território selvagem" : "Reino de Auren"}
                     </small>
                     <h1>{regionForZone(s.zone).name}</h1>
                     <span className={`region-state ${s.zone === "dungeon" ? "danger" : ""}`}>
                       {s.zone === "dungeon" ? <Sword size={11} aria-hidden="true" /> : <Shield size={11} aria-hidden="true" />}
-                      {s.zone === "dungeon" ? "Área perigosa" : s.zone === "mine" ? "Extração pacífica" : s.zone === "wilderness" ? "Exploração livre" : "Terras protegidas"}
+                      {s.zone === "dungeon" ? "Área perigosa" : s.zone === "mine" ? "Extração pacífica" : s.zone === "wilderness" ? "Exploração livre" : isLandZone(s.zone) ? `Terra ${landIndex(s.zone)} além da bruma` : "Terras protegidas"}
                     </span>
                   </div>
                   <StormWarning state={s} />

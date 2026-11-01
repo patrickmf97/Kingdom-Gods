@@ -112,7 +112,7 @@ test("every deposit can be worked from every regional entry with all acquired bu
 test("new gathering clearings remove nearby decorative trunks without shifting the old forest", () => {
   assert.notEqual(regions.REGIONS.village.decor, villageDecor, "the shared artwork catalog is not mutated");
   for (const node of addedNodes()) {
-    for (const item of regions.REGIONS[node.zone].decor)
+    for (const item of regions.regionForZone(node.zone).decor)
       assert.ok(Math.hypot(item.x - node.x, item.y - node.y) >= 55, `${node.id} shares a position with a decorative trunk`);
   }
   for (const original of [

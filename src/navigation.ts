@@ -1,5 +1,6 @@
 import { lakeContainsFeet, RIVER_CENTERLINE, RIVER_WIDTH, RIVER_BRIDGE } from "./water";
-import { objectsForZone, regionForZone, type Rectangle as RegionRectangle } from "./regions";
+import { objectsForZone, regionCacheKey, regionForZone, type Rectangle as RegionRectangle } from "./regions";
+import { isLandZone, landHeader, landIndex } from "./lands";
 import { ESTATE_DEFS, estateSolid } from "./territory-data";
 import { interiorForZone } from "./interiors";
 import type { EstateId, Zone } from "./types";
@@ -32,9 +33,9 @@ const estateSolids = new Map(ESTATE_DEFS.map((estate) => [estate.id,
   { ...estateSolid(estate.id), kind: "rectangle" as const },
 ]));
 
-const regionBuckets = new Map<Zone, Map<string, Solid[]>>();
+const regionBuckets = new Map<string, Map<string, Solid[]>>();
 function bucketsFor(zone: Zone): Map<string, Solid[]> {
-  const existing = regionBuckets.get(zone);
+  const existing = regionBuckets.get(regionCacheKey(zone));
   if (existing) return existing;
   const buckets = new Map<string, Solid[]>();
   const solids: Solid[] = [
@@ -55,7 +56,8 @@ function bucketsFor(zone: Zone): Map<string, Solid[]> {
       }
     }
   }
-  regionBuckets.set(zone, buckets);
+  if (regionBuckets.size > 40) regionBuckets.clear();
+  regionBuckets.set(regionCacheKey(zone), buckets);
   return buckets;
 }
 
@@ -69,6 +71,7 @@ function fallbackFor(zone: Zone): Point {
   if (zone === "village") return { x: 710, y: 760 };
   if (zone === "wilderness") return { x: 400, y: 1780 };
   if (zone === "mine") return { x: 400, y: 970 };
+  if (isLandZone(zone)) return { x: 360, y: landHeader(landIndex(zone)).westY };
   return { x: 450, y: 750 };
 }
 const finite = (point: Point) => Number.isFinite(point.x) && Number.isFinite(point.y);
@@ -95,9 +98,9 @@ function riverDistanceSquared(point: Point): number {
 }
 
 type Boundary = { from: Point; to: Point };
-const regionBoundaries = new Map<Zone, Boundary[]>();
+const regionBoundaries = new Map<string, Boundary[]>();
 function boundariesFor(zone: Zone, areas: RegionRectangle[]): Boundary[] {
-  const cached = regionBoundaries.get(zone);
+  const cached = regionBoundaries.get(regionCacheKey(zone));
   if (cached) return cached;
   const boundaries: Boundary[] = [];
   // Remove overlapping internal rectangle edges; only the exposed union border
@@ -131,7 +134,7 @@ function boundariesFor(zone: Zone, areas: RegionRectangle[]): Boundary[] {
       }
     }
   }
-  regionBoundaries.set(zone, boundaries);
+  regionBoundaries.set(regionCacheKey(zone), boundaries);
   return boundaries;
 }
 function withinGround(point: Point, zone: Zone, areas: RegionRectangle[]): boolean {
@@ -233,7 +236,8 @@ function gridFor(context: NavigationContext): GridData {
   const estates = context.zone === "wilderness"
     ? ESTATE_DEFS.filter((estate) => context.estates?.includes(estate.id)).map((estate) => estate.id).join(",")
     : "";
-  const key = `${context.zone}:${context.building ? 1 : 0}:${estates}`;
+  const key = `${regionCacheKey(context.zone)}:${context.building ? 1 : 0}:${estates}`;
+  if (grids.size > 60) grids.clear();
   let grid = grids.get(key);
   if (grid) return grid;
   const region = regionForZone(context.zone);

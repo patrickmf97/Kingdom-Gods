@@ -11,6 +11,9 @@ import { animalDialog, animalsForZone, createWildlifeState, executeWildlifeActio
 import { animalDefinition } from "./wildlife-data";
 import { entranceForObject, interiorAllowed, interiorForZone } from "./interiors";
 import { formatRestPreview } from "./rest";
+import { arriveInLand, ensureLands, landAction, landDialog } from "./land-life";
+import { isLandZone, newLandsState, setLandSeed } from "./lands";
+import { reserveRemaining } from "./frontier";
 import { weatherFor } from "./weather";
 import { createStormState, updateStorms, clearStormExposure } from "./storms";
 import { initializePopulation, isVisitor, populationDefinition } from "./population";
@@ -516,6 +519,9 @@ export class GameStore {
   create(creation: Creation): void {
     this.state = initialState();
     this.state.apostle = newApostle(creation);
+    // Each new campaign gets its own road beyond the mist.
+    this.state.lands = newLandsState((Math.random() * 4294967296) >>> 0 || 1);
+    setLandSeed(this.state.lands.seed);
     this.state.started = true;
     this.state.phase = "playing";
     this.attackCooldown = this.dodgeCooldown = this.invulnerability = 0;
@@ -1123,6 +1129,10 @@ export class GameStore {
         : `Terreno disponível por ${estate.cost} coroas, dentro dos limites concedidos pelo reino. Examine a área e consulte o registro antes de construir.`,
       options: [{ label: "Consultar terreno e construções", action: "open-property" }, { label: "Continuar explorando", action: "close" }],
     };
+    if (isLandZone(this.state.zone)) {
+      const dialog = landDialog(this.state, id, this.economicHooks());
+      if (dialog) { this.scheduleAutoSave(); return dialog; }
+    }
     const portal = portalForZone(this.state.zone, id);
     if (portal) return {
       name: portal.label, role: "Estrada de Auren",
@@ -1132,7 +1142,7 @@ export class GameStore {
     };
     const node = resourceNode(id);
     if (node && node.zone === this.state.zone) {
-      const resource = this.state.frontier.resources[id];
+      const resource = { remaining: reserveRemaining(this.state, id) };
       const weather = weatherFor(this.state.day, this.state.minutes, this.state.zone);
       return { name: node.label, role: "Trabalho por prática",
         text: `${resource.remaining} cargas disponíveis. O trabalho leva ${(node.duration / weather.gatheringRate).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} segundos no tempo atual e exige ${node.stamina} de energia.${weather.gatheringRate < 1 ? ` ${weather.kind === "storm" ? "A tempestade" : "A chuva"} reduz o ritmo da coleta externa a ${Math.round(weather.gatheringRate * 100)}%; minas e oficinas continuam abrigadas.` : ""}${node.tool ? ` Use ${node.tool === "pickaxe" ? "uma picareta" : "um machado"} em bom estado.` : " Pode ser recolhido à mão."}`,
@@ -1449,6 +1459,13 @@ export class GameStore {
       }
       return null;
     }
+    if (/^land-(lore|pray|rest|camp):/.test(action)) {
+      if (!this.playing()) return null;
+      const next = landAction(this.state, action, this.economicHooks());
+      if (!next) this.activeDialog = null;
+      this.scheduleAutoSave(); this.notify();
+      return next;
+    }
     this.act(action);
     if (!this.activeDialog || !this.playing()) return null;
     if (this.activeDialog.startsWith("animal:")) return animalDialog(this.state, this.activeDialog.slice(7));
@@ -1506,9 +1523,12 @@ export class GameStore {
         this.message("O tutor protege crianças menores de doze anos das galerias da mina.", "warning");
       } else {
         discoverLocation(this.state, id, this.economicHooks());
+        // Bind the campaign's seed before the generated land's spawn point is read.
+        if (isLandZone(portal.to)) ensureLands(this.state);
         this.setZone(portal.to);
         Object.assign(this.state.apostle, nearestWalkable(portal.spawn, this.navigationContext()));
         this.message(`Você chegou a ${regionForZone(portal.to).name}.`);
+        if (isLandZone(portal.to)) arriveInLand(this.state, this.economicHooks());
         this.activeDialog = null;
       }
       this.scheduleAutoSave(); this.notify(); return;
@@ -2055,6 +2075,7 @@ export class GameStore {
 
   private restoreSnapshot(snapshot: GameState): boolean {
     this.state = snapshot as PersistentGameState;
+    ensureLands(this.state);
     const simulation = this.state.simulation as Partial<SimulationMemory> | undefined;
     this.state.simulation = {
       ...simulation,

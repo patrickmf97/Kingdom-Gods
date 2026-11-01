@@ -1,3 +1,4 @@
+import { isLandZone, landForZone } from "./lands";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownUp,
@@ -1959,7 +1960,7 @@ export function LocalMapTerrain({ state, compact = false }: { state: GameState; 
     <rect x="400" y="790" width="100" height="46" fill="#52694e" />
   </>;
   return <>
-    <rect width={region.width} height={region.height} fill={state.zone === "mine" ? "#5b5b53" : state.zone === "highlands" ? "#d5ddca" : "#e8e8d3"} />
+    <rect width={region.width} height={region.height} fill={state.zone === "mine" ? "#5b5b53" : state.zone === "highlands" ? "#d5ddca" : isLandZone(state.zone) ? "#dfe2c8" : "#e8e8d3"} />
     {state.zone === "mine" ? <g fill="#c7bea8" stroke="#a89b7e" strokeWidth="14">
       {region.walkableAreas?.map((area, index) => <rect key={index} x={area.left} y={area.top} width={area.right - area.left} height={area.bottom - area.top} />)}
     </g> : <>
@@ -1969,6 +1970,12 @@ export function LocalMapTerrain({ state, compact = false }: { state: GameState; 
         <path d="M285 893H485" fill="none" stroke="#a79674" strokeWidth="70" />
         <path d="M285 893H485" fill="none" stroke="#dfcfac" strokeWidth="45" />
         {VILLAGE_LANDSCAPE_PATHS.map((road, index) => <polyline key={`road-${index}`} points={road.map(point => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth={index === 2 ? 58 : 42} strokeLinecap="round" strokeLinejoin="round" />)}
+      </> : isLandZone(state.zone) ? <>
+        {landForZone(state.zone).ridges.map((ridge, index) => <rect key={`ridge-${index}`} x={ridge.left} y={ridge.top} width={ridge.right - ridge.left} height={ridge.bottom - ridge.top} rx="24" fill="#879387" stroke="#b2ba9f" strokeWidth="18" />)}
+        {landForZone(state.zone).fields.map((field, index) => <rect key={`field-${index}`} x={field.area.left} y={field.area.top} width={field.area.right - field.area.left} height={field.area.bottom - field.area.top} fill="#c9b47a" stroke="#9c8656" strokeWidth="6" />)}
+        {landForZone(state.zone).plaza ? <circle cx={landForZone(state.zone).plaza!.x} cy={landForZone(state.zone).plaza!.y} r={landForZone(state.zone).plaza!.radius} fill="#ddd1ae" /> : null}
+        {landForZone(state.zone).roads.map((road, index) => <polyline key={`road-${index}`} points={road.map(point => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth={index ? 30 : 46} strokeLinecap="round" strokeLinejoin="round" />)}
+        {landForZone(state.zone).buildings.map(building => <rect key={building.id} x={building.footprint.left} y={building.footprint.top} width={building.footprint.right - building.footprint.left} height={building.footprint.bottom - building.footprint.top} fill="#8d8064" stroke="#f0e4ca" strokeWidth="8" />)}
       </> : state.zone === "highlands" ? <>
         {HIGHLAND_RIDGES.map((ridge, index) => <rect key={`ridge-${index}`} x={ridge.left} y={ridge.top} width={ridge.right - ridge.left} height={ridge.bottom - ridge.top} rx="24" fill="#879387" stroke="#b2ba9f" strokeWidth="18" />)}
         {HIGHLAND_ROADS.map((road, index) => <polyline key={`road-${index}`} points={road.map(point => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#d5c39a" strokeWidth="42" strokeLinecap="round" strokeLinejoin="round" />)}
