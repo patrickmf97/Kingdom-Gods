@@ -17,6 +17,8 @@ export interface CharacterModel {
     animate(timeSeconds: number, moving: boolean, working: boolean, attacking: boolean, speed?: number): void;
     setEquipment(equipped: boolean): void;
     setLighting(daylight: number, indoors: boolean): void;
+    /** Rigged villagers gesture while standing in conversation; procedural figures ignore it. */
+    setTalking?(talking: boolean): void;
     dispose(): void;
 }
 /** Tailored fantasy figures, approximately 5½ heads high; each moving joint is one merged draw. */

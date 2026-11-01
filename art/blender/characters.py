@@ -550,7 +550,18 @@ def actions(rig) -> None:
                 "spine": (.05, -.35 * k + .7 * swing, 0), "chest": (0, -.2 * k + .4 * swing, 0),
                 "thigh.L": (-.35, 0, 0), "thigh.R": (.25, 0, 0), "shin.L": (-.25, 0, 0)}, -.04 * swing
 
+    def talk(t: float):
+        # Conversational beats: one hand opens and returns, the head nods, weight shifts.
+        a = math.sin(t * tau)
+        b = math.sin(t * tau * 2 + .6)
+        return {"upper_arm.R": (-.55 - max(0, a) * .35, 0, .25 + max(0, a) * .2), "forearm.R": (-1.0 - max(0, a) * .25, 0, 0),
+                "hand.R": (0, max(0, a) * .5, 0),
+                "upper_arm.L": (-.2 - max(0, -a) * .3, 0, -.15), "forearm.L": (-.55 - max(0, -a) * .35, 0, 0),
+                "head": (b * .06, math.sin(t * tau + 2) * .1, 0), "neck": (.04, 0, 0),
+                "chest": (0, a * .05, 0), "hips": (0, 0, a * .03), "thigh.L": (0, 0, .03), "thigh.R": (0, 0, -.03)}, 0.0
+
     make_action(rig, "idle", 96, idle)
+    make_action(rig, "talk", 72, talk)
     make_action(rig, "walk", 28, walk_pose(.42, .75, .32, .035, .04))
     make_action(rig, "run", 18, walk_pose(.75, 1.25, .7, .07, .18))
     make_action(rig, "work", 28, work)

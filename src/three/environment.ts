@@ -11,9 +11,10 @@ import { ESTATE_DEFS, estateSolid } from "../territory-data";
 import type { GameState, Point, Zone } from "../types";
 import { createHorizon, type RegionHorizon } from "./horizon";
 import { RegionSurfaceTextures, type SurfaceTexture } from "./materials";
-import { createRegionVegetation, VILLAGE_LANDSCAPE_PATHS, type RegionVegetation } from "./vegetation";
+import { createRegionVegetation, groundCoverAllowed, VILLAGE_LANDSCAPE_PATHS, type RegionVegetation } from "./vegetation";
 import { createGlowTexture } from "./ambience";
 import { presentation } from "./presentation";
+import { LivingWorld } from "./living-world";
 import { assetIdForKind, buildingAsset, propObject } from "./art-assets";
 
 /** Presentation only. Navigation and interactions keep their existing logical coordinates. */
@@ -67,6 +68,10 @@ class EnvironmentBuilder {
   readonly roofGeometry: THREE.BufferGeometry;
   readonly dynamic = new THREE.Group();
   private horizon?: RegionHorizon;
+  /** Smoke, birds and butterflies for the open-air regions. */
+  private living?: LivingWorld;
+  private chimneys: THREE.Vector3[] = [];
+  private dynamicChimneys: THREE.Vector3[] = [];
   private waterTime = { value: 0 };
   private presentationTime = 0;
   private vegetation?: RegionVegetation;
@@ -261,6 +266,11 @@ class EnvironmentBuilder {
       }
       this.fades.push({ x, y, radius: Math.max(width, depth) / 2 + 38, materials: authored.materials });
       this.houseDetails(area, kind, group);
+      // Chimney tops follow art/blender/buildings.py (front is +Z in the game).
+      const w = width * SCALE, d = depth * SCALE, rise = Math.max(1.1, d * .48);
+      const top = kind === "forge" ? new THREE.Vector3(x * SCALE - w * .2, height + 1.55, y * SCALE - (d / 2 - .25))
+        : kind === "farm-shed" ? null : new THREE.Vector3(x * SCALE + w * .32, height + rise + 1.1, y * SCALE - d * .18);
+      if (top) (parent === this.dynamic ? this.dynamicChimneys : this.chimneys).push(top);
       return group;
     }
     const walls = this.fadingMaterial(kind === "forge" ? PALETTE.stone : PALETTE.cream, kind === "forge" ? "stone" : "plaster");
@@ -453,6 +463,45 @@ class EnvironmentBuilder {
     }
   }
 
+  private startLife(): void {
+    this.living = new LivingWorld();
+    this.group.add(this.living.group);
+    this.living.setChimneys([...this.chimneys, ...this.dynamicChimneys]);
+    const region = regionForZone(this.zone);
+    const centres = this.zone === "village"
+      ? [new THREE.Vector3(1156 * SCALE, 15, 812 * SCALE), new THREE.Vector3(600 * SCALE, 18, 1300 * SCALE)]
+      : [new THREE.Vector3(region.width * .35 * SCALE, 17, region.height * .4 * SCALE), new THREE.Vector3(region.width * .7 * SCALE, 20, region.height * .6 * SCALE)];
+    this.living.addFlocks(centres);
+    const spots: THREE.Vector3[] = [];
+    for (let i = 0; spots.length < 12 && i < 400; i++) {
+      const p = { x: 120 + ((i * 7919) % (region.width - 240)), y: 140 + ((i * 104729) % (region.height - 260)) };
+      if (groundCoverAllowed(this.zone as "village" | "wilderness", p, 40, "flowers")) spots.push(new THREE.Vector3(p.x * SCALE, 0, p.y * SCALE));
+    }
+    this.living.addButterflies(spots);
+  }
+
+  /** Moving ripples: the water normal is bent by drifting waves, so sky and sun glints travel. */
+  shimmer(material: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+    const time = this.waterTime;
+    const previous = material.onBeforeCompile;
+    material.onBeforeCompile = (shader, renderer) => {
+      previous?.call(material, shader, renderer);
+      shader.uniforms.uWaterFlow = time;
+      shader.vertexShader = `varying vec3 vWaterWorld;\n${shader.vertexShader}`.replace("#include <worldpos_vertex>",
+        "#include <worldpos_vertex>\n vWaterWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+      shader.fragmentShader = `uniform float uWaterFlow; varying vec3 vWaterWorld;\n${shader.fragmentShader}`.replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+        vec2 wp = vWaterWorld.xz;
+        float waveA = sin(wp.x * 1.7 + uWaterFlow * 1.3) * cos(wp.y * 1.3 - uWaterFlow * .9);
+        float waveB = sin((wp.x + wp.y) * 3.1 - uWaterFlow * 2.2) * .5;
+        vec3 ripple = vec3(waveA + waveB, 0.0, cos(wp.y * 2.3 + uWaterFlow * 1.6) * .7 + waveB) * .09;
+        normal = normalize(normal + (viewMatrix * vec4(ripple, 0.0)).xyz);`);
+    };
+    const previousKey = material.customProgramCacheKey.call(material);
+    material.customProgramCacheKey = () => `${previousKey}+kingdom-water-shimmer-v1`;
+    material.needsUpdate = true;
+    return material;
+  }
+
   /** Places Blender props for a resource node; false keeps the procedural fallback. */
   authoredResource(kind: string, id: string, x: number, y: number, live: THREE.Group, depleted: THREE.Group): boolean {
     const place = (prop: string, parent: THREE.Group, px: number, py: number, rotation = 0, scale = 1) => {
@@ -507,7 +556,7 @@ class EnvironmentBuilder {
     this.ribbon([river], 126, 0xb6b08d, .021);
     const water = this.ribbon([river], RIVER_WIDTH, PALETTE.water, .029);
     const waterMat = water.material as THREE.MeshStandardMaterial;
-    waterMat.roughness = .35; waterMat.metalness = .15; this.waters.push(waterMat);
+    waterMat.roughness = .3; waterMat.metalness = .15; this.waters.push(this.shimmer(waterMat));
     this.bridge();
     const solids = regionForZone("village").solids;
     this.house(solids[0], PALETTE.roof, { height: 3.8, kind: "orphanage" });
@@ -739,7 +788,7 @@ class EnvironmentBuilder {
     };
     material.customProgramCacheKey = () => "natural-lake-ripples-v1";
     const lake = this.mesh(geometry, material); lake.name = "natural-lake-water"; lake.raycast = () => {}; lake.castShadow = false;
-    this.waters.push(material);
+    this.waters.push(this.shimmer(material));
     const bankGeometry = this.geometry(new THREE.BufferGeometry()); bankGeometry.setAttribute("position", new THREE.Float32BufferAttribute(banks, 3)); bankGeometry.computeVertexNormals();
     const bank = this.mesh(bankGeometry, this.material(0xb5ad86, { side: THREE.DoubleSide, forceSinglePass: true }));
     bank.name = "natural-lake-bank"; bank.raycast = () => {}; bank.castShadow = false;
@@ -941,6 +990,7 @@ class EnvironmentBuilder {
     for (let i = this.fades.length - 1; i >= 0; i--) if (this.fades[i].materials.some(material => oldMaterials.has(material))) this.fades.splice(i, 1);
     oldMaterials.forEach(material => { material.dispose(); this.materials.delete(material); });
     this.dynamic.clear();
+    this.dynamicChimneys = [];
     if (this.zone === "village") {
       if (state.property.building) this.house({ left: 2026, right: 2160, top: 718, bottom: 778 },
         state.economy.condition < 25 ? 0x746951 : PALETTE.roof, { height: 2.7, parent: this.dynamic, kind: "owned-home" });
@@ -1009,12 +1059,15 @@ class EnvironmentBuilder {
 
   update(state: GameState, timeSeconds: number): void {
     if (this.disposed) return;
+    if (!this.living && (this.zone === "village" || this.zone === "wilderness")) this.startLife();
     if (Number.isFinite(timeSeconds)) this.presentationTime = Math.max(0, timeSeconds);
     timeSeconds = this.presentationTime;
     this.horizon?.update(state.minutes, weatherFor(state.day, state.minutes, this.zone), timeSeconds);
     this.waterTime.value = timeSeconds;
     this.vegetation?.update(timeSeconds);
+    const chimneys = this.dynamicChimneys.length;
     this.updateDynamic(state);
+    if (this.living && chimneys !== this.dynamicChimneys.length) this.living.setChimneys([...this.chimneys, ...this.dynamicChimneys]);
     for (const node of this.nodes) {
       const available = (state.frontier.resources[node.id]?.remaining ?? 1) > 0;
       node.live.visible = available; node.depleted.visible = !available;
@@ -1022,6 +1075,7 @@ class EnvironmentBuilder {
     for (const rotor of this.mills) rotor.rotation.z = timeSeconds * .14;
     const daylight = Math.max(0, Math.sin((state.minutes - 360) / 1440 * Math.PI * 2));
     const night = this.zone === "village" || this.zone === "wilderness" ? 1 - THREE.MathUtils.smoothstep(daylight, .05, .4) : 1;
+    this.living?.update(timeSeconds, daylight);
     for (const { mesh, seed, halo } of this.flames) {
       mesh.scale.y = .62 + Math.sin(timeSeconds * 8 + seed) * .075;
       mesh.rotation.y = timeSeconds * .5 + seed;
@@ -1063,6 +1117,7 @@ class EnvironmentBuilder {
     this.disposed = true;
     this.horizon?.dispose();
     this.vegetation?.dispose();
+    this.living?.dispose();
     this.group.traverse(object => {
       // InstancedMesh owns a GPU instance buffer in addition to the geometry.
       if (object instanceof THREE.InstancedMesh) object.dispose();

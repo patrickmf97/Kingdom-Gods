@@ -491,6 +491,17 @@ class ThreeWorld {
     const moving = Number.isFinite(travelled) && travelled > .02 && travelled < 85 && elapsed > 0;
     const speed = moving ? travelled * WORLD_SCALE / elapsed : 0;
     if (moving) actor.model.group.rotation.y = Math.atan2(dx, dy);
+    else if (id !== "player" && kind === "human") {
+      // Neighbours who stop close together turn to each other and talk with their hands.
+      const partner = this.conversationPartner(id, point);
+      actor.model.setTalking?.(!!partner);
+      if (partner) {
+        const target = Math.atan2(partner.x - point.x, partner.y - point.y);
+        const delta = Math.atan2(Math.sin(target - actor.model.group.rotation.y), Math.cos(target - actor.model.group.rotation.y));
+        actor.model.group.rotation.y += delta * .08;
+      }
+    }
+    if (moving) actor.model.setTalking?.(false);
     const world = toWorld(point);
     const bridge = this.zone === "village" && point.x >= 285 && point.x <= 485 && point.y >= 856 && point.y <= 930;
     actor.model.group.position.set(world.x, bridge ? .23 : 0, world.z);
@@ -501,6 +512,17 @@ class ThreeWorld {
     actor.label.textContent = name;
     actor.label.dataset.actorId = id;
     actor.x = point.x; actor.y = point.y; actor.lastTime = time;
+  }
+  private conversationPartner(id: string, point: Point): Point | null {
+    let best: Point | null = null, range = 58;
+    const consider = (otherId: string, other: Point) => {
+      if (otherId === id) return;
+      const gap = distance(point, other);
+      if (gap > 12 && gap < range) { range = gap; best = other; }
+    };
+    consider("player", store.state.apostle);
+    for (const npc of store.state.npcs) if (npc.zone === this.zone) consider(npc.id, npc);
+    return best;
   }
   private syncActors(time: number): void {
     const state = store.state;
