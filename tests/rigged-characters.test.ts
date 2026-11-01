@@ -36,11 +36,11 @@ test("without loaded art the procedural figure is used", () => {
   assert.equal(createRiggedCharacter(base), null);
 });
 
-test("both character files carry the five actions and every garment", () => {
+test("both character files carry the six actions and every garment", () => {
   for (const sex of ["male", "female"]) {
     const data = readFileSync(new URL(`../public/models/characters-${sex}.glb`, import.meta.url));
     const json = JSON.parse(data.subarray(20, 20 + data.readUInt32LE(12)).toString("utf8"));
-    assert.deepEqual(json.animations.map((a: { name: string }) => a.name).sort(), ["attack", "idle", "run", "walk", "work"]);
+    assert.deepEqual(json.animations.map((a: { name: string }) => a.name).sort(), ["attack", "idle", "run", "talk", "walk", "work"]);
     const names = new Set(json.nodes.map((n: { name: string }) => n.name));
     for (const garment of ["body", "head", "tunic", "robe", "trousers", "boots", "hair-short", "hair-long", "hair-bun", "hair-braid", "hood", "helmet", "hat", "cap", "apron", "cape", "sword", "tool"])
       assert.ok(names.has(`${garment}-${sex}`), `${garment}-${sex}`);

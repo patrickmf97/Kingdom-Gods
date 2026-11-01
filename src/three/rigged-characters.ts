@@ -129,7 +129,7 @@ export function createRiggedCharacter(appearance: ActorAppearance): CharacterMod
   const phase = (seed % 97) / 97;
   play("idle", 0);
   if (current) current.time = phase * current.getClip().duration;
-  let last: number | undefined, equipped = false, workingNow = false, wasAttacking = false, disposed = false;
+  let last: number | undefined, equipped = false, workingNow = false, wasAttacking = false, disposed = false, talking = false;
   const equipment = () => {
     if (sword) sword.visible = equipped && !workingNow;
     if (tool) tool.visible = workingNow;
@@ -149,13 +149,14 @@ export function createRiggedCharacter(appearance: ActorAppearance): CharacterMod
         if (workingNow) play("work");
         else if (pace > 4.6) { const a = play("run"); if (a) a.timeScale = THREE.MathUtils.clamp(pace / 6.5, .8, 1.5); }
         else if (moving) { const a = play("walk"); if (a) a.timeScale = THREE.MathUtils.clamp(pace / 3.2, .7, 1.5); }
-        else play("idle", .35);
+        else play(talking ? "talk" : "idle", .45);
       }
       wasAttacking = attacking;
       mixer.update(dt);
       equipment();
     },
     setEquipment(value) { if (!disposed) { equipped = value; equipment(); } },
+    setTalking(value) { talking = value; },
     setLighting() { /* standard PBR materials follow the scene lights */ },
     dispose() {
       if (disposed) return;
