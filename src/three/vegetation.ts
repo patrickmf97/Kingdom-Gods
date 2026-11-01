@@ -8,6 +8,7 @@ const SCALE = 1 / 24;
 const TAU = Math.PI * 2;
 
 export { VILLAGE_LANDSCAPE_PATHS } from "../landscape-paths";
+import { propParts, treeVariants, type TreeAsset } from "./art-assets";
 import { VILLAGE_LANDSCAPE_PATHS } from "../landscape-paths";
 import { RIVER_CENTERLINE as RIVER, LAKE_OUTLINE, lakeEdgeDistance, pointInPolygon, shorelinePoint } from "../water";
 
@@ -291,6 +292,11 @@ export class RegionVegetation {
     const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .96, metalness: 0,
       flatShading: true, ...parameters });
     this.materials.add(material);
+    return this.windify(material, amplitude);
+  }
+
+  /** Adds the shared GPU wind sway to any material whose geometry has aVegetationFlex. */
+  private windify(material: THREE.MeshStandardMaterial, amplitude: number): THREE.MeshStandardMaterial {
     if (amplitude > 0) {
       material.userData.landscapeWind = { time: this.windTime, amplitude };
       material.onBeforeCompile = shader => {
@@ -312,6 +318,54 @@ export class RegionVegetation {
     return material;
   }
 
+  /** Blender trees: one wood and one leaf batch per variant, at the same spots and footprints as before. */
+  private authoredForest(): boolean {
+    const variants = { oak: treeVariants("oak"), broadleaf: treeVariants("broadleaf"), pine: treeVariants("pine") };
+    if (!variants.oak.length || !variants.broadleaf.length || !variants.pine.length) return false;
+    const decor = regionForZone(this.zone).decor;
+    const matrix = new THREE.Matrix4(), rotation = new THREE.Quaternion(), scale = v3(1, 1, 1), position = v3(0, 0, 0);
+    const kindOf = (key: string) => key === "pine" ? "pine" : key === "tree2" ? "broadleaf" : "oak";
+    const groups = new Map<TreeAsset, typeof decor>();
+    decor.forEach((item, i) => {
+      const options = variants[kindOf(item.key)];
+      const tree = options[(i + Math.round(item.x)) % options.length];
+      groups.set(tree, [...(groups.get(tree) ?? []), item]);
+    });
+    let index = 0;
+    for (const [tree, items] of groups) {
+      const name = `forest-authored-${index++}`;
+      const wood = this.batch(`${name}-wood`, this.authoredGeometry(tree.wood.geometry, .25, 2.2), this.authoredMaterial(tree.wood.material, .03), items.length);
+      const leaves = this.batch(`${name}-leaves`, this.authoredGeometry(tree.leaves.geometry, 1, 1.4), this.authoredMaterial(tree.leaves.material, .07), items.length);
+      wood.castShadow = true; leaves.castShadow = true;
+      items.forEach((item, i) => {
+        const s = (item.scale ?? 1) * (item.key === "pine" ? .82 : .86);
+        rotation.setFromAxisAngle(v3(0, 1, 0), ((item.x * 13 + item.y * 7) % 628) / 100);
+        position.set((item.x + (item.scale ?? 1)) * SCALE, 0, (item.y - 12 * (item.scale ?? 1)) * SCALE);
+        scale.set(s, s * (.94 + (i % 3) * .05), s);
+        matrix.compose(position, rotation, scale);
+        wood.setMatrixAt(i, matrix); leaves.setMatrixAt(i, matrix);
+        leaves.setColorAt(i, new THREE.Color([0xffffff, 0xf2f0dc, 0xe4eedb, 0xf6edd0][i % 4]));
+      });
+    }
+    for (const batch of this.batches) { batch.computeBoundingSphere(); batch.computeBoundingBox(); }
+    return true;
+  }
+
+  /** Shared art geometry gets a per-region copy with sway weights (taller vertices bend more). */
+  private authoredGeometry(source: THREE.BufferGeometry, weight: number, start: number): THREE.BufferGeometry {
+    const geometry = this.geometry(source.clone());
+    const position = geometry.getAttribute("position"), flex = new Float32Array(position.count);
+    for (let i = 0; i < position.count; i++) flex[i] = Math.max(0, Math.min(1, (position.getY(i) - start) / 5)) * weight;
+    geometry.setAttribute("aVegetationFlex", new THREE.BufferAttribute(flex, 1));
+    return geometry;
+  }
+
+  private authoredMaterial(source: THREE.MeshStandardMaterial, amplitude: number): THREE.MeshStandardMaterial {
+    const material = source.clone();
+    this.materials.add(material);
+    return this.windify(material, amplitude);
+  }
+
   private batch(name: string, geometry: THREE.BufferGeometry, material: THREE.MeshStandardMaterial, count: number): THREE.InstancedMesh {
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     mesh.name = name;
@@ -324,6 +378,7 @@ export class RegionVegetation {
   }
 
   private forest(): void {
+    if (this.authoredForest()) return;
     const decor = regionForZone(this.zone).decor;
     const matrix = new THREE.Matrix4(), rotation = new THREE.Quaternion(), scale = v3(1, 1, 1), position = v3(0, 0, 0);
     const trunks = this.batch("forest-trunks", this.trunk, this.bark, decor.length);
@@ -374,8 +429,10 @@ export class RegionVegetation {
     const matrix = new THREE.Matrix4(), position = v3(0, 0, 0), rotation = new THREE.Quaternion(), scale = v3(1, 1, 1);
     for (const { kind, geometry, budget, radius, amplitude } of definitions) {
       if (this.zone === "highlands" && kind === "reeds") continue;
-      const material = this.material({ vertexColors: true, side: THREE.DoubleSide }, amplitude);
-      const batch = this.batch(`meadow-${kind}`, this.geometry(geometry()), material, budget);
+      // Shrubs use the Blender bush when the art is available; other cover stays light procedural tufts.
+      const shrub = kind === "shrubs" ? propParts("shrub-0")[0] : undefined;
+      const material = shrub ? this.authoredMaterial(shrub.material, amplitude) : this.material({ vertexColors: true, side: THREE.DoubleSide }, amplitude);
+      const batch = this.batch(`meadow-${kind}`, shrub ? this.authoredGeometry(shrub.geometry, .6, .1) : this.geometry(geometry()), material, budget);
       batch.userData.groundCoverKind = kind;
       batch.userData.footprintRadius = radius;
       batch.userData.instanceBudget = budget;
@@ -424,6 +481,19 @@ export class RegionVegetation {
     tree.position.set(x * SCALE, 0, y * SCALE);
     tree.userData.presentationOnly = true;
     parent.add(tree);
+    const authored = treeVariants(kind === "pine" ? "pine" : kind === "oak" ? "oak" : "broadleaf");
+    if (authored.length) {
+      // Harvestable trees use the same Blender species as the forest; depletion still hides this group.
+      const variant = authored[Math.abs(Math.round(x + y)) % authored.length];
+      const size = kind === "pine" ? .82 : .86;
+      for (const [part, weight, start, amplitude] of [["wood", .25, 2.2, .03], ["leaves", 1, 1.4, .07]] as const) {
+        const mesh = new THREE.Mesh(this.authoredGeometry(variant[part].geometry, weight, start), this.authoredMaterial(variant[part].material, amplitude));
+        mesh.name = `resource-${kind}-${part}`; mesh.castShadow = true; mesh.receiveShadow = true;
+        mesh.scale.setScalar(size); mesh.rotation.y = (x * 13 + y * 7) % 6.28;
+        tree.add(mesh);
+      }
+      return;
+    }
     const trunk = new THREE.Mesh(this.trunk, this.bark);
     trunk.name = "resource-trunk";
     trunk.position.y = 1.125; trunk.scale.set(7 * SCALE, 2.25, 7 * SCALE); trunk.castShadow = true; tree.add(trunk);

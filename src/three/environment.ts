@@ -14,7 +14,7 @@ import { RegionSurfaceTextures, type SurfaceTexture } from "./materials";
 import { createRegionVegetation, VILLAGE_LANDSCAPE_PATHS, type RegionVegetation } from "./vegetation";
 import { createGlowTexture } from "./ambience";
 import { presentation } from "./presentation";
-import { assetIdForKind, buildingAsset } from "./art-assets";
+import { assetIdForKind, buildingAsset, propObject } from "./art-assets";
 
 /** Presentation only. Navigation and interactions keep their existing logical coordinates. */
 export interface RegionEnvironment {
@@ -403,6 +403,7 @@ class EnvironmentBuilder {
       live.name = `${node.id}-available`; depleted.name = `${node.id}-depleted`;
       this.group.add(live, depleted);
       const x = node.x, y = node.y - 12;
+      if (this.authoredResource(node.kind, node.id, x, y, live, depleted)) { this.nodes.push({ id: node.id, live, depleted }); continue; }
       if (node.kind === "resource") {
         this.cylinder(x, y, 7, .35, PALETTE.wood, 0, depleted);
         this.cylinder(x, y, 7.6, .06, PALETTE.woodLight, .35, depleted);
@@ -450,6 +451,49 @@ class EnvironmentBuilder {
       }
       this.nodes.push({ id: node.id, live, depleted });
     }
+  }
+
+  /** Places Blender props for a resource node; false keeps the procedural fallback. */
+  authoredResource(kind: string, id: string, x: number, y: number, live: THREE.Group, depleted: THREE.Group): boolean {
+    const place = (prop: string, parent: THREE.Group, px: number, py: number, rotation = 0, scale = 1) => {
+      const object = propObject(prop);
+      if (!object) return false;
+      object.position.set(px * SCALE, 0, py * SCALE); object.rotation.y = rotation; object.scale.setScalar(scale);
+      parent.add(object);
+      return true;
+    };
+    const seed = (x * 13 + y * 7) % 6.28;
+    if (kind === "resource") {
+      if (!propObject("stump-0") || !propObject("log-0")) return false;
+      const tree = id.includes("pine") ? "pine" : id.includes("willow") ? "willow" : id.includes("oak") ? "oak" : "broadleaf";
+      this.vegetation?.addResourceTree(x, y, tree, live);
+      place("log-0", live, x + 14, y + 18, .5 + seed, .8);
+      place("stump-0", depleted, x, y, seed, 1);
+      place("log-0", depleted, x + 10, y + 14, 1.2 + seed, .9);
+      return true;
+    }
+    if (kind === "herb") {
+      if (!propObject("herb-0")) return false;
+      for (let i = 0; i < 4; i++) {
+        const angle = i * Math.PI / 2 + seed;
+        place("herb-0", live, x + Math.cos(angle) * 9, y + Math.sin(angle) * 7, angle, .9 + (i % 2) * .25);
+      }
+      this.cylinder(x, y, 12, .035, 0x5c784d, .01, depleted);
+      return true;
+    }
+    if (!propObject("rock-0")) return false;
+    if (kind === "ore") {
+      place("ore-0", live, x, y, seed, 1.5);
+      place("rock-1", live, x - 16, y + 7, seed + 1, 1.05);
+    } else {
+      place("rock-0", live, x - 8, y, seed, 1.55);
+      place("rock-2", live, x + 9, y + 3, seed + 2, 1.3);
+      place("rock-1", live, x + 1, y - 8, seed + 4, 1.1);
+    }
+    // Spent quarries leave rubble rather than nothing.
+    place("rock-1", depleted, x - 6, y + 2, seed, .45);
+    place("rock-2", depleted, x + 6, y - 1, seed + 1, .4);
+    return true;
   }
 
   village(): void {
@@ -637,6 +681,27 @@ class EnvironmentBuilder {
     const horizontal = width > depth;
     const length = horizontal ? width : depth;
     const x = (area.left + area.right) / 2, y = (area.top + area.bottom) / 2;
+    if (propObject("fence-post") && propObject("fence-rail")) {
+      // Split-rail fence along the same thin wall rectangle.
+      const spans = Math.max(1, Math.round(length / 26));
+      const step = length / spans;
+      for (let i = 0; i <= spans; i++) {
+        const px = horizontal ? area.left + i * step : x, py = horizontal ? y : area.top + i * step;
+        const post = propObject("fence-post")!;
+        post.position.set(px * SCALE, 0, py * SCALE); post.rotation.y = i * 1.7; post.scale.setScalar(.95 + (i % 3) * .04);
+        this.group.add(post);
+        if (i === spans) break;
+        for (const height of [.32, .66]) {
+          const rail = propObject("fence-rail")!;
+          const mx = horizontal ? px + step / 2 : x, my = horizontal ? y : py + step / 2;
+          rail.position.set(mx * SCALE, height + (i % 2) * .03, my * SCALE);
+          rail.rotation.y = horizontal ? 0 : Math.PI / 2;
+          rail.scale.set(step * SCALE * 1.06, 1, 1);
+          this.group.add(rail);
+        }
+      }
+      return;
+    }
     this.box(x, y, width, depth, .1, PALETTE.wood, .57);
     this.box(x, y, width, depth, .08, PALETTE.wood, .27);
     for (let i = 0; i <= Math.max(1, Math.ceil(length / 28)); i++) {

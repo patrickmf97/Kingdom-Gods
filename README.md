@@ -33,7 +33,8 @@ Compre uma **picareta por 28 coroas** no mercado ou na forja. O mapa de Valeverd
 - **Construções de Valeverde:** orfanato, estalagem, casas, padaria, forja, galpão, casa própria e casas dos Ermos foram modeladas no Blender na medida exata de cada prédio: enxaimel com vigas chanfradas, reboco, base de pedra, fileiras de telhas, cumeeira, chaminés, janelas com caixilho e venezianas, portas de tábuas com ferragens, alpendre da estalagem, forno da padaria, sino do orfanato e a forja aberta com brasa.
 - **Oclusão de ambiente assada:** cada prédio tem a própria textura de oclusão (Cycles), somada à oclusão em tempo real.
 - **Materiais PBR:** reboco, madeira, tábuas, pedra, calçamento, telhas, ardósia e ferro, com cor, relevo e rugosidade em texturas repetíveis geradas pelo próprio projeto.
-- **Pipeline:** `npm run art` gera as texturas (`art/blender/textures.py`), modela e assa (`art/blender/buildings.py`, com `pip install bpy==5.2.3`) e comprime com meshopt e WebP (`public/models/village-buildings.glb`, cerca de 2,6 MB). Se o arquivo não carregar, o jogo usa os modelos procedurais anteriores.
+- **Natureza:** carvalhos, árvores de folhas finas e pinheiros crescidos por script (tronco com raiz, galhos recursivos, casca texturizada e copas de folhas recortadas com sombreamento de volume), com oclusão traçada por raios nos vértices e vento na GPU. Pedras com estratos e líquen, veio de minério, ervas floridas, arbustos, tronco caído, toco das árvores cortadas e cercas de varas.
+- **Pipeline:** `npm run art` gera as texturas (`art/blender/textures.py`), modela e assa (`art/blender/buildings.py`, com `pip install bpy==5.2.3`) gera árvores (`trees.py`) e adereços (`props.py`) e comprime tudo com meshopt e WebP em `public/models/` (cerca de 4,2 MB no total). Se o arquivo não carregar, o jogo usa os modelos procedurais anteriores.
 
 ## Primeira pessoa e visual realista
 
