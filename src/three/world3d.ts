@@ -158,6 +158,9 @@ class ThreeWorld {
     worldInput.dodge = this.dodge;
     this.frameId = requestAnimationFrame(this.frame);
     this.announceMode();
+    // Art review hook, only with ?kgdebug in the address: lets capture scripts aim the camera.
+    if (new URLSearchParams(location.search).has("kgdebug"))
+      Object.assign(window as unknown as Record<string, unknown>, { __kgStore: store, __kgView: (yaw: number, pitch: number) => { this.view.yaw = yaw; this.pitch = clampPitch(pitch); } });
   }
 
   private draw(): void {

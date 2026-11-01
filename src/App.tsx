@@ -43,6 +43,7 @@ import { store } from "./simulation";
 import { objectsForZone, regionForZone, resourceNode, WILDERNESS_ROADS } from "./regions";
 import { MAX_CAMPAIGN_BYTES, parseCampaign } from "./campaign-files";
 import { getRendererMode, mountWorld, worldInput } from "./world";
+import { loadArtAssets } from "./three/art-assets";
 import { GamePanel, ItemIcon, Portrait, LocalMapTerrain, mapObjectsForState } from "./Panels";
 import { interiorForZone } from "./interiors";
 import { StormWarning, WeatherChip } from "./WeatherPanel";
@@ -180,9 +181,15 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (!worldEl.current) return;
-    const cleanup = mountWorld(worldEl.current);
-    setReady(true);
-    return cleanup;
+    let cleanup: (() => void) | undefined, cancelled = false;
+    // Authored Blender art loads first (with a time limit); procedural models cover any gap.
+    const timeout = new Promise<void>(resolve => setTimeout(resolve, 9000));
+    Promise.race([loadArtAssets(import.meta.env.BASE_URL), timeout]).finally(() => {
+      if (cancelled || !worldEl.current) return;
+      cleanup = mountWorld(worldEl.current);
+      setReady(true);
+    });
+    return () => { cancelled = true; cleanup?.(); };
   }, []);
   useEffect(() => {
     document.body.dataset.overlay = String(
